@@ -4,7 +4,7 @@ export const DEFAULT_CONTEXT_PARAMETER_DESCRIPTION = `Explain why you are callin
 export const AGENTCAT_CUSTOM_EVENT_TYPE = "agentcat:custom";
 export const AGENTCAT_SOURCE = "agentcat";
 
-export const DIAGNOSTICS_SCOPE_NAME = "mcpcat-diagnostics";
+export const DIAGNOSTICS_SCOPE_NAME = "agentcat-diagnostics";
 export const DEFAULT_DIAGNOSTICS_ENDPOINT = "https://otel.agentcat.com";
 
 // Public shared ingestion key for SDK diagnostics. NOT a secret — it ships in the

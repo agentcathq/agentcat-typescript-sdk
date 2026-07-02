@@ -2,7 +2,7 @@ import { existsSync, unlinkSync } from "fs";
 import { beforeEach, afterEach } from "vitest";
 import { Event } from "../types.js";
 
-export const LOG_FILE = "mcpcat.log";
+export const LOG_FILE = "agentcat.log";
 
 export function cleanupLogFile() {
   if (existsSync(LOG_FILE)) {

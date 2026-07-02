@@ -87,20 +87,20 @@ function buildStaticAttributes(projectId: string | null): OtlpAttribute[] {
   try {
     // Identity / traceability
     if (projectId) {
-      out.push(...attr("mcpcat.project_id", projectId));
+      out.push(...attr("agentcat.project_id", projectId));
     } else {
-      out.push(...attr("mcpcat.install_id", computeInstallId()));
+      out.push(...attr("agentcat.install_id", computeInstallId()));
     }
 
     // SDK
-    out.push(...attr("mcpcat.sdk.language", "typescript"));
-    out.push(...attr("mcpcat.sdk.version", packageJson.version));
+    out.push(...attr("agentcat.sdk.language", "typescript"));
+    out.push(...attr("agentcat.sdk.version", packageJson.version));
 
     // Best-effort: resolved @modelcontextprotocol/sdk (peer dep) version.
     const mcpPkg = loadNodeModule<{ version?: string }>(
       "@modelcontextprotocol/sdk/package.json",
     );
-    out.push(...attr("mcpcat.mcp_sdk.version", mcpPkg?.version));
+    out.push(...attr("agentcat.mcp_sdk.version", mcpPkg?.version));
 
     // Runtime
     const proc = globalThis.process;
