@@ -1,7 +1,7 @@
 {
-  "name": "mcpcat",
-  "version": "0.1.16",
-  "description": "Analytics tool for MCP (Model Context Protocol) servers - tracks tool usage patterns and provides insights",
+  "name": "agentcat",
+  "version": "1.0.0",
+  "description": "Analytics tool for MCP (Model Context Protocol) servers and AI agents - tracks tool usage patterns and provides insights",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -41,18 +41,20 @@
     "mcp-tools",
     "agent-runtime",
     "mcp-framework",
-    "mcp-analytics"
+    "mcp-analytics",
+    "agentcat",
+    "agentcat-analytics"
   ],
-  "author": "MCPcat",
+  "author": "AgentCat, Inc.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MCPCat/mcpcat-typescript-sdk.git"
+    "url": "git+https://github.com/agentcathq/agentcat-typescript-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/MCPCat/mcpcat-typescript-sdk/issues"
+    "url": "https://github.com/agentcathq/agentcat-typescript-sdk/issues"
   },
-  "homepage": "https://github.com/MCPCat/mcpcat-typescript-sdk#readme",
+  "homepage": "https://github.com/agentcathq/agentcat-typescript-sdk#readme",
   "packageManager": "pnpm@10.11.0",
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
