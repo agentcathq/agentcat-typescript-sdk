@@ -171,7 +171,7 @@ function track(
 
     const validatedServer = isCompatibleServerType(server);
 
-    // Resolve API base URL: option > env var > default
+    // Resolve API base URL: option > AGENTCAT_API_URL > MCPCAT_API_URL (legacy) > default
     const apiBaseUrl =
       options.apiBaseUrl ||
       process.env.AGENTCAT_API_URL ||

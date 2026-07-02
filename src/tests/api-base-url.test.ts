@@ -201,6 +201,19 @@ describe("track() URL resolution", () => {
     expect(eventQueue.configure).toHaveBeenCalledTimes(1);
   });
 
+  it("should prioritize apiBaseUrl option over AGENTCAT_API_URL env var", () => {
+    process.env.AGENTCAT_API_URL = "https://agentcat-env.example.com";
+
+    track(mockServer, "proj_test123", {
+      apiBaseUrl: "https://option-api.example.com",
+    });
+
+    expect(eventQueue.configure).toHaveBeenCalledWith(
+      "https://option-api.example.com",
+    );
+    expect(eventQueue.configure).toHaveBeenCalledTimes(1);
+  });
+
   it("should not call configure() when neither option nor env var is set", () => {
     delete process.env.MCPCAT_API_URL;
 

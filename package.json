@@ -10,8 +10,7 @@
     "dist",
     "docs/static",
     "docs/cats",
-    "CONTRIBUTING.md",
-    "AGENTS.md"
+    "CONTRIBUTING.md"
   ],
   "exports": {
     ".": {
