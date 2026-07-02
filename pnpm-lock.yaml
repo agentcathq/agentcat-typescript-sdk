@@ -67,7 +67,7 @@ importers:
         specifier: ^4.0.14
         version: 4.0.14(@opentelemetry/api@1.9.0)(@types/node@22.15.21)(@vitest/ui@4.0.14)(yaml@2.8.0)
       zod:
-        specifier: ^3.25 || ^4.0
+        specifier: ^3.25
         version: 3.25.30
 
 packages:
