@@ -13,12 +13,15 @@ describe("diagnostics export", () => {
 
   beforeEach(() => {
     _resetDiagnosticsForTest();
+    // Force-enable past the test-environment auto-disable; fetch is mocked.
+    process.env.DISABLE_DIAGNOSTICS = "false";
     fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     globalThis.fetch = fetchSpy;
   });
   afterEach(() => {
     _resetDiagnosticsForTest();
     globalThis.fetch = originalFetch;
+    delete process.env.DISABLE_DIAGNOSTICS;
   });
 
   it("POSTs buffered entries as OTLP logs JSON to /v1/logs", async () => {
