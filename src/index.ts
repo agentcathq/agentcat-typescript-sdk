@@ -32,7 +32,7 @@ import {
   setTelemetryManager,
   publishEvent as publishEventToQueue,
 } from "./modules/eventQueue.js";
-import { MCPCAT_CUSTOM_EVENT_TYPE } from "./modules/constants.js";
+import { AGENTCAT_CUSTOM_EVENT_TYPE } from "./modules/constants.js";
 import { validateTags } from "./modules/validation.js";
 import { eventQueue } from "./modules/eventQueue.js";
 import { initDiagnostics } from "./modules/diagnostics.js";
@@ -373,7 +373,7 @@ export async function publishCustomEvent(
     projectId,
 
     // Fixed event type for custom events
-    eventType: MCPCAT_CUSTOM_EVENT_TYPE,
+    eventType: AGENTCAT_CUSTOM_EVENT_TYPE,
 
     // Timestamp
     timestamp: new Date(),
@@ -406,7 +406,7 @@ export async function publishCustomEvent(
   }
 
   writeToLog(
-    `Published custom event for session ${sessionId} with type 'mcpcat:custom'`,
+    `Published custom event for session ${sessionId} with type 'agentcat:custom'`,
   );
 }
 

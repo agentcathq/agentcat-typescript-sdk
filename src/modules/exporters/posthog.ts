@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { Event, Exporter } from "../../types.js";
 import { writeToLog } from "../logging.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
-import { MCPCAT_SOURCE } from "../constants.js";
+import { AGENTCAT_SOURCE } from "../constants.js";
 import KSUID from "../../thirdparty/ksuid/index.js";
 
 /**
@@ -158,7 +158,7 @@ export class PostHogExporter implements Exporter {
 
     const properties: Record<string, any> = {
       $session_id: toUUIDv7(event.sessionId),
-      source: MCPCAT_SOURCE,
+      source: AGENTCAT_SOURCE,
     };
 
     if (event.resourceName) {
@@ -265,13 +265,13 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $ai_session_id: `mcpcat_${event.sessionId}`,
+      $ai_session_id: `agentcat_${event.sessionId}`,
       $ai_trace_id: toUUIDv7(event.sessionId),
       $ai_span_id: toUUIDv7(event.id),
       $ai_span_name: event.resourceName || "unknown_tool",
       $ai_is_error: event.isError || false,
       $session_id: toUUIDv7(event.sessionId),
-      source: MCPCAT_SOURCE,
+      source: AGENTCAT_SOURCE,
     };
 
     if (event.duration !== undefined) {

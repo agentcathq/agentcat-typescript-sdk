@@ -18,7 +18,7 @@ import {
   publishEvent as publishEventToQueue,
   eventQueue,
 } from "../modules/eventQueue.js";
-import { MCPCAT_CUSTOM_EVENT_TYPE } from "../modules/constants.js";
+import { AGENTCAT_CUSTOM_EVENT_TYPE } from "../modules/constants.js";
 import KSUID from "../thirdparty/ksuid/index.js";
 
 // Import the function under test
@@ -59,8 +59,8 @@ describe("publishCustomEvent", () => {
     // Mock publishEventToQueue
     (publishEventToQueue as any).mockImplementation(() => {});
 
-    // Mock MCPCAT_CUSTOM_EVENT_TYPE
-    (MCPCAT_CUSTOM_EVENT_TYPE as any) = "mcpcat:custom";
+    // Mock AGENTCAT_CUSTOM_EVENT_TYPE
+    (AGENTCAT_CUSTOM_EVENT_TYPE as any) = "agentcat:custom";
   });
 
   afterEach(() => {
@@ -97,7 +97,7 @@ describe("publishCustomEvent", () => {
         expect.objectContaining({
           sessionId: "ses_tracked123",
           projectId,
-          eventType: "mcpcat:custom",
+          eventType: "agentcat:custom",
           resourceName: "custom-action",
           parameters: { action: "test" },
           userIntent: "Testing custom event", // message maps to userIntent
@@ -164,7 +164,7 @@ describe("publishCustomEvent", () => {
         expect.objectContaining({
           sessionId: `ses_derived_${customSessionId}_${projectId}`,
           projectId,
-          eventType: "mcpcat:custom",
+          eventType: "agentcat:custom",
           resourceName: "custom-action",
           parameters: { action: "test" },
         }),
@@ -231,7 +231,7 @@ describe("publishCustomEvent", () => {
   });
 
   describe("event structure", () => {
-    it("should always use 'mcpcat:custom' as event type", async () => {
+    it("should always use 'agentcat:custom' as event type", async () => {
       const customSessionId = "test-session";
       const projectId = "proj_test";
 
@@ -239,7 +239,7 @@ describe("publishCustomEvent", () => {
 
       expect(mockEventQueue.add).toHaveBeenCalledWith(
         expect.objectContaining({
-          eventType: "mcpcat:custom",
+          eventType: "agentcat:custom",
         }),
       );
     });

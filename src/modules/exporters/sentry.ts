@@ -1,7 +1,7 @@
 import { Event, Exporter } from "../../types.js";
 import { writeToLog } from "../logging.js";
 import { traceContext } from "./trace-context.js";
-import { MCPCAT_SOURCE } from "../constants.js";
+import { AGENTCAT_SOURCE } from "../constants.js";
 
 export interface SentryExporterConfig {
   type: "sentry";
@@ -106,7 +106,7 @@ export class SentryExporter implements Exporter {
     }${this.parsedDSN.path}/api/${this.parsedDSN.projectId}/envelope/`;
 
     // Build auth header
-    this.authHeader = `Sentry sentry_version=7, sentry_client=mcpcat/1.0.0, sentry_key=${this.parsedDSN.publicKey}`;
+    this.authHeader = `Sentry sentry_version=7, sentry_client=agentcat/1.0.0, sentry_key=${this.parsedDSN.publicKey}`;
 
     writeToLog(`SentryExporter: Initialized with endpoint ${this.endpoint}`);
   }
@@ -370,7 +370,7 @@ export class SentryExporter implements Exporter {
 
   private buildTags(event: Event): Record<string, string> {
     const tags: Record<string, string> = {
-      source: MCPCAT_SOURCE,
+      source: AGENTCAT_SOURCE,
     };
 
     if (this.config.environment) tags.environment = this.config.environment;
@@ -384,7 +384,7 @@ export class SentryExporter implements Exporter {
     // Add customer-defined tags (namespaced to avoid collisions with Sentry reserved fields)
     if (event.tags) {
       for (const [key, value] of Object.entries(event.tags)) {
-        tags[`mcpcat.${key}`] = value;
+        tags[`agentcat.${key}`] = value;
       }
     }
 
@@ -416,7 +416,7 @@ export class SentryExporter implements Exporter {
 
     // Add customer-defined properties as a custom context
     if (event.properties) {
-      contexts.mcpcat = event.properties;
+      contexts.agentcat = event.properties;
     }
 
     return contexts;

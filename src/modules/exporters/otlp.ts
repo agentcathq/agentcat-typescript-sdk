@@ -1,7 +1,7 @@
 import { Event, Exporter } from "../../types.js";
 import { writeToLog } from "../logging.js";
 import { traceContext } from "./trace-context.js";
-import { MCPCAT_SOURCE } from "../constants.js";
+import { AGENTCAT_SOURCE } from "../constants.js";
 
 export interface OTLPExporterConfig {
   type: "otlp";
@@ -48,7 +48,7 @@ export class OTLPExporter implements Exporter {
             scopeSpans: [
               {
                 scope: {
-                  name: "mcpcat",
+                  name: "agentcat",
                   version: event.agentcatVersion || "unknown",
                 },
                 spans: [span],
@@ -99,7 +99,7 @@ export class OTLPExporter implements Exporter {
       attributes: [
         {
           key: "source",
-          value: { stringValue: MCPCAT_SOURCE },
+          value: { stringValue: AGENTCAT_SOURCE },
         },
         {
           key: "mcp.event_type",
@@ -139,14 +139,14 @@ export class OTLPExporter implements Exporter {
         },
         // Add customer-defined tags as individual attributes
         ...Object.entries(event.tags || {}).map(([key, value]) => ({
-          key: `mcpcat.tag.${key}`,
+          key: `agentcat.tag.${key}`,
           value: { stringValue: value },
         })),
         // Add customer-defined properties as JSON
         ...(event.properties
           ? [
               {
-                key: "mcpcat.properties",
+                key: "agentcat.properties",
                 value: { stringValue: JSON.stringify(event.properties) },
               },
             ]
