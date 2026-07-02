@@ -6,6 +6,13 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs/static",
+    "docs/cats",
+    "CONTRIBUTING.md",
+    "AGENTS.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
