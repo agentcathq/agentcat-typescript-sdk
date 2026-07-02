@@ -27,7 +27,7 @@ class EventQueue {
   private telemetryManager?: TelemetryManager;
 
   constructor() {
-    const config = new Configuration({ basePath: "https://api.mcpcat.io" });
+    const config = new Configuration({ basePath: "https://api.agentcat.com" });
     this.apiClient = new EventsApi(config);
   }
 
