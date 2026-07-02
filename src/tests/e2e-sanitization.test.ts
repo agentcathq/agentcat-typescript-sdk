@@ -68,7 +68,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
       // Image block redacted to text
       expect(content[1]).toEqual({
         type: "text",
-        text: "[image content redacted - not supported by MCPcat]",
+        text: "[image content redacted - not supported by AgentCat]",
       });
 
       await eventCapture.stop();
@@ -126,7 +126,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
       expect(toolEvent).toBeDefined();
       expect(toolEvent!.response.content[0]).toEqual({
         type: "text",
-        text: "[audio content redacted - not supported by MCPcat]",
+        text: "[audio content redacted - not supported by AgentCat]",
       });
 
       await eventCapture.stop();
@@ -190,7 +190,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
       // The base64 param should be redacted in the captured event's parameters
       const args = toolEvent!.parameters?.request?.params?.arguments;
       expect(args.data).toBe(
-        "[binary data redacted - not supported by MCPcat]",
+        "[binary data redacted - not supported by AgentCat]",
       );
       // Non-base64 params should be preserved
       expect(args.filename).toBe("photo.png");
@@ -282,7 +282,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
       });
       expect(screenshotEvent!.response.content[1]).toEqual({
         type: "text",
-        text: "[image content redacted - not supported by MCPcat]",
+        text: "[image content redacted - not supported by AgentCat]",
       });
 
       await eventCapture.stop();

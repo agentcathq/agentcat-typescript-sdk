@@ -265,7 +265,7 @@ describe("E2E Truncation - real MCP tool calls", () => {
       // Image block should be sanitized
       expect(content[1]).toEqual({
         type: "text",
-        text: "[image content redacted - not supported by MCPcat]",
+        text: "[image content redacted - not supported by AgentCat]",
       });
 
       // Total event size should still be under 100KB

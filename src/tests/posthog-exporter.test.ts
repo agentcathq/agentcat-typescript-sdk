@@ -396,7 +396,7 @@ describe("PostHogExporter", () => {
 
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const props = body.batch[0].properties;
-    // Only MCPCat-set properties should exist, no customer tags/properties
+    // Only AgentCat-set properties should exist, no customer tags/properties
     expect(props.source).toBe("agentcat");
     expect(props.env).toBeUndefined();
     expect(props.device).toBeUndefined();
@@ -590,7 +590,7 @@ describe("PostHogExporter", () => {
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const span = body.batch.find((e: any) => e.event === "$ai_span");
 
-    // Tags spread directly (NOT as mcpcat_tag_*)
+    // Tags spread directly (NOT as agentcat_tag_*)
     expect(span.properties.env).toBe("production");
     expect(span.properties.region).toBe("us-east");
 
@@ -623,7 +623,7 @@ describe("PostHogExporter", () => {
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const span = body.batch.find((e: any) => e.event === "$ai_span");
 
-    // Customer tag overrides MCPCat's generated $ai_trace_id
+    // Customer tag overrides AgentCat's generated $ai_trace_id
     expect(span.properties.$ai_trace_id).toBe(customTraceId);
     expect(span.properties.$ai_span_name).toBe("custom_name");
   });

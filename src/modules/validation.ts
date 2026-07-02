@@ -6,7 +6,7 @@ const MAX_TAG_VALUE_LENGTH = 200;
 const MAX_TAG_ENTRIES = 50;
 
 /**
- * Validates and filters a tags object against MCPCat tag constraints.
+ * Validates and filters a tags object against AgentCat tag constraints.
  * Invalid entries are logged as warnings and dropped.
  * Returns null if no valid entries remain.
  */

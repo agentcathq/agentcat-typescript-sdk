@@ -148,7 +148,7 @@ class EventQueue {
       });
     }
 
-    // Send to MCPCat API if projectId is provided
+    // Send to AgentCat API if projectId is provided
     if (event.projectId) {
       try {
         const publishRequest = this.toPublishEventRequest(event);

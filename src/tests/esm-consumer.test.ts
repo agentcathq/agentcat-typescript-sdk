@@ -1,14 +1,20 @@
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const sdkRoot = join(__dirname, "..", "..");
+// The published package name, read from package.json so this test follows any
+// package rename automatically.
+const pkgName: string = JSON.parse(
+  readFileSync(join(sdkRoot, "package.json"), "utf8"),
+).name;
 
 // Verifies that a real Node.js process with "type": "module" can import the
-// built mcpcat tarball and its transitive agentcat-api dependency. Catches the
+// built SDK tarball and its transitive agentcat-api dependency. Catches the
 // class of dual-package ESM bug where exports.import points to a .js file in
 // a package missing the "type": "module" marker — the file is then parsed as
 // CommonJS, yielding zero named exports and "does not provide an export
@@ -19,7 +25,6 @@ describe("ESM consumer smoke test", () => {
   let tarballPath: string;
 
   beforeAll(() => {
-    const sdkRoot = join(__dirname, "..", "..");
     const packOutput = execFileSync(
       "pnpm",
       ["pack", "--pack-destination", tmpdir()],
@@ -33,11 +38,11 @@ describe("ESM consumer smoke test", () => {
     }
     tarballPath = lastLine;
 
-    workDir = mkdtempSync(join(tmpdir(), "mcpcat-esm-consume-"));
+    workDir = mkdtempSync(join(tmpdir(), "agentcat-esm-consume-"));
     writeFileSync(
       join(workDir, "package.json"),
       JSON.stringify({
-        name: "mcpcat-esm-consumer",
+        name: "agentcat-esm-consumer",
         private: true,
         type: "module",
       }),
@@ -53,13 +58,13 @@ describe("ESM consumer smoke test", () => {
     if (tarballPath) rmSync(tarballPath, { force: true });
   });
 
-  test("can import * as mcpcat from a real Node ESM process", () => {
+  test("can import the SDK package from a real Node ESM process", () => {
     const result = spawnSync(
       "node",
       [
         "--input-type=module",
         "-e",
-        "import * as m from 'mcpcat'; if (typeof m.track !== 'function') { console.error('track missing'); process.exit(2); } console.log('ok');",
+        `import * as m from '${pkgName}'; if (typeof m.track !== 'function') { console.error('track missing'); process.exit(2); } console.log('ok');`,
       ],
       { cwd: workDir, encoding: "utf8" },
     );

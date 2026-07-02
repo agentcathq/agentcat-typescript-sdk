@@ -510,11 +510,11 @@ describe("truncateEvent - integration with sanitization pipeline", () => {
 
     // Sanitization should have redacted the base64 and image
     expect((result.parameters as any).imageData).toBe(
-      "[binary data redacted - not supported by MCPcat]",
+      "[binary data redacted - not supported by AgentCat]",
     );
     expect(result.response.content[1]).toEqual({
       type: "text",
-      text: "[image content redacted - not supported by MCPcat]",
+      text: "[image content redacted - not supported by AgentCat]",
     });
 
     // Truncation should have capped the remaining fields

@@ -64,13 +64,13 @@ function sanitizeContentBlock(block: any): any {
     case "image":
       return {
         type: "text",
-        text: "[image content redacted - not supported by MCPcat]",
+        text: "[image content redacted - not supported by AgentCat]",
       };
 
     case "audio":
       return {
         type: "text",
-        text: "[audio content redacted - not supported by MCPcat]",
+        text: "[audio content redacted - not supported by AgentCat]",
       };
 
     case "resource":
@@ -82,7 +82,7 @@ function sanitizeContentBlock(block: any): any {
     default:
       return {
         type: "text",
-        text: `[unsupported content type "${block.type}" redacted - not supported by MCPcat]`,
+        text: `[unsupported content type "${block.type}" redacted - not supported by AgentCat]`,
       };
   }
 }
@@ -96,7 +96,7 @@ function sanitizeResourceBlock(block: any): any {
   if (block.resource && block.resource.blob !== undefined) {
     return {
       type: "text",
-      text: "[binary resource content redacted - not supported by MCPcat]",
+      text: "[binary resource content redacted - not supported by AgentCat]",
     };
   }
   return block;
@@ -113,7 +113,7 @@ function sanitizeParameters(obj: any): any {
 
   if (typeof obj === "string") {
     if (obj.length >= SIZE_GATE && BASE64_PATTERN.test(obj)) {
-      return "[binary data redacted - not supported by MCPcat]";
+      return "[binary data redacted - not supported by AgentCat]";
     }
     return obj;
   }

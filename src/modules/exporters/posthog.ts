@@ -195,14 +195,14 @@ export class PostHogExporter implements Exporter {
       properties.$set = $set;
     }
 
-    // Spread customer-defined tags directly (can override MCPCat defaults)
+    // Spread customer-defined tags directly (can override AgentCat defaults)
     if (event.tags) {
       for (const [key, value] of Object.entries(event.tags)) {
         properties[key] = value;
       }
     }
 
-    // Spread customer-defined properties directly (can override MCPCat defaults)
+    // Spread customer-defined properties directly (can override AgentCat defaults)
     if (event.properties) {
       for (const [key, value] of Object.entries(event.properties)) {
         properties[key] = value;
@@ -289,14 +289,14 @@ export class PostHogExporter implements Exporter {
     if (event.serverName) properties.server_name = event.serverName;
     if (event.clientName) properties.client_name = event.clientName;
 
-    // Spread customer tags directly (can override MCPCat defaults)
+    // Spread customer tags directly (can override AgentCat defaults)
     if (event.tags) {
       for (const [key, value] of Object.entries(event.tags)) {
         properties[key] = value;
       }
     }
 
-    // Spread customer properties directly (can override MCPCat defaults)
+    // Spread customer properties directly (can override AgentCat defaults)
     if (event.properties) {
       for (const [key, value] of Object.entries(event.properties)) {
         properties[key] = value;
@@ -313,7 +313,7 @@ export class PostHogExporter implements Exporter {
   }
 
   private mapEventType(eventType: string): string {
-    // Map MCPcat event types to PostHog event names
+    // Map AgentCat event types to PostHog event names
     const mapping: Record<string, string> = {
       [PublishEventRequestEventTypeEnum.mcpToolsCall]: "mcp_tool_call",
       [PublishEventRequestEventTypeEnum.mcpToolsList]: "mcp_tools_list",

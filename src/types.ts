@@ -1,6 +1,6 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 
-export interface MCPCatOptions {
+export interface AgentCatOptions {
   enableReportMissing?: boolean;
   enableTracing?: boolean;
   enableToolCallContext?: boolean;
@@ -53,7 +53,7 @@ export interface Exporter {
   export(event: Event): Promise<void>;
 }
 
-export enum MCPCatIDPrefixes {
+export enum AgentCatIDPrefixes {
   Session = "ses",
   Event = "evt",
 }
@@ -97,7 +97,7 @@ export interface Event {
   tags?: Record<string, string> | null;
   properties?: Record<string, any> | null;
 
-  // Legacy fields for MCPCat API compatibility
+  // Legacy fields for AgentCat API compatibility
   actorId?: string; // Maps to identifyActorGivenId in some contexts
   eventId?: string; // Custom event ID
   identifyData?: object; // Legacy name for identifyActorData
@@ -172,20 +172,20 @@ export interface SessionInfo {
   serverVersion?: string;
   clientName?: string;
   clientVersion?: string;
-  identifyActorGivenId?: string; // Actor ID for mcpcat:identify events
-  identifyActorName?: string; // Actor name for mcpcat:identify events
+  identifyActorGivenId?: string; // Actor ID for agentcat:identify events
+  identifyActorName?: string; // Actor name for agentcat:identify events
   identifyActorData?: object;
 }
 
-export interface MCPCatData {
-  projectId: string; // Project ID for MCPCat
+export interface AgentCatData {
+  projectId: string; // Project ID for AgentCat
   sessionId: string; // Unique identifier for the session (KSUID with ses prefix)
   lastActivity: Date; // Last activity timestamp
   identifiedSessions: Map<string, UserIdentity>;
   sessionInfo: SessionInfo;
-  options: MCPCatOptions;
+  options: AgentCatOptions;
   lastMcpSessionId?: string; // Track the last MCP sessionId we saw
-  sessionSource: "mcp" | "mcpcat"; // Track whether session ID came from MCP protocol or MCPCat generation
+  sessionSource: "mcp" | "agentcat"; // Track whether session ID came from MCP protocol or AgentCat generation
 }
 
 // Error tracking types

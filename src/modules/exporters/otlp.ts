@@ -26,7 +26,7 @@ export class OTLPExporter implements Exporter {
 
   async export(event: Event): Promise<void> {
     try {
-      // Convert MCPCat event to OTLP trace format
+      // Convert AgentCat event to OTLP trace format
       const span = this.convertToOTLPSpan(event);
 
       // Create OTLP JSON format

@@ -2,10 +2,10 @@ import { HighLevelMCPServerLike, MCPServerLike } from "../types.js";
 import { writeToLog } from "./logging.js";
 
 /**
- * MCPCat Compatibility Module
+ * AgentCat Compatibility Module
  *
  * This module ensures compatibility with Model Context Protocol TypeScript SDK.
- * MCPCat only supports MCP SDK version 1.11 and above.
+ * AgentCat only supports MCP SDK version 1.11 and above.
  *
  * Version 1.11+ is required because it introduced stable APIs for:
  * - Tool registration and handling
@@ -17,7 +17,7 @@ import { writeToLog } from "./logging.js";
 // Function to log compatibility information
 export function logCompatibilityWarning(): void {
   writeToLog(
-    "MCPCat SDK Compatibility: This version only supports Model Context Protocol TypeScript SDK v1.11 and above. Please upgrade if using an older version.",
+    "AgentCat SDK Compatibility: This version only supports Model Context Protocol TypeScript SDK v1.11 and above. Please upgrade if using an older version.",
   );
 }
 
@@ -43,7 +43,7 @@ export function isCompatibleServerType(
   if (!server || typeof server !== "object") {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server must be an object. Ensure you're using MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server must be an object. Ensure you're using MCP SDK v1.11 or higher.",
     );
   }
 
@@ -55,13 +55,13 @@ export function isCompatibleServerType(
     ) {
       logCompatibilityWarning();
       throw new Error(
-        "MCPCat SDK compatibility error: High-level server must have _registeredTools object. This requires MCP SDK v1.11 or higher.",
+        "AgentCat SDK compatibility error: High-level server must have _registeredTools object. This requires MCP SDK v1.11 or higher.",
       );
     }
     if (typeof server.tool !== "function") {
       logCompatibilityWarning();
       throw new Error(
-        "MCPCat SDK compatibility error: High-level server must have tool() method. This requires MCP SDK v1.11 or higher.",
+        "AgentCat SDK compatibility error: High-level server must have tool() method. This requires MCP SDK v1.11 or higher.",
       );
     }
 
@@ -82,14 +82,14 @@ function validateLowLevelServer(server: any): void {
   if (typeof server.setRequestHandler !== "function") {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server must have a setRequestHandler method. This requires MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server must have a setRequestHandler method. This requires MCP SDK v1.11 or higher.",
     );
   }
 
   if (!server._requestHandlers || !(server._requestHandlers instanceof Map)) {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server._requestHandlers is not accessible. This requires MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server._requestHandlers is not accessible. This requires MCP SDK v1.11 or higher.",
     );
   }
 
@@ -97,14 +97,14 @@ function validateLowLevelServer(server: any): void {
   if (typeof server._requestHandlers.get !== "function") {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server._requestHandlers must be a Map with a get method. This requires MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server._requestHandlers must be a Map with a get method. This requires MCP SDK v1.11 or higher.",
     );
   }
 
   if (typeof server.getClientVersion !== "function") {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server.getClientVersion must be a function. This requires MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server.getClientVersion must be a function. This requires MCP SDK v1.11 or higher.",
     );
   }
 
@@ -115,7 +115,7 @@ function validateLowLevelServer(server: any): void {
   ) {
     logCompatibilityWarning();
     throw new Error(
-      "MCPCat SDK compatibility error: Server._serverInfo is not accessible or missing name. This requires MCP SDK v1.11 or higher.",
+      "AgentCat SDK compatibility error: Server._serverInfo is not accessible or missing name. This requires MCP SDK v1.11 or higher.",
     );
   }
 }

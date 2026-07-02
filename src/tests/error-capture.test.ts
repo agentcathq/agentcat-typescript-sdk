@@ -26,7 +26,7 @@ describe("Error Capture Integration Tests", () => {
     const { server, client, cleanup } = await setupTestServerAndClient();
 
     try {
-      // Track the server with mcpcat (uses default settings including context parameters)
+      // Track the server with agentcat (uses default settings including context parameters)
       await track(server, {
         projectId: "test-project",
         enableTracing: true,

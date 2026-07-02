@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { MCPCatOptions } from "../types.js";
+import type { AgentCatOptions } from "../types.js";
 import { setupTestHooks } from "./test-utils.js";
 
-describe("MCPCatOptions apiBaseUrl", () => {
+describe("AgentCatOptions apiBaseUrl", () => {
   it("should accept apiBaseUrl as an optional string property", () => {
-    const options: MCPCatOptions = {
+    const options: AgentCatOptions = {
       apiBaseUrl: "https://custom.example.com",
     };
     expect(options.apiBaseUrl).toBe("https://custom.example.com");
   });
 
   it("should be undefined when not set", () => {
-    const options: MCPCatOptions = {};
+    const options: AgentCatOptions = {};
     expect(options.apiBaseUrl).toBeUndefined();
   });
 });

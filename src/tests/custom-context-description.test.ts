@@ -110,7 +110,7 @@ describe("Custom Context Description", () => {
       ListToolsResultSchema,
     );
 
-    // Check all original tools (exclude MCPCat-added tools)
+    // Check all original tools (exclude AgentCat-added tools)
     const originalTools = ["add_todo", "list_todos", "complete_todo"];
     const toolsToCheck = toolsResponse.tools.filter((tool: any) =>
       originalTools.includes(tool.name),

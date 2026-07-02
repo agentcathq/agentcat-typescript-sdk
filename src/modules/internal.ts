@@ -1,5 +1,5 @@
 import {
-  MCPCatData,
+  AgentCatData,
   MCPServerLike,
   UserIdentity,
   CompatibleRequestHandlerExtra,
@@ -66,17 +66,17 @@ class IdentityCache {
 const _globalIdentityCache = new IdentityCache(1000);
 
 // Internal tracking storage
-const _serverTracking = new WeakMap<MCPServerLike, MCPCatData>();
+const _serverTracking = new WeakMap<MCPServerLike, AgentCatData>();
 
 export function getServerTrackingData(
   server: MCPServerLike,
-): MCPCatData | undefined {
+): AgentCatData | undefined {
   return _serverTracking.get(server);
 }
 
 export function setServerTrackingData(
   server: MCPServerLike,
-  data: MCPCatData,
+  data: AgentCatData,
 ): void {
   _serverTracking.set(server, data);
 }
@@ -139,7 +139,7 @@ export function mergeIdentities(
  */
 export async function handleIdentify(
   server: MCPServerLike,
-  data: MCPCatData,
+  data: AgentCatData,
   request: any,
   extra?: CompatibleRequestHandlerExtra,
 ): Promise<void> {
@@ -206,7 +206,7 @@ export async function handleIdentify(
  * Returns null if no callback configured, callback returns nullish, or callback throws.
  */
 export async function resolveEventTags(
-  data: MCPCatData,
+  data: AgentCatData,
   request: any,
   extra?: CompatibleRequestHandlerExtra,
 ): Promise<Record<string, string> | null> {
@@ -226,7 +226,7 @@ export async function resolveEventTags(
  * Returns null if no callback configured, callback returns nullish, or callback throws.
  */
 export async function resolveEventProperties(
-  data: MCPCatData,
+  data: AgentCatData,
   request: any,
   extra?: CompatibleRequestHandlerExtra,
 ): Promise<Record<string, any> | null> {
