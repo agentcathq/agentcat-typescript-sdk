@@ -12,12 +12,15 @@ describe("diagnostics auth header", () => {
 
   beforeEach(() => {
     _resetDiagnosticsForTest();
+    // Force-enable past the test-environment auto-disable; fetch is mocked.
+    process.env.DISABLE_DIAGNOSTICS = "false";
     delete process.env.DIAGNOSTICS_TOKEN;
     fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     globalThis.fetch = fetchSpy;
   });
   afterEach(() => {
     _resetDiagnosticsForTest();
+    delete process.env.DISABLE_DIAGNOSTICS;
     delete process.env.DIAGNOSTICS_TOKEN;
     globalThis.fetch = originalFetch;
   });

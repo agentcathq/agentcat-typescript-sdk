@@ -11,7 +11,8 @@ describe("diagnostics integration with track()", () => {
 
   beforeEach(() => {
     _resetDiagnosticsForTest();
-    delete process.env.DISABLE_DIAGNOSTICS;
+    // Force-enable past the test-environment auto-disable; fetch is mocked.
+    process.env.DISABLE_DIAGNOSTICS = "false";
     fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     globalThis.fetch = fetchSpy;
   });

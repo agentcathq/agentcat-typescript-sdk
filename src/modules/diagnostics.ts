@@ -167,16 +167,30 @@ export function _buildRecordForTest(entry: string): OtlpLogRecord {
   return buildRecord(entry);
 }
 
-function envDisabled(): boolean {
+function isTestEnvironment(): boolean {
   try {
-    const raw = globalThis.process?.env?.DISABLE_DIAGNOSTICS;
-    if (!raw) return false;
-    // Interpret the value rather than treating mere presence as truthy, so
-    // DISABLE_DIAGNOSTICS=false / 0 / no / off does NOT disable diagnostics.
-    const normalized = raw.trim().toLowerCase();
-    return !["false", "0", "no", "off", ""].includes(normalized);
+    const env = globalThis.process?.env;
+    return Boolean(
+      env?.VITEST || env?.JEST_WORKER_ID || env?.NODE_ENV === "test",
+    );
   } catch {
     return false;
+  }
+}
+
+function envDiagnosticsFlag(): "disabled" | "force-enabled" | "unset" {
+  try {
+    const raw = globalThis.process?.env?.DISABLE_DIAGNOSTICS;
+    if (raw == null || raw.trim() === "") return "unset";
+    // Interpret the value rather than treating mere presence as truthy. An
+    // explicitly falsy value (DISABLE_DIAGNOSTICS=false / 0 / no / off) is a
+    // deliberate opt-in that also overrides test-environment detection.
+    const normalized = raw.trim().toLowerCase();
+    return ["false", "0", "no", "off"].includes(normalized)
+      ? "force-enabled"
+      : "disabled";
+  } catch {
+    return "unset";
   }
 }
 
@@ -187,7 +201,11 @@ export function initDiagnostics(opts: {
   try {
     if (initialized) return;
     initialized = true;
-    enabled = !opts.disabled && !envDisabled();
+    const flag = envDiagnosticsFlag();
+    enabled =
+      !opts.disabled &&
+      flag !== "disabled" &&
+      (flag === "force-enabled" || !isTestEnvironment());
     if (!enabled) return;
     staticAttributes = buildStaticAttributes(opts.projectId);
     setDiagnosticsSink(capture);

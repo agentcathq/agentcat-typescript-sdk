@@ -11,8 +11,15 @@ function asMap(attrs: { key: string; value: { stringValue: string } }[]) {
 }
 
 describe("diagnostics static attributes", () => {
-  beforeEach(() => _resetDiagnosticsForTest());
-  afterEach(() => _resetDiagnosticsForTest());
+  beforeEach(() => {
+    _resetDiagnosticsForTest();
+    // Force-enable past the test-environment auto-disable.
+    process.env.DISABLE_DIAGNOSTICS = "false";
+  });
+  afterEach(() => {
+    _resetDiagnosticsForTest();
+    delete process.env.DISABLE_DIAGNOSTICS;
+  });
 
   it("uses projectId verbatim when present", () => {
     initDiagnostics({ projectId: "proj_ABC" });
