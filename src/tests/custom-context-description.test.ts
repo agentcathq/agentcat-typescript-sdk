@@ -9,7 +9,7 @@ import {
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "../modules/constants";
 
 describe("Custom Context Description", () => {

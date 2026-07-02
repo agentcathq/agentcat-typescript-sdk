@@ -72,7 +72,7 @@ export interface Event {
   // Session context (from SessionInfo)
   ipAddress?: string;
   sdkLanguage?: string;
-  mcpcatVersion?: string;
+  agentcatVersion?: string;
   serverName?: string;
   serverVersion?: string;
   clientName?: string;
@@ -167,7 +167,7 @@ export interface UserIdentity {
 export interface SessionInfo {
   ipAddress?: string;
   sdkLanguage?: string;
-  mcpcatVersion?: string;
+  agentcatVersion?: string;
   serverName?: string;
   serverVersion?: string;
   clientName?: string;

@@ -76,9 +76,6 @@
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.11"
   },
-  "dependencies": {
-    "mcpcat-api": "0.1.9"
-  },
   "lint-staged": {
     "*.{ts,js}": [
       "eslint --fix",
@@ -103,5 +100,8 @@
       "body-parser": "Fixes GHSA-wqch-xfxh-vrr4 (DoS via url encoding) - via @modelcontextprotocol/sdk",
       "brace-expansion": "Fixes GHSA-v6h2-p8h4-qcjw (ReDoS vulnerability) - via eslint"
     }
+  },
+  "dependencies": {
+    "agentcat-api": "1.0.1"
   }
 }

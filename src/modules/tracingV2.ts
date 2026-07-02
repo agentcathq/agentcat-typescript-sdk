@@ -14,7 +14,7 @@ import {
   resolveEventProperties,
 } from "./internal.js";
 import { getServerSessionId } from "./session.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { handleReportMissing } from "./tools.js";
 import { setupInitializeTracing, setupListToolsTracing } from "./tracing.js";

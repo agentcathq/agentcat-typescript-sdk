@@ -6,7 +6,7 @@ import {
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("E2E Truncation - real MCP tool calls", () => {
   it("should truncate tool responses with text exceeding 32KB", async () => {

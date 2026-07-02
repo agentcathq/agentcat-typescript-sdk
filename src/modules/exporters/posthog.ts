@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { Event, Exporter } from "../../types.js";
 import { writeToLog } from "../logging.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { MCPCAT_SOURCE } from "../constants.js";
 import KSUID from "../../thirdparty/ksuid/index.js";
 

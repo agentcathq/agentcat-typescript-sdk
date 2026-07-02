@@ -7,7 +7,7 @@ import { track, publishCustomEvent } from "../index";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
 import { HighLevelMCPServerLike } from "../types";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("Event Tags & Properties", () => {
   let server: HighLevelMCPServerLike;
@@ -344,15 +344,12 @@ describe("Event Tags & Properties", () => {
       // We need to set up tracking BEFORE the client connects.
 
       // Create a fresh server/client pair without auto-connect
-      const { McpServer } = await import(
-        "@modelcontextprotocol/sdk/server/mcp.js"
-      );
-      const { Client } = await import(
-        "@modelcontextprotocol/sdk/client/index.js"
-      );
-      const { InMemoryTransport } = await import(
-        "@modelcontextprotocol/sdk/inMemory.js"
-      );
+      const { McpServer } =
+        await import("@modelcontextprotocol/sdk/server/mcp.js");
+      const { Client } =
+        await import("@modelcontextprotocol/sdk/client/index.js");
+      const { InMemoryTransport } =
+        await import("@modelcontextprotocol/sdk/inMemory.js");
       const { z } = await import("zod");
 
       const freshServer = new McpServer({
@@ -409,9 +406,8 @@ describe("Event Tags & Properties", () => {
       });
 
       // Trigger a tools/list request
-      const { ListToolsResultSchema } = await import(
-        "@modelcontextprotocol/sdk/types.js"
-      );
+      const { ListToolsResultSchema } =
+        await import("@modelcontextprotocol/sdk/types.js");
       await client.request(
         { method: "tools/list", params: {} },
         ListToolsResultSchema,

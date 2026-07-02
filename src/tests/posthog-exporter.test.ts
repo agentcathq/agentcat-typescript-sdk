@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PostHogExporter } from "../modules/exporters/posthog.js";
 import { Event } from "../types.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { validate as uuidValidate, version as uuidVersion } from "uuid";
 import KSUID from "../thirdparty/ksuid/index.js";
 

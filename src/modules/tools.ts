@@ -8,7 +8,7 @@ import { getServerTrackingData, handleIdentify } from "./internal.js";
 import { addContextParameterToTools } from "./context-parameters.js";
 import { publishEvent } from "./eventQueue.js";
 import { getServerSessionId } from "./session.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
 
 export const GET_MORE_TOOLS_NAME = "get_more_tools" as const;

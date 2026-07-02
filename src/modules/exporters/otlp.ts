@@ -49,7 +49,7 @@ export class OTLPExporter implements Exporter {
               {
                 scope: {
                   name: "mcpcat",
-                  version: event.mcpcatVersion || "unknown",
+                  version: event.agentcatVersion || "unknown",
                 },
                 spans: [span],
               },

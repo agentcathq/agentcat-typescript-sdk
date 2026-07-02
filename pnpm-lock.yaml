@@ -15,9 +15,9 @@ importers:
 
   .:
     dependencies:
-      mcpcat-api:
-        specifier: 0.1.9
-        version: 0.1.9
+      agentcat-api:
+        specifier: 1.0.1
+        version: 1.0.1
     devDependencies:
       '@changesets/cli':
         specifier: ^2.29.8
@@ -977,6 +977,9 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
+  agentcat-api@1.0.1:
+    resolution: {integrity: sha512-1OeMru3nQGMtazs44ZtzP9UgeEq8+eEG+Hgj6B12qZnOneH56NmULthYv0YT3MAZ3EAAzh4lEtWFA3OzcY8XnQ==}
+
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
     peerDependencies:
@@ -1655,9 +1658,6 @@ packages:
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
-
-  mcpcat-api@0.1.9:
-    resolution: {integrity: sha512-+Kwx43e+dE3gW4dKMtdX+soT7co7LrEPQNGgQcGlWtTgfpop0rXaXMoeRvJWovAfOLpFcVPin/8Fr5rSnpREJQ==}
 
   media-typer@1.1.0:
     resolution: {integrity: sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==}
@@ -3153,6 +3153,8 @@ snapshots:
 
   acorn@8.15.0: {}
 
+  agentcat-api@1.0.1: {}
+
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:
       ajv: 8.17.1
@@ -3874,8 +3876,6 @@ snapshots:
       semver: 7.8.5
 
   math-intrinsics@1.1.0: {}
-
-  mcpcat-api@0.1.9: {}
 
   media-typer@1.1.0: {}
 

@@ -3,14 +3,14 @@ import { Event, MCPServerLike } from "../types.js";
 import { setupTestHooks } from "./test-utils.js";
 
 // Mock external dependencies
-vi.mock("mcpcat-api");
+vi.mock("agentcat-api");
 vi.mock("../modules/logging.js");
 vi.mock("../modules/internal.js");
 vi.mock("../modules/session.js");
 vi.mock("../thirdparty/ksuid/index.js");
 
 // Import mocked modules
-import { Configuration, EventsApi } from "mcpcat-api";
+import { Configuration, EventsApi } from "agentcat-api";
 import { writeToLog } from "../modules/logging.js";
 import { getServerTrackingData } from "../modules/internal.js";
 import { getSessionInfo } from "../modules/session.js";
@@ -58,7 +58,7 @@ describe("EventQueue", () => {
     (getSessionInfo as any).mockReturnValue({
       ipAddress: "127.0.0.1",
       sdkLanguage: "typescript",
-      mcpcatVersion: "1.0.0",
+      agentcatVersion: "1.0.0",
       serverName: "test-server",
       serverVersion: "1.0.0",
       clientName: "test-client",

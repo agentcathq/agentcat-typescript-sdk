@@ -18,7 +18,7 @@ import {
   resolveEventProperties,
 } from "./internal.js";
 import { getServerSessionId } from "./session.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
 import { captureException } from "./exceptions.js";

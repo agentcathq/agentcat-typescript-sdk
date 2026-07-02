@@ -17,12 +17,12 @@ describe("MCPCatOptions apiBaseUrl", () => {
 });
 
 // Mock external dependencies (same pattern as eventQueue.test.ts)
-vi.mock("mcpcat-api");
+vi.mock("agentcat-api");
 vi.mock("../modules/logging.js");
 vi.mock("../thirdparty/ksuid/index.js");
 
 // Import mocked modules
-import { Configuration, EventsApi } from "mcpcat-api";
+import { Configuration, EventsApi } from "agentcat-api";
 
 // Import the module under test after mocking
 const { eventQueue } = await import("../modules/eventQueue.js");

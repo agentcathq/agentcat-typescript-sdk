@@ -12,7 +12,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("Basic Server Test", () => {
   it("should be able to call tools without tracking", async () => {
@@ -76,9 +76,8 @@ describe("Basic Server Test", () => {
     let hasCompatibleVersion = false;
 
     try {
-      const { McpServer: ImportedMcpServer } = await import(
-        "@modelcontextprotocol/sdk/server/mcp.js"
-      );
+      const { McpServer: ImportedMcpServer } =
+        await import("@modelcontextprotocol/sdk/server/mcp.js");
       McpServer = ImportedMcpServer;
       hasCompatibleVersion = true;
     } catch (error) {
@@ -113,9 +112,8 @@ describe("Basic Server Test", () => {
 
     try {
       // Import our compatibility function
-      const { isCompatibleServerType } = await import(
-        "../modules/compatibility.js"
-      );
+      const { isCompatibleServerType } =
+        await import("../modules/compatibility.js");
 
       // This should not throw since our test server has proper _serverInfo
       const result = isCompatibleServerType(server);

@@ -8,11 +8,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Verifies that a real Node.js process with "type": "module" can import the
-// built mcpcat tarball and its transitive mcpcat-api dependency. Catches the
+// built mcpcat tarball and its transitive agentcat-api dependency. Catches the
 // class of dual-package ESM bug where exports.import points to a .js file in
 // a package missing the "type": "module" marker — the file is then parsed as
 // CommonJS, yielding zero named exports and "does not provide an export
-// named X" link errors. See mcpcat-api@0.1.8 for a concrete example.
+// named X" link errors. Version 0.1.8 of the predecessor API client package
+// is a concrete example.
 describe("ESM consumer smoke test", () => {
   let workDir: string;
   let tarballPath: string;

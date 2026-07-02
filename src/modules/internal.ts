@@ -5,7 +5,7 @@ import {
   CompatibleRequestHandlerExtra,
   UnredactedEvent,
 } from "../types.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { writeToLog } from "./logging.js";
 import { validateTags } from "./validation.js";
@@ -151,7 +151,7 @@ export async function handleIdentify(
   let identifyEvent: UnredactedEvent = {
     sessionId: sessionId,
     resourceName: request.params?.name || "Unknown",
-    eventType: PublishEventRequestEventTypeEnum.mcpcatIdentify,
+    eventType: PublishEventRequestEventTypeEnum.agentcatIdentify,
     parameters: {
       request: request,
       extra: extra,

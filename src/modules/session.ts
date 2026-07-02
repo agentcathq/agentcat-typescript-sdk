@@ -130,7 +130,7 @@ export function getSessionInfo(
   const sessionInfo: SessionInfo = {
     ipAddress: undefined, // grab from django
     sdkLanguage: "TypeScript", // hardcoded for now
-    mcpcatVersion: packageJson.version,
+    agentcatVersion: packageJson.version,
     serverName: server._serverInfo?.name,
     serverVersion: server._serverInfo?.version,
     clientName: clientInfo?.name,

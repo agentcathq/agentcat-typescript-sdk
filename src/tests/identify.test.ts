@@ -9,7 +9,7 @@ import {
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getServerTrackingData } from "../modules/internal";
 import { HighLevelMCPServerLike, UserIdentity } from "../types";
 import { randomUUID } from "node:crypto";
@@ -82,7 +82,8 @@ describe("Identify Feature", () => {
       // Verify that an identify event was published
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeDefined();
@@ -140,7 +141,8 @@ describe("Identify Feature", () => {
       expect(identifyCallCount).toBe(1);
       const events1 = await eventCapture.getEvents();
       const identifyEvents1 = events1.filter(
-        (e) => e.eventType === "mcpcat:identify",
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
       expect(identifyEvents1.length).toBe(1); // First identify event published
 
@@ -161,7 +163,8 @@ describe("Identify Feature", () => {
       expect(identifyCallCount).toBe(2); // Called again
       const events2 = await eventCapture.getEvents();
       const identifyEvents2 = events2.filter(
-        (e) => e.eventType === "mcpcat:identify",
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
       expect(identifyEvents2.length).toBe(1); // Still only 1 event (no new event published)
 
@@ -183,7 +186,8 @@ describe("Identify Feature", () => {
       expect(identifyCallCount).toBe(3); // Called again
       const events3 = await eventCapture.getEvents();
       const identifyEvents3 = events3.filter(
-        (e) => e.eventType === "mcpcat:identify",
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
       expect(identifyEvents3.length).toBe(1); // Still only 1 event
 
@@ -262,7 +266,8 @@ describe("Identify Feature", () => {
       // Verify that an identify event was published
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeDefined();
@@ -418,7 +423,8 @@ describe("Identify Feature", () => {
       // Verify no identify event was published (since it returned null)
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeUndefined();
@@ -486,7 +492,8 @@ describe("Identify Feature", () => {
 
       // Verify no identify events were published
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
       expect(identifyEvent).toBeUndefined();
 
@@ -645,7 +652,8 @@ describe("Identify Feature", () => {
       // Verify identify event was published with duration
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeDefined();
@@ -691,7 +699,8 @@ describe("Identify Feature", () => {
       // Verify NO identify event was published (errors in identify function should not publish events)
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeUndefined();

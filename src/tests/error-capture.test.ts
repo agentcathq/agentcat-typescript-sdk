@@ -6,7 +6,7 @@ import {
 import { track } from "../index.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { z } from "zod";
 
 describe("Error Capture Integration Tests", () => {
@@ -364,7 +364,8 @@ describe("Error Capture Integration Tests", () => {
       // Verify NO identify event was published (errors in identify should only be logged, not published)
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.McpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeUndefined();
