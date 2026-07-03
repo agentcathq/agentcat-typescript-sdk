@@ -1,6 +1,6 @@
 # Migrating from `mcpcat` to `agentcat`
 
-MCPCat is now **AgentCat** — same team, same product, new name. The npm package has been renamed from `mcpcat` to [`agentcat`](https://www.npmjs.com/package/agentcat), starting fresh at `v1.0.0`.
+MCPcat is now **AgentCat** — same team, same product, new name. The npm package has been renamed from `mcpcat` to [`agentcat`](https://www.npmjs.com/package/agentcat), starting fresh at `v1.0.0`.
 
 ## Nothing breaks if you stay
 
