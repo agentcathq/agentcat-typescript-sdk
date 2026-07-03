@@ -46,7 +46,7 @@ Use AgentCat for:
 - **Trace debugging** 🔍. See where your users are getting stuck, track and find when LLMs get confused by your API, and debug sessions across all deployments of your MCP server.
 - **Existing platform support** 📊. Get logging and tracing out of the box for your existing observability platforms (OpenTelemetry, Datadog, Sentry) — eliminating the tedious work of implementing telemetry yourself.
 
-<img width="1274" height="770" alt="agentcat-diagram" src="https://github.com/user-attachments/assets/2d75de19-5b69-4f8b-aea9-43161de5a2ba" />
+<img alt="AgentCat architecture — the AgentCat SDK inside your MCP server sends analytics to your observability vendors and session replay to the AgentCat dashboard" src="docs/static/architecture.png" />
 
 ## Getting Started
 
