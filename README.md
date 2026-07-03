@@ -1,9 +1,5 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/static/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/static/logo-light.svg">
-    <img alt="AgentCat Logo" src="docs/static/logo-light.svg" width="80%">
-  </picture>
+  <img alt="AgentCat — see exactly how agents experience your product" src="docs/static/og-image.png" width="80%">
 </div>
 <h3 align="center">
     <a href="#getting-started">Getting Started</a>
