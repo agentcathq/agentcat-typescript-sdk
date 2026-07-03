@@ -8,8 +8,6 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "docs/static",
-    "docs/cats",
     "CONTRIBUTING.md"
   ],
   "exports": {
