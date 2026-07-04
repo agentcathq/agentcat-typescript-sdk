@@ -37,6 +37,19 @@ import { validateTags } from "./modules/validation.js";
 import { eventQueue } from "./modules/eventQueue.js";
 import { initDiagnostics } from "./modules/diagnostics.js";
 
+// The mcpcat package is deprecated in favor of agentcat (same SDK, new name).
+// Surface that once per process in ~/mcpcat.log — never on stdout/stderr,
+// which would corrupt STDIO-based MCP servers.
+let renameNoticeLogged = false;
+
+function logRenameNoticeOnce(): void {
+  if (renameNoticeLogged) return;
+  renameNoticeLogged = true;
+  writeToLog(
+    "NOTICE: mcpcat has been renamed to agentcat (npm install agentcat). This package keeps working, but new features land only in agentcat. Guide: https://github.com/MCPCat/mcpcat-typescript-sdk/blob/main/MIGRATION.md",
+  );
+}
+
 /**
  * Integrates MCPCat analytics into an MCP server to track tool usage patterns and user interactions.
  *
@@ -164,6 +177,8 @@ function track(
   options: MCPCatOptions = {},
 ): any {
   try {
+    logRenameNoticeOnce();
+
     initDiagnostics({
       projectId,
       disabled: options.disableDiagnostics,

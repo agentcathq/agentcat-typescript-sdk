@@ -1,7 +1,7 @@
 {
   "name": "mcpcat",
-  "version": "0.1.16",
-  "description": "Analytics tool for MCP (Model Context Protocol) servers - tracks tool usage patterns and provides insights",
+  "version": "0.1.17",
+  "description": "[DEPRECATED — mcpcat is now agentcat: npm install agentcat] Analytics tool for MCP (Model Context Protocol) servers - tracks tool usage patterns and provides insights",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -26,6 +26,7 @@
     "prepublishOnly": "pnpm run build && pnpm run test && pnpm run lint && pnpm run typecheck"
   },
   "keywords": [
+    "agentcat",
     "ai",
     "authentication",
     "mcp",
