@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **MCPcat is now AgentCat** 🐱 — same team, same product, new name. This package has been renamed to [`agentcat`](https://www.npmjs.com/package/agentcat) (`npm install agentcat`, starts at v1.0.0). `mcpcat` keeps working forever, but new features land only in `agentcat`. Upgrading takes a few minutes — see the [migration guide](./MIGRATION.md).
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/static/logo-dark.svg">
