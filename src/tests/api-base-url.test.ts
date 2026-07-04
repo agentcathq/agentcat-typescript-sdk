@@ -1,28 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { MCPCatOptions } from "../types.js";
+import type { AgentCatOptions } from "../types.js";
 import { setupTestHooks } from "./test-utils.js";
 
-describe("MCPCatOptions apiBaseUrl", () => {
+describe("AgentCatOptions apiBaseUrl", () => {
   it("should accept apiBaseUrl as an optional string property", () => {
-    const options: MCPCatOptions = {
+    const options: AgentCatOptions = {
       apiBaseUrl: "https://custom.example.com",
     };
     expect(options.apiBaseUrl).toBe("https://custom.example.com");
   });
 
   it("should be undefined when not set", () => {
-    const options: MCPCatOptions = {};
+    const options: AgentCatOptions = {};
     expect(options.apiBaseUrl).toBeUndefined();
   });
 });
 
 // Mock external dependencies (same pattern as eventQueue.test.ts)
-vi.mock("mcpcat-api");
+vi.mock("agentcat-api");
 vi.mock("../modules/logging.js");
 vi.mock("../thirdparty/ksuid/index.js");
 
 // Import mocked modules
-import { Configuration, EventsApi } from "mcpcat-api";
+import { Configuration, EventsApi } from "agentcat-api";
 
 // Import the module under test after mocking
 const { eventQueue } = await import("../modules/eventQueue.js");
@@ -84,6 +84,7 @@ describe("track() URL resolution", () => {
   setupTestHooks();
 
   const savedEnv = process.env.MCPCAT_API_URL;
+  const savedAgentcatEnv = process.env.AGENTCAT_API_URL;
 
   // Create a mock server object that passes isCompatibleServerType
   const mockServer = {
@@ -96,6 +97,7 @@ describe("track() URL resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.MCPCAT_API_URL;
+    delete process.env.AGENTCAT_API_URL;
 
     // Setup mock implementations as regular functions so `new` works
     (Configuration as any).mockImplementation(function () {
@@ -127,6 +129,11 @@ describe("track() URL resolution", () => {
     } else {
       delete process.env.MCPCAT_API_URL;
     }
+    if (savedAgentcatEnv !== undefined) {
+      process.env.AGENTCAT_API_URL = savedAgentcatEnv;
+    } else {
+      delete process.env.AGENTCAT_API_URL;
+    }
   });
 
   it("should call configure() when apiBaseUrl option is provided", () => {
@@ -149,8 +156,53 @@ describe("track() URL resolution", () => {
     );
   });
 
+  it("should call configure() with AGENTCAT_API_URL env var when no option is set", () => {
+    process.env.AGENTCAT_API_URL = "https://agentcat-env.example.com";
+
+    track(mockServer, "proj_test123", {});
+
+    expect(eventQueue.configure).toHaveBeenCalledWith(
+      "https://agentcat-env.example.com",
+    );
+  });
+
+  it("should prioritize AGENTCAT_API_URL over legacy MCPCAT_API_URL", () => {
+    process.env.AGENTCAT_API_URL = "https://agentcat-env.example.com";
+    process.env.MCPCAT_API_URL = "https://legacy-env.example.com";
+
+    track(mockServer, "proj_test123", {});
+
+    expect(eventQueue.configure).toHaveBeenCalledWith(
+      "https://agentcat-env.example.com",
+    );
+  });
+
+  it("should fall back to legacy MCPCAT_API_URL when AGENTCAT_API_URL is unset", () => {
+    delete process.env.AGENTCAT_API_URL;
+    process.env.MCPCAT_API_URL = "https://legacy-env.example.com";
+
+    track(mockServer, "proj_test123", {});
+
+    expect(eventQueue.configure).toHaveBeenCalledWith(
+      "https://legacy-env.example.com",
+    );
+  });
+
   it("should prioritize apiBaseUrl option over MCPCAT_API_URL env var", () => {
     process.env.MCPCAT_API_URL = "https://env-api.example.com";
+
+    track(mockServer, "proj_test123", {
+      apiBaseUrl: "https://option-api.example.com",
+    });
+
+    expect(eventQueue.configure).toHaveBeenCalledWith(
+      "https://option-api.example.com",
+    );
+    expect(eventQueue.configure).toHaveBeenCalledTimes(1);
+  });
+
+  it("should prioritize apiBaseUrl option over AGENTCAT_API_URL env var", () => {
+    process.env.AGENTCAT_API_URL = "https://agentcat-env.example.com";
 
     track(mockServer, "proj_test123", {
       apiBaseUrl: "https://option-api.example.com",

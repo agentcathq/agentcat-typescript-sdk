@@ -11,7 +11,7 @@ import { _resetDiagnosticsForTest } from "../modules/diagnostics.js";
 import { HighLevelMCPServerLike } from "../types";
 import { randomUUID } from "node:crypto";
 
-// The diagnostics sink publishes every writeToLog entry, verbatim, to MCPCat's
+// The diagnostics sink publishes every writeToLog entry, verbatim, to AgentCat's
 // central collector. These tests register a capturing sink on that exact path
 // and assert that real tool calls never push actual event payloads (tool-call
 // arguments, actor PII, user free-text) through it — only metadata.
@@ -92,8 +92,10 @@ describe("diagnostics sink never receives event payloads", () => {
 
     track(server, "test-project", { enableTracing: true });
 
-    const started = captured.find((l) => l.includes("MCPCat setup started"));
-    const complete = captured.find((l) => l.includes("MCPCat setup complete"));
+    const started = captured.find((l) => l.includes("AgentCat setup started"));
+    const complete = captured.find((l) =>
+      l.includes("AgentCat setup complete"),
+    );
 
     // Start beacon anchors the install to its project id and server type.
     expect(started).toBeDefined();

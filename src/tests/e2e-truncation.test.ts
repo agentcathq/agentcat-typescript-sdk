@@ -6,7 +6,7 @@ import {
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("E2E Truncation - real MCP tool calls", () => {
   it("should truncate tool responses with text exceeding 32KB", async () => {
@@ -265,7 +265,7 @@ describe("E2E Truncation - real MCP tool calls", () => {
       // Image block should be sanitized
       expect(content[1]).toEqual({
         type: "text",
-        text: "[image content redacted - not supported by MCPcat]",
+        text: "[image content redacted - not supported by AgentCat]",
       });
 
       // Total event size should still be under 100KB

@@ -8,7 +8,7 @@ import {
 import { track } from "../index.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("redactEvent", () => {
   // Mock redaction function that replaces strings with "[REDACTED]"
@@ -482,7 +482,7 @@ describe("redactEvent integration tests", () => {
 
     // Find the identify event
     const identifyEvent = events.find(
-      (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+      (e) => e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
     );
 
     expect(identifyEvent).toBeDefined();
@@ -628,7 +628,7 @@ describe("redactEvent integration tests", () => {
 
     // Check identify event
     const identifyEvent = events.find(
-      (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+      (e) => e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
     );
 
     // Protected identity fields should NOT be redacted

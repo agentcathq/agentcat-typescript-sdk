@@ -469,7 +469,7 @@ describe("truncateEvent - edge cases", () => {
       timestamp: ts,
       duration: 342,
       sdkLanguage: "typescript",
-      mcpcatVersion: "0.1.12",
+      agentcatVersion: "0.1.12",
       ipAddress: "192.168.1.1",
       isError: false,
     });
@@ -481,7 +481,7 @@ describe("truncateEvent - edge cases", () => {
     expect(result.timestamp).toBe(ts);
     expect(result.duration).toBe(342);
     expect(result.sdkLanguage).toBe("typescript");
-    expect(result.mcpcatVersion).toBe("0.1.12");
+    expect(result.agentcatVersion).toBe("0.1.12");
     expect(result.ipAddress).toBe("192.168.1.1");
     expect(result.isError).toBe(false);
   });
@@ -510,11 +510,11 @@ describe("truncateEvent - integration with sanitization pipeline", () => {
 
     // Sanitization should have redacted the base64 and image
     expect((result.parameters as any).imageData).toBe(
-      "[binary data redacted - not supported by MCPcat]",
+      "[binary data redacted - not supported by AgentCat]",
     );
     expect(result.response.content[1]).toEqual({
       type: "text",
-      text: "[image content redacted - not supported by MCPcat]",
+      text: "[image content redacted - not supported by AgentCat]",
     });
 
     // Truncation should have capped the remaining fields

@@ -41,7 +41,7 @@ describe("diagnostics export", () => {
         a.value.stringValue,
       ]),
     );
-    expect(resAttrs["mcpcat.project_id"]).toBe("proj_1");
+    expect(resAttrs["agentcat.project_id"]).toBe("proj_1");
   });
 
   it("resolves even when fetch rejects (fire-and-forget isolation)", async () => {

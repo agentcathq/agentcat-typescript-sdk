@@ -1,11 +1,15 @@
 {
-  "name": "mcpcat",
-  "version": "0.1.17",
-  "description": "[DEPRECATED — mcpcat is now agentcat: npm install agentcat] Analytics tool for MCP (Model Context Protocol) servers - tracks tool usage patterns and provides insights",
+  "name": "agentcat",
+  "version": "1.0.0",
+  "description": "Analytics tool for MCP (Model Context Protocol) servers and AI agents - tracks tool usage patterns and provides insights",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "CONTRIBUTING.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -26,7 +30,6 @@
     "prepublishOnly": "pnpm run build && pnpm run test && pnpm run lint && pnpm run typecheck"
   },
   "keywords": [
-    "agentcat",
     "ai",
     "authentication",
     "mcp",
@@ -42,18 +45,20 @@
     "mcp-tools",
     "agent-runtime",
     "mcp-framework",
-    "mcp-analytics"
+    "mcp-analytics",
+    "agentcat",
+    "agentcat-analytics"
   ],
-  "author": "MCPcat",
+  "author": "AgentCat, Inc.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MCPCat/mcpcat-typescript-sdk.git"
+    "url": "git+https://github.com/agentcathq/agentcat-typescript-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/MCPCat/mcpcat-typescript-sdk/issues"
+    "url": "https://github.com/agentcathq/agentcat-typescript-sdk/issues"
   },
-  "homepage": "https://github.com/MCPCat/mcpcat-typescript-sdk#readme",
+  "homepage": "https://github.com/agentcathq/agentcat-typescript-sdk#readme",
   "packageManager": "pnpm@10.11.0",
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
@@ -76,9 +81,6 @@
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.11"
-  },
-  "dependencies": {
-    "mcpcat-api": "0.1.9"
   },
   "lint-staged": {
     "*.{ts,js}": [
@@ -104,5 +106,8 @@
       "body-parser": "Fixes GHSA-wqch-xfxh-vrr4 (DoS via url encoding) - via @modelcontextprotocol/sdk",
       "brace-expansion": "Fixes GHSA-v6h2-p8h4-qcjw (ReDoS vulnerability) - via eslint"
     }
+  },
+  "dependencies": {
+    "agentcat-api": "1.0.1"
   }
 }

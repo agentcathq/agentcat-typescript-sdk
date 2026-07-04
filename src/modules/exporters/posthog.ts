@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
 import { Event, Exporter } from "../../types.js";
 import { writeToLog } from "../logging.js";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
-import { MCPCAT_SOURCE } from "../constants.js";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
+import { AGENTCAT_SOURCE } from "../constants.js";
 import KSUID from "../../thirdparty/ksuid/index.js";
 
 /**
@@ -158,7 +158,7 @@ export class PostHogExporter implements Exporter {
 
     const properties: Record<string, any> = {
       $session_id: toUUIDv7(event.sessionId),
-      source: MCPCAT_SOURCE,
+      source: AGENTCAT_SOURCE,
     };
 
     if (event.resourceName) {
@@ -195,14 +195,14 @@ export class PostHogExporter implements Exporter {
       properties.$set = $set;
     }
 
-    // Spread customer-defined tags directly (can override MCPCat defaults)
+    // Spread customer-defined tags directly (can override AgentCat defaults)
     if (event.tags) {
       for (const [key, value] of Object.entries(event.tags)) {
         properties[key] = value;
       }
     }
 
-    // Spread customer-defined properties directly (can override MCPCat defaults)
+    // Spread customer-defined properties directly (can override AgentCat defaults)
     if (event.properties) {
       for (const [key, value] of Object.entries(event.properties)) {
         properties[key] = value;
@@ -265,13 +265,13 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $ai_session_id: `mcpcat_${event.sessionId}`,
+      $ai_session_id: `agentcat_${event.sessionId}`,
       $ai_trace_id: toUUIDv7(event.sessionId),
       $ai_span_id: toUUIDv7(event.id),
       $ai_span_name: event.resourceName || "unknown_tool",
       $ai_is_error: event.isError || false,
       $session_id: toUUIDv7(event.sessionId),
-      source: MCPCAT_SOURCE,
+      source: AGENTCAT_SOURCE,
     };
 
     if (event.duration !== undefined) {
@@ -289,14 +289,14 @@ export class PostHogExporter implements Exporter {
     if (event.serverName) properties.server_name = event.serverName;
     if (event.clientName) properties.client_name = event.clientName;
 
-    // Spread customer tags directly (can override MCPCat defaults)
+    // Spread customer tags directly (can override AgentCat defaults)
     if (event.tags) {
       for (const [key, value] of Object.entries(event.tags)) {
         properties[key] = value;
       }
     }
 
-    // Spread customer properties directly (can override MCPCat defaults)
+    // Spread customer properties directly (can override AgentCat defaults)
     if (event.properties) {
       for (const [key, value] of Object.entries(event.properties)) {
         properties[key] = value;
@@ -313,7 +313,7 @@ export class PostHogExporter implements Exporter {
   }
 
   private mapEventType(eventType: string): string {
-    // Map MCPcat event types to PostHog event names
+    // Map AgentCat event types to PostHog event names
     const mapping: Record<string, string> = {
       [PublishEventRequestEventTypeEnum.mcpToolsCall]: "mcp_tool_call",
       [PublishEventRequestEventTypeEnum.mcpToolsList]: "mcp_tools_list",

@@ -32,7 +32,7 @@ function tryInitSync(): void {
     const home = os.homedir?.();
     if (home) {
       fsModule = fs;
-      logFilePath = path.join(home, "mcpcat.log");
+      logFilePath = path.join(home, "agentcat.log");
     } else {
       // homedir() returned null/undefined - use console fallback
       useConsoleFallback = true;
@@ -59,7 +59,7 @@ export function writeToLog(message: string): void {
   }
 
   if (useConsoleFallback) {
-    console.log(`[mcpcat] ${logEntry}`);
+    console.log(`[agentcat] ${logEntry}`);
     return;
   }
 

@@ -1,5 +1,5 @@
 import {
-  MCPCatData,
+  AgentCatData,
   MCPServerLike,
   ServerClientInfoLike,
   SessionInfo,
@@ -21,7 +21,7 @@ export function newSessionId(): string {
  * The same inputs will always produce the same session ID, enabling correlation across server restarts.
  *
  * @param mcpSessionId - The session ID from the MCP protocol
- * @param projectId - Optional MCPCat project ID to include in the hash
+ * @param projectId - Optional AgentCat project ID to include in the hash
  * @returns A KSUID with "ses" prefix derived deterministically from the inputs
  */
 export function deriveSessionIdFromMCPSession(
@@ -49,7 +49,7 @@ export function deriveSessionIdFromMCPSession(
 
 /**
  * Gets or generates a session ID for the server.
- * Prioritizes MCP protocol sessionId over MCPCat-generated sessionId.
+ * Prioritizes MCP protocol sessionId over AgentCat-generated sessionId.
  *
  * @param server - The MCP server instance
  * @param extra - Optional extra data containing MCP sessionId
@@ -82,20 +82,20 @@ export function getServerSessionId(
     return data.sessionId;
   }
 
-  // No MCP sessionId provided - handle MCPCat-generated sessions
+  // No MCP sessionId provided - handle AgentCat-generated sessions
   // If we had an MCP sessionId before but it disappeared, keep using the last derived ID
   if (data.sessionSource === "mcp" && data.lastMcpSessionId) {
     setLastActivity(server);
     return data.sessionId;
   }
 
-  // For MCPCat-generated sessions, apply timeout logic
+  // For AgentCat-generated sessions, apply timeout logic
   const now = Date.now();
   const timeoutMs = INACTIVITY_TIMEOUT_IN_MINUTES * 60 * 1000;
   // If last activity timed out
   if (now - data.lastActivity.getTime() > timeoutMs) {
     data.sessionId = newSessionId();
-    data.sessionSource = "mcpcat";
+    data.sessionSource = "agentcat";
     setServerTrackingData(server, data);
   }
   setLastActivity(server);
@@ -116,7 +116,7 @@ export function setLastActivity(server: MCPServerLike): void {
 
 export function getSessionInfo(
   server: MCPServerLike,
-  data: MCPCatData | undefined,
+  data: AgentCatData | undefined,
 ): SessionInfo {
   let clientInfo: ServerClientInfoLike | undefined = {
     name: undefined,
@@ -130,7 +130,7 @@ export function getSessionInfo(
   const sessionInfo: SessionInfo = {
     ipAddress: undefined, // grab from django
     sdkLanguage: "TypeScript", // hardcoded for now
-    mcpcatVersion: packageJson.version,
+    agentcatVersion: packageJson.version,
     serverName: server._serverInfo?.name,
     serverVersion: server._serverInfo?.version,
     clientName: clientInfo?.name,

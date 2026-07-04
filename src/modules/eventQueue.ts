@@ -3,7 +3,7 @@ import {
   EventsApi,
   PublishEventRequest,
   PublishEventRequestEventTypeEnum,
-} from "mcpcat-api";
+} from "agentcat-api";
 import { Event, UnredactedEvent, MCPServerLike } from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
@@ -27,7 +27,7 @@ class EventQueue {
   private telemetryManager?: TelemetryManager;
 
   constructor() {
-    const config = new Configuration({ basePath: "https://api.mcpcat.io" });
+    const config = new Configuration({ basePath: "https://api.agentcat.com" });
     this.apiClient = new EventsApi(config);
   }
 
@@ -99,7 +99,8 @@ class EventQueue {
     return {
       // Core fields
       id: event.id,
-      projectId: event.projectId,
+      // Safe: sendEvent only publishes when event.projectId is truthy
+      projectId: event.projectId!,
       sessionId: event.sessionId,
       timestamp: event.timestamp,
       duration: event.duration,
@@ -121,7 +122,7 @@ class EventQueue {
       // Session info
       ipAddress: event.ipAddress,
       sdkLanguage: event.sdkLanguage,
-      mcpcatVersion: event.mcpcatVersion,
+      agentcatVersion: event.agentcatVersion,
       serverName: event.serverName,
       serverVersion: event.serverVersion,
       clientName: event.clientName,
@@ -147,7 +148,7 @@ class EventQueue {
       });
     }
 
-    // Send to MCPCat API if projectId is provided
+    // Send to AgentCat API if projectId is provided
     if (event.projectId) {
       try {
         const publishRequest = this.toPublishEventRequest(event);
@@ -272,7 +273,7 @@ export function publishEvent(
     // Session context from sessionInfo
     ipAddress: sessionInfo.ipAddress,
     sdkLanguage: sessionInfo.sdkLanguage,
-    mcpcatVersion: sessionInfo.mcpcatVersion,
+    agentcatVersion: sessionInfo.agentcatVersion,
     serverName: sessionInfo.serverName,
     serverVersion: sessionInfo.serverVersion,
     clientName: sessionInfo.clientName,

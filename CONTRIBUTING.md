@@ -1,14 +1,14 @@
-# Contributing to MCPcat 🎉
+# Contributing to AgentCat 🎉
 
-Thank you for your interest in contributing to MCPcat! We're excited to have you join our community of developers building analytics tools for MCP servers.
+Thank you for your interest in contributing to AgentCat! We're excited to have you join our community of developers building analytics tools for MCP servers.
 
 ## Getting Started
 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/mcpcat-typescript-sdk.git
-   cd mcpcat-typescript-sdk
+   git clone https://github.com/YOUR-USERNAME/agentcat-typescript-sdk.git
+   cd agentcat-typescript-sdk
    ```
 3. **Install dependencies** using pnpm:
    ```bash
@@ -80,7 +80,7 @@ git commit -m "docs: update API documentation"
    - Why these changes are needed
    - Any relevant context or screenshots
 
-4. **Wait for review** - The MCPcat team will review your PR within 2 business days
+4. **Wait for review** - The AgentCat team will review your PR within 2 business days
 
 5. **Address feedback** if any changes are requested
 
@@ -92,7 +92,7 @@ You don't need to open an issue before submitting a PR. Feel free to submit pull
 
 ## Good First Issues
 
-Looking for a place to start? Check out issues labeled [`good first issue`](https://github.com/MCPCat/mcpcat-typescript-sdk/labels/good%20first%20issue) - these are great for newcomers to the codebase.
+Looking for a place to start? Check out issues labeled [`good first issue`](https://github.com/agentcathq/agentcat-typescript-sdk/labels/good%20first%20issue) - these are great for newcomers to the codebase.
 
 ## Testing
 
@@ -130,7 +130,7 @@ While we don't restrict adding new dependencies, they are generally **discourage
 ## Project Structure
 
 ```
-mcpcat-typescript-sdk/
+agentcat-typescript-sdk/
 ├── src/           # Source code
 │   ├── tests/     # Test files
 │   └── index.ts   # Main entry point
@@ -141,22 +141,22 @@ mcpcat-typescript-sdk/
 ## Community
 
 - **Discord**: Join our [Discord server](https://discord.gg/n9qpyhzp2u) for discussions
-- **Documentation**: Visit [docs.mcpcat.io](https://docs.mcpcat.io) for detailed guides
-- **Issues**: Browse [open issues](https://github.com/MCPCat/mcpcat-typescript-sdk/issues) for areas needing help
+- **Documentation**: Visit [docs.agentcat.com](https://docs.agentcat.com) for detailed guides
+- **Issues**: Browse [open issues](https://github.com/agentcathq/agentcat-typescript-sdk/issues) for areas needing help
 
 ## Versioning
 
-The MCPcat team handles versioning and releases. Your contributions will be included in the next appropriate release based on semantic versioning principles.
+The AgentCat team handles versioning and releases. Your contributions will be included in the next appropriate release based on semantic versioning principles.
 
 ## Recognition
 
-All contributors are recognized in our repository. Your contributions help make MCPcat better for everyone building MCP servers!
+All contributors are recognized in our repository. Your contributions help make AgentCat better for everyone building MCP servers!
 
 ## Questions?
 
 If you have questions about contributing, feel free to:
 
 - Ask in our [Discord server](https://discord.gg/n9qpyhzp2u)
-- Open a [discussion](https://github.com/MCPCat/mcpcat-typescript-sdk/discussions) on GitHub
+- Open a [discussion](https://github.com/agentcathq/agentcat-typescript-sdk/discussions) on GitHub
 
-Thank you for contributing to MCPcat! 🐱
+Thank you for contributing to AgentCat! 🐱

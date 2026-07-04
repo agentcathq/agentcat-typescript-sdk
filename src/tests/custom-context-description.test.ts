@@ -9,7 +9,7 @@ import {
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "../modules/constants";
 
 describe("Custom Context Description", () => {
@@ -110,7 +110,7 @@ describe("Custom Context Description", () => {
       ListToolsResultSchema,
     );
 
-    // Check all original tools (exclude MCPCat-added tools)
+    // Check all original tools (exclude AgentCat-added tools)
     const originalTools = ["add_todo", "list_todos", "complete_todo"];
     const toolsToCheck = toolsResponse.tools.filter((tool: any) =>
       originalTools.includes(tool.name),

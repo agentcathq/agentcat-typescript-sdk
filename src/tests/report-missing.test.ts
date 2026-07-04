@@ -9,7 +9,7 @@ import {
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
-import { PublishEventRequestEventTypeEnum } from "mcpcat-api";
+import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getServerTrackingData } from "../modules/internal";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "../modules/constants";
@@ -432,7 +432,8 @@ describe("Report Missing Tool", () => {
       // Verify identify event was triggered
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpcatIdentify,
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
       );
 
       expect(identifyEvent).toBeDefined();
