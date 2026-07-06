@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/agentcathq-agentcat-typescript-sdk-badge.png)](https://mseep.ai/app/agentcathq-agentcat-typescript-sdk)
+
 <div align="center">
   <img alt="AgentCat — see exactly how agents experience your product" src="docs/static/og-image.png" width="80%">
 </div>
