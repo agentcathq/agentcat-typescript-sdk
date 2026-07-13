@@ -8,6 +8,7 @@ import { getServerTrackingData, handleIdentify } from "./internal.js";
 import { addContextParameterToTools } from "./context-parameters.js";
 import { publishEvent } from "./eventQueue.js";
 import { getServerSessionId } from "./session.js";
+import { bindRedactionContext } from "./redaction.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
 
@@ -74,7 +75,10 @@ export function setupAgentCatTools(server: MCPServerLike): void {
         },
         eventType: PublishEventRequestEventTypeEnum.mcpToolsList,
         timestamp: new Date(),
-        redactionFn: data?.options.redactSensitiveInformation,
+        redactionFn: bindRedactionContext(
+          data?.options.redactSensitiveInformation,
+          { request, extra },
+        ),
       };
       if (data) {
         await handleIdentify(server, data, request, extra);

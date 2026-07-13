@@ -18,6 +18,7 @@ import {
   resolveEventProperties,
 } from "./internal.js";
 import { getServerSessionId } from "./session.js";
+import { bindRedactionContext } from "./redaction.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
@@ -71,7 +72,10 @@ export function setupListToolsTracing(
         },
         eventType: PublishEventRequestEventTypeEnum.mcpToolsList,
         timestamp: new Date(),
-        redactionFn: data?.options.redactSensitiveInformation,
+        redactionFn: bindRedactionContext(
+          data?.options.redactSensitiveInformation,
+          { request, extra },
+        ),
       };
       if (data) {
         await handleIdentify(server, data, request, extra);
@@ -192,7 +196,10 @@ export function setupInitializeTracing(
             extra: extra,
           },
           timestamp: new Date(),
-          redactionFn: data.options.redactSensitiveInformation,
+          redactionFn: bindRedactionContext(
+            data.options.redactSensitiveInformation,
+            { request, extra },
+          ),
         };
 
         const resolvedTags = await resolveEventTags(data, request, extra);
@@ -285,7 +292,10 @@ export function setupToolCallTracing(server: MCPServerLike): void {
         },
         eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
         timestamp: new Date(),
-        redactionFn: data.options.redactSensitiveInformation,
+        redactionFn: bindRedactionContext(
+          data.options.redactSensitiveInformation,
+          { request, extra, toolName: request.params?.name },
+        ),
       };
 
       try {

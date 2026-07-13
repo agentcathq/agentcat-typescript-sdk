@@ -48,7 +48,7 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent.
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
  * @param options.identify - Async function to identify users and attach custom data to their sessions.
- * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
+ * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat. Called once per string field in each event with `(text, context)`, where `context` contains `key` (the dotted path of the field, e.g. `"parameters.request.params.arguments.email"`), `request` and `extra` (the originating MCP request and handler extra, when one exists), and `toolName` (only set for tool call events).
  * @param options.eventTags - Callback invoked on every auto-captured event (tool calls, tool lists, initialize) to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.eventProperties - Callback invoked on every auto-captured event to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.apiBaseUrl - Custom API base URL for sending events. Falls back to the `AGENTCAT_API_URL` environment variable if not set (then legacy `MCPCAT_API_URL`), then to the default `https://api.agentcat.com`.
@@ -108,7 +108,11 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * ```typescript
  * // With sensitive data redaction
  * agentcat.track(mcpServer, "proj_abc123xyz", {
- *   redactSensitiveInformation: async (text) => {
+ *   redactSensitiveInformation: async (text, context) => {
+ *     // Redact a specific field by key, for a specific tool
+ *     if (context?.toolName === "login" && context?.key?.endsWith(".password")) {
+ *       return "[REDACTED]";
+ *     }
  *     return text.replace(/api_key_\w+/g, "[REDACTED]");
  *   }
  * });
@@ -415,6 +419,7 @@ export type {
   AgentCatData,
   UserIdentity,
   RedactFunction,
+  RedactionContext,
   ExporterConfig,
   Exporter,
   CustomEventData,

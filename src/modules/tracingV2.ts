@@ -14,6 +14,7 @@ import {
   resolveEventProperties,
 } from "./internal.js";
 import { getServerSessionId } from "./session.js";
+import { bindRedactionContext } from "./redaction.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { handleReportMissing } from "./tools.js";
@@ -307,7 +308,10 @@ function createToolsCallWrapper(
           parameters: { request, extra },
           eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
           timestamp: startTime,
-          redactionFn: data.options.redactSensitiveInformation,
+          redactionFn: bindRedactionContext(
+            data.options.redactSensitiveInformation,
+            { request, extra, toolName: request.params?.name },
+          ),
         };
 
         // Identify user session

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { redactEvent } from "../modules/redaction.js";
-import { UnredactedEvent, RedactFunction } from "../types.js";
+import { redactEvent, bindRedactionContext } from "../modules/redaction.js";
+import { UnredactedEvent, RedactFunction, RedactionContext } from "../types.js";
 import {
   setupTestServerAndClient,
   resetTodos,
@@ -30,7 +30,9 @@ describe("redactEvent", () => {
     const redacted = await redactEvent(event, mockRedactFn);
 
     expect(redacted.userIntent).toBe("[REDACTED-21]");
-    expect(mockRedactFn).toHaveBeenCalledWith("sensitive user intent");
+    expect(mockRedactFn).toHaveBeenCalledWith("sensitive user intent", {
+      key: "userIntent",
+    });
   });
 
   it("should not redact protected fields", async () => {
@@ -306,13 +308,16 @@ describe("redactEvent", () => {
     expect(redacted.otherData.nested.deeply.sensitive).toBe("[REDACTED-23]");
 
     // Verify the redact function was only called for non-protected content
-    expect(mockRedactFn).toHaveBeenCalledWith("this SHOULD be redacted");
-    expect(mockRedactFn).not.toHaveBeenCalledWith(
-      "this should NOT be redacted",
+    expect(mockRedactFn).toHaveBeenCalledWith("this SHOULD be redacted", {
+      key: "otherData.nested.deeply.sensitive",
+    });
+    const redactedTexts = (mockRedactFn as any).mock.calls.map(
+      (call: any[]) => call[0],
     );
-    expect(mockRedactFn).not.toHaveBeenCalledWith("array");
-    expect(mockRedactFn).not.toHaveBeenCalledWith("of");
-    expect(mockRedactFn).not.toHaveBeenCalledWith("strings");
+    expect(redactedTexts).not.toContain("this should NOT be redacted");
+    expect(redactedTexts).not.toContain("array");
+    expect(redactedTexts).not.toContain("of");
+    expect(redactedTexts).not.toContain("strings");
   });
 
   it("should create a new object without modifying the original", async () => {
@@ -383,6 +388,89 @@ describe("redactEvent", () => {
     expect(redacted.isError).toBe(false);
     expect(redacted.duration).toBe(1000);
     expect(redacted.timestamp).toBeInstanceOf(Date);
+  });
+
+  it("should pass the field key path to the redaction function", async () => {
+    const event: UnredactedEvent = {
+      sessionId: "ses_123",
+      userIntent: "top level",
+      parameters: {
+        request: {
+          params: {
+            arguments: { email: "user@example.com" },
+          },
+        },
+        items: ["first", "second"],
+      },
+    };
+
+    await redactEvent(event, mockRedactFn);
+
+    expect(mockRedactFn).toHaveBeenCalledWith("top level", {
+      key: "userIntent",
+    });
+    expect(mockRedactFn).toHaveBeenCalledWith("user@example.com", {
+      key: "parameters.request.params.arguments.email",
+    });
+    expect(mockRedactFn).toHaveBeenCalledWith("first", {
+      key: "parameters.items[0]",
+    });
+    expect(mockRedactFn).toHaveBeenCalledWith("second", {
+      key: "parameters.items[1]",
+    });
+  });
+});
+
+describe("bindRedactionContext", () => {
+  it("should return undefined when no redaction function is provided", () => {
+    expect(bindRedactionContext(undefined, { toolName: "my_tool" })).toBe(
+      undefined,
+    );
+  });
+
+  it("should merge event-level context with per-field context", async () => {
+    const userFn: RedactFunction = vi.fn(async () => "[REDACTED]");
+    const request = { params: { name: "my_tool", arguments: { a: "1" } } };
+    const extra = { sessionId: "session-1" } as any;
+
+    const bound = bindRedactionContext(userFn, {
+      request,
+      extra,
+      toolName: "my_tool",
+    });
+
+    await bound!("some text", { key: "parameters.a" });
+
+    expect(userFn).toHaveBeenCalledWith("some text", {
+      key: "parameters.a",
+      request,
+      extra,
+      toolName: "my_tool",
+    });
+  });
+
+  it("should provide event-level context even when redactEvent supplies the key", async () => {
+    const received: RedactionContext[] = [];
+    const userFn: RedactFunction = async (text, context) => {
+      if (context) received.push(context);
+      return "[REDACTED]";
+    };
+    const request = { params: { name: "my_tool" } };
+
+    const bound = bindRedactionContext(userFn, {
+      request,
+      toolName: "my_tool",
+    });
+    const event: UnredactedEvent = {
+      sessionId: "ses_123",
+      userIntent: "sensitive",
+    };
+
+    await redactEvent(event, bound!);
+
+    expect(received).toEqual([
+      { key: "userIntent", request, toolName: "my_tool", extra: undefined },
+    ]);
   });
 });
 
@@ -508,6 +596,56 @@ describe("redactEvent integration tests", () => {
     // The identify event includes actor info from sessionInfo
     expect(identifyEvent?.identifyActorGivenId).toBe("test-user-123");
     expect(identifyEvent?.identifyActorName).toBe("John Doe");
+
+    await eventCapture.stop();
+  });
+
+  it("should pass key, request, and toolName context to the redaction function on tool calls", async () => {
+    const eventCapture = new EventCapture();
+    await eventCapture.start();
+
+    const receivedContexts: RedactionContext[] = [];
+    const contextAwareRedactFn: RedactFunction = async (text, context) => {
+      if (context) receivedContexts.push(context);
+      return text;
+    };
+
+    track(server, "test-project", {
+      enableTracing: true,
+      redactSensitiveInformation: contextAwareRedactFn,
+    });
+
+    await client.request(
+      {
+        method: "tools/call",
+        params: {
+          name: "add_todo",
+          arguments: {
+            text: "Buy groceries",
+            context: "Adding a todo item",
+          },
+        },
+      },
+      CallToolResultSchema,
+    );
+
+    // Wait for events to be processed
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const toolCallContexts = receivedContexts.filter(
+      (c) => c.toolName === "add_todo",
+    );
+    expect(toolCallContexts.length).toBeGreaterThan(0);
+
+    // Every invocation carries a key path and the originating request
+    const textFieldContext = toolCallContexts.find(
+      (c) => c.key === "parameters.request.params.arguments.text",
+    );
+    expect(textFieldContext).toBeDefined();
+    expect(textFieldContext?.request?.params?.name).toBe("add_todo");
+    expect(textFieldContext?.request?.params?.arguments?.text).toBe(
+      "Buy groceries",
+    );
 
     await eventCapture.stop();
   });

@@ -9,6 +9,7 @@ import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { writeToLog } from "./logging.js";
 import { validateTags } from "./validation.js";
+import { bindRedactionContext } from "./redaction.js";
 
 /**
  * Simple LRU cache for session identities.
@@ -157,7 +158,10 @@ export async function handleIdentify(
       extra: extra,
     },
     timestamp: new Date(),
-    redactionFn: data.options.redactSensitiveInformation,
+    redactionFn: bindRedactionContext(data.options.redactSensitiveInformation, {
+      request,
+      extra,
+    }),
   };
 
   try {

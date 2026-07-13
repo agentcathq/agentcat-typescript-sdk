@@ -1,4 +1,9 @@
-import { Event, RedactFunction, UnredactedEvent } from "../types.js";
+import {
+  Event,
+  RedactFunction,
+  RedactionContext,
+  UnredactedEvent,
+} from "../types.js";
 
 /**
  * Set of field names that should be protected from redaction.
@@ -47,7 +52,7 @@ async function redactStringsInObject(
     if (isProtected) {
       return obj;
     }
-    return await redactFn(obj);
+    return await redactFn(obj, { key: path });
   }
 
   // Handle arrays
@@ -92,6 +97,26 @@ async function redactStringsInObject(
 
   // For all other types (numbers, booleans, etc.), return as-is
   return obj;
+}
+
+/**
+ * Wraps the customer's redaction function so that every invocation receives the
+ * event-level context (request, extra, toolName) merged with the per-field
+ * context (key) supplied at redaction time.
+ *
+ * @param redactFn - The customer's redaction function, if configured
+ * @param context - Event-level context captured where the event is created
+ * @returns A RedactFunction with the context bound, or undefined
+ */
+export function bindRedactionContext(
+  redactFn: RedactFunction | undefined,
+  context: Omit<RedactionContext, "key">,
+): RedactFunction | undefined {
+  if (!redactFn) {
+    return undefined;
+  }
+  return (text, fieldContext) =>
+    redactFn(text, { ...fieldContext, ...context });
 }
 
 /**

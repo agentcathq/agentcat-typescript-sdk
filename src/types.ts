@@ -42,7 +42,21 @@ export type RegisteredTool = {
   | { handler: ToolCallback; callback?: never }
 );
 
-export type RedactFunction = (text: string) => Promise<string>;
+export interface RedactionContext {
+  /** Dotted path of the field being redacted, e.g. "parameters.request.params.arguments.email" */
+  key?: string;
+  /** The MCP request that produced this event, when one exists */
+  request?: any;
+  /** The request handler extra (headers, sessionId, etc.), when available */
+  extra?: CompatibleRequestHandlerExtra;
+  /** The tool being called; only set for tool call events */
+  toolName?: string;
+}
+
+export type RedactFunction = (
+  text: string,
+  context?: RedactionContext,
+) => Promise<string>;
 
 export interface ExporterConfig {
   type: string;
