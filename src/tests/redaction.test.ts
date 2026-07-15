@@ -411,44 +411,49 @@ describe("applyEventRedaction", () => {
     vi.clearAllMocks();
   });
 
-  it("should apply a synchronous hook", async () => {
+  it("should apply a synchronous hook in place", async () => {
     const hook: RedactEventFunction = (event) => ({
       ...event,
       parameters: { text: "[SCRUBBED]" },
     });
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
 
-    expect(result).not.toBeNull();
-    expect(result?.parameters).toEqual({ text: "[SCRUBBED]" });
-    expect(result?.response).toEqual({ content: "sensitive response" });
+    expect(kept).toBe(true);
+    expect(event.parameters).toEqual({ text: "[SCRUBBED]" });
+    expect(event.response).toEqual({ content: "sensitive response" });
   });
 
-  it("should apply an asynchronous hook", async () => {
+  it("should apply an asynchronous hook in place", async () => {
     const hook: RedactEventFunction = async (event) => ({
       ...event,
       userIntent: "[SCRUBBED]",
     });
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
 
-    expect(result?.userIntent).toBe("[SCRUBBED]");
+    expect(kept).toBe(true);
+    expect(event.userIntent).toBe("[SCRUBBED]");
   });
 
-  it("should return null when the hook returns null", async () => {
+  it("should report a drop and leave the event untouched when the hook returns null", async () => {
     const hook: RedactEventFunction = () => null;
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
 
-    expect(result).toBeNull();
+    expect(kept).toBe(false);
+    expect(event).toEqual(baseEvent());
   });
 
-  it("should return null when the hook returns undefined", async () => {
+  it("should report a drop when the hook returns undefined", async () => {
     const hook = (() => undefined) as unknown as RedactEventFunction;
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const kept = await applyEventRedaction(baseEvent(), hook);
 
-    expect(result).toBeNull();
+    expect(kept).toBe(false);
   });
 
   it("should honor field deletions instead of resurrecting them", async () => {
@@ -459,12 +464,13 @@ describe("applyEventRedaction", () => {
       return copy;
     };
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
 
-    expect(result).not.toBeNull();
-    expect(result).not.toHaveProperty("response");
-    expect(result).not.toHaveProperty("userIntent");
-    expect(result?.parameters).toEqual({ text: "sensitive text" });
+    expect(kept).toBe(true);
+    expect(event).not.toHaveProperty("response");
+    expect(event).not.toHaveProperty("userIntent");
+    expect(event.parameters).toEqual({ text: "sensitive text" });
   });
 
   it("should restore system-managed fields if the hook changes or removes them", async () => {
@@ -478,38 +484,55 @@ describe("applyEventRedaction", () => {
       return copy;
     };
 
-    const result = await applyEventRedaction(baseEvent(), hook);
+    const event = baseEvent();
+    await applyEventRedaction(event, hook);
 
-    expect(result?.id).toBe("evt_original");
-    expect(result?.sessionId).toBe("ses_123");
-    expect(result?.projectId).toBe("proj_789");
-    expect(result?.eventType).toBe("mcp:tools/call");
-    expect(result?.timestamp).toEqual(new Date("2024-01-01"));
+    expect(event.id).toBe("evt_original");
+    expect(event.sessionId).toBe("ses_123");
+    expect(event.projectId).toBe("proj_789");
+    expect(event.eventType).toBe("mcp:tools/call");
+    expect(event.timestamp).toEqual(new Date("2024-01-01"));
   });
 
-  it("should never expose internal function fields to the hook nor keep them on the result", async () => {
+  it("should hide internal function fields from the hook but preserve the string-redaction fn", async () => {
     let sawEvent: any;
     const hook: RedactEventFunction = (event) => {
       sawEvent = event;
       return {
         ...event,
-        redactionFn: async (text: string) => text,
         eventRedactionFn: () => null,
       } as unknown as Event;
     };
 
-    const input: UnredactedEvent = {
+    const stringRedactFn = async (text: string) => text;
+    const event: UnredactedEvent = {
       ...baseEvent(),
-      redactionFn: async (text: string) => text,
+      redactionFn: stringRedactFn,
       eventRedactionFn: hook,
     };
 
-    const result = await applyEventRedaction(input, hook);
+    const kept = await applyEventRedaction(event, hook);
 
+    expect(kept).toBe(true);
     expect(sawEvent).not.toHaveProperty("redactionFn");
     expect(sawEvent).not.toHaveProperty("eventRedactionFn");
-    expect(result).not.toHaveProperty("redactionFn");
-    expect(result).not.toHaveProperty("eventRedactionFn");
+    // The string-level hook must survive so it still runs afterwards
+    expect(event.redactionFn).toBe(stringRedactFn);
+    // The event-level hook must not, even if the hook smuggles one back
+    expect(event.eventRedactionFn).toBeUndefined();
+  });
+
+  it("should keep the same object identity so pipeline observers see the changes", async () => {
+    const hook: RedactEventFunction = (event) => ({
+      ...event,
+      parameters: { text: "[SCRUBBED]" },
+    });
+
+    const event = baseEvent();
+    const observer = event; // e.g. EventCapture holds the reference from add()
+    await applyEventRedaction(event, hook);
+
+    expect(observer.parameters).toEqual({ text: "[SCRUBBED]" });
   });
 
   it("should propagate hook errors to the caller", async () => {

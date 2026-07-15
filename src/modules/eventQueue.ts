@@ -64,18 +64,10 @@ class EventQueue {
         const eventRedactionFn = event.eventRedactionFn;
         event.eventRedactionFn = undefined;
         try {
-          const result = await applyEventRedaction(event, eventRedactionFn);
-          if (!result) {
+          if (!(await applyEventRedaction(event, eventRedactionFn))) {
             writeToLog("Event dropped by redactEvent hook");
             continue;
           }
-          // Rebuild in place (the pipeline mutates the same object) without
-          // resurrecting fields the hook deleted
-          const redactionFn = event.redactionFn;
-          for (const key of Object.keys(event)) {
-            delete event[key as keyof UnredactedEvent];
-          }
-          Object.assign(event, result, { redactionFn });
         } catch (error) {
           writeToLog(`Failed to redact event (event-level hook): ${error}`);
           continue;

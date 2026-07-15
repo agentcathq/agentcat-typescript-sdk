@@ -129,27 +129,32 @@ const RESTORED_FIELDS = [
 ] as const;
 
 /**
- * Applies the customer's event-level redaction hook to an event.
+ * Applies the customer's event-level redaction hook to an event, in place.
  * The hook receives the full event (without internal function fields) and may
  * return a modified event, or null/undefined to drop the event entirely.
  *
- * @param event - The event to run the hook on
+ * The event object is rewritten rather than replaced: the queue pipeline and
+ * its observers hold references to the same object across processing steps,
+ * and clearing before assigning ensures fields the hook deleted stay deleted.
+ * System-managed fields are restored from the original, and the string-level
+ * `redactionFn` is preserved so it still runs afterwards.
+ *
+ * @param event - The event to run the hook on; mutated with the hook's result
  * @param eventRedactFn - The customer's event-level redaction hook
- * @returns The redacted event, or null if the event should be dropped
+ * @returns True if the event was kept, false if the hook dropped it
  */
 export async function applyEventRedaction(
   event: UnredactedEvent,
   eventRedactFn: RedactEventFunction,
-): Promise<UnredactedEvent | null> {
-  const { redactionFn: _r, eventRedactionFn: _e, ...hookInput } = event;
+): Promise<boolean> {
+  const { redactionFn, eventRedactionFn: _e, ...hookInput } = event;
   const result = await eventRedactFn(hookInput as Event);
 
   if (result === null || result === undefined) {
-    return null;
+    return false;
   }
 
-  const redactedEvent: UnredactedEvent = { ...result };
-  delete redactedEvent.redactionFn;
+  const redactedEvent: UnredactedEvent = { ...result, redactionFn };
   delete redactedEvent.eventRedactionFn;
 
   // System-managed fields are not consumer-settable
@@ -161,5 +166,9 @@ export async function applyEventRedaction(
     }
   }
 
-  return redactedEvent;
+  for (const key of Object.keys(event)) {
+    delete event[key as keyof UnredactedEvent];
+  }
+  Object.assign(event, redactedEvent);
+  return true;
 }
