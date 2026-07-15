@@ -49,6 +49,7 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
  * @param options.identify - Async function to identify users and attach custom data to their sessions.
  * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
+ * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
  * @param options.eventTags - Callback invoked on every auto-captured event (tool calls, tool lists, initialize) to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.eventProperties - Callback invoked on every auto-captured event to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.apiBaseUrl - Custom API base URL for sending events. Falls back to the `AGENTCAT_API_URL` environment variable if not set (then legacy `MCPCAT_API_URL`), then to the default `https://api.agentcat.com`.
@@ -110,6 +111,24 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * agentcat.track(mcpServer, "proj_abc123xyz", {
  *   redactSensitiveInformation: async (text) => {
  *     return text.replace(/api_key_\w+/g, "[REDACTED]");
+ *   }
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // With event-level redaction
+ * agentcat.track(mcpServer, "proj_abc123xyz", {
+ *   redactEvent: (event) => {
+ *     // Drop events from tools that handle secrets entirely
+ *     if (event.resourceName === "get_credentials") {
+ *       return null;
+ *     }
+ *     // Strip response payloads from a specific tool
+ *     if (event.resourceName === "export_report") {
+ *       return { ...event, response: undefined };
+ *     }
+ *     return event;
  *   }
  * });
  * ```
@@ -231,6 +250,7 @@ function track(
         customContextDescription: options.customContextDescription,
         identify: options.identify,
         redactSensitiveInformation: options.redactSensitiveInformation,
+        redactEvent: options.redactEvent,
         eventTags: options.eventTags,
         eventProperties: options.eventProperties,
       },
@@ -285,6 +305,11 @@ function track(
  * @param eventData - Optional event data to include with the custom event
  *
  * @returns Promise that resolves when the event is queued for publishing
+ *
+ * @remarks
+ * When a tracked server is passed, the `redactEvent` hook configured via `track()`
+ * is applied to the custom event before it is published. Events published with a
+ * bare session ID string bypass redaction, since no tracked configuration exists.
  *
  * @example
  * ```typescript
@@ -415,6 +440,7 @@ export type {
   AgentCatData,
   UserIdentity,
   RedactFunction,
+  RedactEventFunction,
   ExporterConfig,
   Exporter,
   CustomEventData,

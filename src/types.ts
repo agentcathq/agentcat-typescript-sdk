@@ -10,6 +10,7 @@ export interface AgentCatOptions {
     extra?: CompatibleRequestHandlerExtra,
   ) => Promise<UserIdentity | null>;
   redactSensitiveInformation?: RedactFunction;
+  redactEvent?: RedactEventFunction;
   exporters?: Record<string, ExporterConfig>;
   apiBaseUrl?: string;
   disableDiagnostics?: boolean;
@@ -43,6 +44,10 @@ export type RegisteredTool = {
 );
 
 export type RedactFunction = (text: string) => Promise<string>;
+
+export type RedactEventFunction = (
+  event: Event,
+) => Event | null | Promise<Event | null>;
 
 export interface ExporterConfig {
   type: string;
@@ -105,6 +110,7 @@ export interface Event {
 
 export interface UnredactedEvent extends Partial<Event> {
   redactionFn?: RedactFunction; // Optional redaction function for sensitive data
+  eventRedactionFn?: RedactEventFunction; // Optional whole-event redaction hook
 }
 
 // Use our own minimal interface for what we actually need

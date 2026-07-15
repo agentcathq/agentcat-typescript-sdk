@@ -1,4 +1,9 @@
-import { Event, RedactFunction, UnredactedEvent } from "../types.js";
+import {
+  Event,
+  RedactEventFunction,
+  RedactFunction,
+  UnredactedEvent,
+} from "../types.js";
 
 /**
  * Set of field names that should be protected from redaction.
@@ -108,4 +113,53 @@ export async function redactEvent(
   redactFn: RedactFunction,
 ): Promise<Event> {
   return redactStringsInObject(event, redactFn, "", false) as Promise<Event>;
+}
+
+/**
+ * Set of system-managed fields that are restored after the event-level
+ * redaction hook runs. These are required for ingestion and session/project
+ * attribution, so consumer changes to them are ignored.
+ */
+const RESTORED_FIELDS = [
+  "id",
+  "sessionId",
+  "projectId",
+  "eventType",
+  "timestamp",
+] as const;
+
+/**
+ * Applies the customer's event-level redaction hook to an event.
+ * The hook receives the full event (without internal function fields) and may
+ * return a modified event, or null/undefined to drop the event entirely.
+ *
+ * @param event - The event to run the hook on
+ * @param eventRedactFn - The customer's event-level redaction hook
+ * @returns The redacted event, or null if the event should be dropped
+ */
+export async function applyEventRedaction(
+  event: UnredactedEvent,
+  eventRedactFn: RedactEventFunction,
+): Promise<UnredactedEvent | null> {
+  const { redactionFn: _r, eventRedactionFn: _e, ...hookInput } = event;
+  const result = await eventRedactFn(hookInput as Event);
+
+  if (result === null || result === undefined) {
+    return null;
+  }
+
+  const redactedEvent: UnredactedEvent = { ...result };
+  delete redactedEvent.redactionFn;
+  delete redactedEvent.eventRedactionFn;
+
+  // System-managed fields are not consumer-settable
+  for (const field of RESTORED_FIELDS) {
+    if (event[field] === undefined) {
+      delete redactedEvent[field];
+    } else {
+      (redactedEvent as any)[field] = event[field];
+    }
+  }
+
+  return redactedEvent;
 }
