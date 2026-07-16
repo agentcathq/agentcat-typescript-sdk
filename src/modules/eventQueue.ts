@@ -8,7 +8,7 @@ import { Event, UnredactedEvent, MCPServerLike } from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
 import { getSessionInfo } from "./session.js";
-import { redactEvent } from "./redaction.js";
+import { applyEventRedaction, redactEvent } from "./redaction.js";
 import { sanitizeEvent } from "./sanitization.js";
 import { truncateEvent } from "./truncation.js";
 import KSUID from "../thirdparty/ksuid/index.js";
@@ -59,6 +59,20 @@ class EventQueue {
     while (this.queue.length > 0 && this.activeRequests < this.concurrency) {
       const event = this.queue.shift();
       if (!event) continue;
+
+      if (event.eventRedactionFn) {
+        const eventRedactionFn = event.eventRedactionFn;
+        event.eventRedactionFn = undefined;
+        try {
+          if (!(await applyEventRedaction(event, eventRedactionFn))) {
+            writeToLog("Event dropped by redactEvent hook");
+            continue;
+          }
+        } catch (error) {
+          writeToLog(`Failed to redact event (event-level hook): ${error}`);
+          continue;
+        }
+      }
 
       if (event.redactionFn) {
         try {
@@ -292,8 +306,9 @@ export function publishEvent(
     isError: eventInput.isError,
     error: eventInput.error,
 
-    // Preserve redaction function
+    // Preserve redaction functions
     redactionFn: eventInput.redactionFn,
+    eventRedactionFn: eventInput.eventRedactionFn ?? data.options.redactEvent,
 
     // Customer-defined metadata
     tags: eventInput.tags,

@@ -97,6 +97,26 @@ agentcat.track(mcpServer, "proj_0000000", {
 });
 ```
 
+For redaction decisions that need more context than a single string — such as which tool was called or what type of event is being published — use the event-level `redactEvent` hook. It receives the full event object and returns a modified event, or `null` to drop the event entirely. It may be sync or async, and can be combined with `redactSensitiveInformation`.
+
+```ts
+agentcat.track(mcpServer, "proj_0000000", {
+  redactEvent: (event) => {
+    // Drop events from tools that handle secrets entirely
+    if (event.resourceName === "get_credentials") {
+      return null;
+    }
+    // Strip response payloads from a specific tool
+    if (event.resourceName === "export_report") {
+      return { ...event, response: undefined };
+    }
+    return event;
+  },
+});
+```
+
+When both hooks are configured, `redactEvent` runs first and sees the raw, unredacted values; `redactSensitiveInformation` then runs on its output as a final string-level scrub. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed by the hook, and if the hook throws, the event is dropped. The hook also applies to `publishCustomEvent` when called with a tracked server.
+
 ### Existing Platform Support
 
 AgentCat seamlessly integrates with your existing observability stack, providing automatic logging and tracing without the tedious setup typically required. Export telemetry data to multiple platforms simultaneously:

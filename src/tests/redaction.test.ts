@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { redactEvent } from "../modules/redaction.js";
-import { UnredactedEvent, RedactFunction } from "../types.js";
+import { redactEvent, applyEventRedaction } from "../modules/redaction.js";
+import {
+  Event,
+  UnredactedEvent,
+  RedactFunction,
+  RedactEventFunction,
+} from "../types.js";
 import {
   setupTestServerAndClient,
   resetTodos,
 } from "./test-utils/client-server-factory.js";
-import { track } from "../index.js";
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types";
+import { track, publishCustomEvent } from "../index.js";
+import {
+  CallToolResultSchema,
+  ListToolsResultSchema,
+} from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
@@ -386,6 +394,158 @@ describe("redactEvent", () => {
   });
 });
 
+describe("applyEventRedaction", () => {
+  const baseEvent = (): UnredactedEvent => ({
+    id: "evt_original",
+    sessionId: "ses_123",
+    projectId: "proj_789",
+    eventType: "mcp:tools/call",
+    timestamp: new Date("2024-01-01"),
+    resourceName: "add_todo",
+    parameters: { text: "sensitive text" },
+    response: { content: "sensitive response" },
+    userIntent: "sensitive intent",
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should apply a synchronous hook in place", async () => {
+    const hook: RedactEventFunction = (event) => ({
+      ...event,
+      parameters: { text: "[SCRUBBED]" },
+    });
+
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
+
+    expect(kept).toBe(true);
+    expect(event.parameters).toEqual({ text: "[SCRUBBED]" });
+    expect(event.response).toEqual({ content: "sensitive response" });
+  });
+
+  it("should apply an asynchronous hook in place", async () => {
+    const hook: RedactEventFunction = async (event) => ({
+      ...event,
+      userIntent: "[SCRUBBED]",
+    });
+
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
+
+    expect(kept).toBe(true);
+    expect(event.userIntent).toBe("[SCRUBBED]");
+  });
+
+  it("should report a drop and leave the event untouched when the hook returns null", async () => {
+    const hook: RedactEventFunction = () => null;
+
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
+
+    expect(kept).toBe(false);
+    expect(event).toEqual(baseEvent());
+  });
+
+  it("should report a drop when the hook returns undefined", async () => {
+    const hook = (() => undefined) as unknown as RedactEventFunction;
+
+    const kept = await applyEventRedaction(baseEvent(), hook);
+
+    expect(kept).toBe(false);
+  });
+
+  it("should honor field deletions instead of resurrecting them", async () => {
+    const hook: RedactEventFunction = (event) => {
+      const copy = { ...event };
+      delete copy.response;
+      delete copy.userIntent;
+      return copy;
+    };
+
+    const event = baseEvent();
+    const kept = await applyEventRedaction(event, hook);
+
+    expect(kept).toBe(true);
+    expect(event).not.toHaveProperty("response");
+    expect(event).not.toHaveProperty("userIntent");
+    expect(event.parameters).toEqual({ text: "sensitive text" });
+  });
+
+  it("should restore system-managed fields if the hook changes or removes them", async () => {
+    const hook: RedactEventFunction = (event) => {
+      const copy = { ...event };
+      copy.id = "evt_forged";
+      copy.sessionId = "ses_forged";
+      copy.projectId = "proj_forged";
+      copy.eventType = "forged:event";
+      delete copy.timestamp;
+      return copy;
+    };
+
+    const event = baseEvent();
+    await applyEventRedaction(event, hook);
+
+    expect(event.id).toBe("evt_original");
+    expect(event.sessionId).toBe("ses_123");
+    expect(event.projectId).toBe("proj_789");
+    expect(event.eventType).toBe("mcp:tools/call");
+    expect(event.timestamp).toEqual(new Date("2024-01-01"));
+  });
+
+  it("should hide internal function fields from the hook but preserve the string-redaction fn", async () => {
+    let sawEvent: any;
+    const hook: RedactEventFunction = (event) => {
+      sawEvent = event;
+      return {
+        ...event,
+        eventRedactionFn: () => null,
+      } as unknown as Event;
+    };
+
+    const stringRedactFn = async (text: string) => text;
+    const event: UnredactedEvent = {
+      ...baseEvent(),
+      redactionFn: stringRedactFn,
+      eventRedactionFn: hook,
+    };
+
+    const kept = await applyEventRedaction(event, hook);
+
+    expect(kept).toBe(true);
+    expect(sawEvent).not.toHaveProperty("redactionFn");
+    expect(sawEvent).not.toHaveProperty("eventRedactionFn");
+    // The string-level hook must survive so it still runs afterwards
+    expect(event.redactionFn).toBe(stringRedactFn);
+    // The event-level hook must not, even if the hook smuggles one back
+    expect(event.eventRedactionFn).toBeUndefined();
+  });
+
+  it("should keep the same object identity so pipeline observers see the changes", async () => {
+    const hook: RedactEventFunction = (event) => ({
+      ...event,
+      parameters: { text: "[SCRUBBED]" },
+    });
+
+    const event = baseEvent();
+    const observer = event; // e.g. EventCapture holds the reference from add()
+    await applyEventRedaction(event, hook);
+
+    expect(observer.parameters).toEqual({ text: "[SCRUBBED]" });
+  });
+
+  it("should propagate hook errors to the caller", async () => {
+    const hook: RedactEventFunction = () => {
+      throw new Error("Hook failure");
+    };
+
+    await expect(applyEventRedaction(baseEvent(), hook)).rejects.toThrow(
+      "Hook failure",
+    );
+  });
+});
+
 describe("redactEvent integration tests", () => {
   let server: any;
   let client: any;
@@ -641,6 +801,182 @@ describe("redactEvent integration tests", () => {
     expect(identifyParams.request.params.arguments.context).toBe(
       "[REDACTED-ID]",
     );
+
+    await eventCapture.stop();
+  });
+});
+
+describe("redactEvent hook integration tests", () => {
+  let server: any;
+  let client: any;
+  let cleanup: () => Promise<void>;
+
+  beforeEach(async () => {
+    resetTodos();
+    const setup = await setupTestServerAndClient();
+    server = setup.server;
+    client = setup.client;
+    cleanup = setup.cleanup;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  const callAddTodo = async (text: string) => {
+    await client.request(
+      {
+        method: "tools/call",
+        params: {
+          name: "add_todo",
+          arguments: { text, context: "Adding a todo item" },
+        },
+      },
+      CallToolResultSchema,
+    );
+  };
+
+  it("should let the hook inspect event metadata and replace event fields", async () => {
+    const eventCapture = new EventCapture();
+    await eventCapture.start();
+
+    const seenResourceNames: (string | undefined)[] = [];
+    track(server, "test-project", {
+      enableTracing: true,
+      redactEvent: (event) => {
+        seenResourceNames.push(event.resourceName);
+        if (event.resourceName === "add_todo") {
+          return { ...event, parameters: { replaced: true } };
+        }
+        return event;
+      },
+    });
+
+    await callAddTodo("Buy milk");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const events = eventCapture.getEvents();
+    const toolCallEvent = events.find(
+      (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+    );
+
+    expect(seenResourceNames).toContain("add_todo");
+    expect(toolCallEvent).toBeDefined();
+    expect(toolCallEvent?.parameters).toEqual({ replaced: true });
+
+    // System-managed fields are intact
+    expect(toolCallEvent?.sessionId).toMatch(/^ses_/);
+    expect(toolCallEvent?.projectId).toBe("test-project");
+    expect(toolCallEvent?.eventType).toBe(
+      PublishEventRequestEventTypeEnum.mcpToolsCall,
+    );
+
+    await eventCapture.stop();
+  });
+
+  it("should drop events when the hook returns null, while other events still publish", async () => {
+    // Capture at the sendEvent boundary — EventCapture hooks add(), which
+    // runs before the queue applies the event-level hook, so drops are only
+    // observable at send time.
+    const eventQueueModule = await import("../modules/eventQueue.js");
+    const eq = eventQueueModule.eventQueue as any;
+    const originalSendEvent = eq.sendEvent;
+    const sentEvents: Event[] = [];
+    eq.sendEvent = async (event: Event) => {
+      sentEvents.push(event);
+    };
+
+    try {
+      track(server, "test-project", {
+        enableTracing: true,
+        redactEvent: (event) => {
+          if (
+            event.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall
+          ) {
+            return null;
+          }
+          return event;
+        },
+      });
+
+      await callAddTodo("Buy milk");
+      await client.request({ method: "tools/list" }, ListToolsResultSchema);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const toolCallEvents = sentEvents.filter(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+      );
+
+      expect(toolCallEvents).toHaveLength(0);
+      expect(sentEvents.length).toBeGreaterThan(0); // other event types still arrive
+    } finally {
+      eq.sendEvent = originalSendEvent;
+    }
+  });
+
+  it("should run the event hook on raw values before string redaction", async () => {
+    const eventCapture = new EventCapture();
+    await eventCapture.start();
+
+    const rawTexts: string[] = [];
+    track(server, "test-project", {
+      enableTracing: true,
+      redactEvent: (event) => {
+        const text = (event.parameters as any)?.request?.params?.arguments
+          ?.text;
+        if (typeof text === "string") {
+          rawTexts.push(text);
+        }
+        return event;
+      },
+      redactSensitiveInformation: async (text) =>
+        text.includes("secret") ? "[REDACTED-SECRET]" : text,
+    });
+
+    await callAddTodo("this contains a secret value");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Event hook saw the raw, unredacted text
+    expect(rawTexts).toContain("this contains a secret value");
+
+    // String redaction still ran afterwards on the published event
+    const events = eventCapture.getEvents();
+    const toolCallEvent = events.find(
+      (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+    );
+    const params = toolCallEvent?.parameters as any;
+    expect(params.request.params.arguments.text).toBe("[REDACTED-SECRET]");
+
+    await eventCapture.stop();
+  });
+
+  it("should apply the hook to custom events published on a tracked server", async () => {
+    const eventCapture = new EventCapture();
+    await eventCapture.start();
+
+    track(server, "test-project", {
+      enableTracing: true,
+      redactEvent: (event) => {
+        if (event.eventType === "agentcat:custom") {
+          return { ...event, response: { scrubbed: true } };
+        }
+        return event;
+      },
+    });
+
+    await publishCustomEvent(server, "test-project", {
+      resourceName: "custom_action",
+      response: { secret: "raw value" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const events = eventCapture.getEvents();
+    const customEvent = events.find(
+      (e) => (e.eventType as string) === "agentcat:custom",
+    );
+
+    expect(customEvent).toBeDefined();
+    expect(customEvent?.response).toEqual({ scrubbed: true });
 
     await eventCapture.stop();
   });

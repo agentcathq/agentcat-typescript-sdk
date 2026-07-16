@@ -304,6 +304,122 @@ describe("EventQueue", () => {
     });
   });
 
+  describe("event-level redaction hook (redactEvent)", () => {
+    beforeEach(() => {
+      // Restore the prototype add() (a prior test calls destroy(), which
+      // permanently replaces it on the singleton) and point the queue at the
+      // mocked API client so sends resolve deterministically.
+      delete (eventQueue as any).add;
+      (eventQueue as any).apiClient = mockApiClient;
+    });
+
+    it("should apply the redactEvent option from tracking data to published events", async () => {
+      const hook = vi.fn((event: any) => ({
+        ...event,
+        parameters: { text: "[EVENT-REDACTED]" },
+      }));
+      (getServerTrackingData as any).mockReturnValue({
+        projectId: "test-project",
+        sessionId: "test-session",
+        options: { enableTracing: true, redactEvent: hook },
+      });
+
+      publishEvent({} as MCPServerLike, {
+        sessionId: "test-session",
+        eventType: "mcp:tools/call",
+        resourceName: "do_thing",
+        parameters: { text: "raw sensitive value" },
+        timestamp: new Date(),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(hook).toHaveBeenCalledTimes(1);
+      expect(hook.mock.calls[0][0].resourceName).toBe("do_thing");
+      expect(hook.mock.calls[0][0].parameters).toEqual({
+        text: "raw sensitive value",
+      });
+      expect(mockPublishEvent).toHaveBeenCalledTimes(1);
+      const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+      expect(sent.parameters).toEqual({ text: "[EVENT-REDACTED]" });
+    });
+
+    it("should drop the event when the hook returns null", async () => {
+      (getServerTrackingData as any).mockReturnValue({
+        projectId: "test-project",
+        sessionId: "test-session",
+        options: { enableTracing: true, redactEvent: () => null },
+      });
+
+      publishEvent({} as MCPServerLike, {
+        sessionId: "test-session",
+        eventType: "mcp:tools/call",
+        timestamp: new Date(),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockPublishEvent).not.toHaveBeenCalled();
+      expect(writeToLog).toHaveBeenCalledWith(
+        "Event dropped by redactEvent hook",
+      );
+    });
+
+    it("should drop the event when the hook throws", async () => {
+      (getServerTrackingData as any).mockReturnValue({
+        projectId: "test-project",
+        sessionId: "test-session",
+        options: {
+          enableTracing: true,
+          redactEvent: () => {
+            throw new Error("hook exploded");
+          },
+        },
+      });
+
+      publishEvent({} as MCPServerLike, {
+        sessionId: "test-session",
+        eventType: "mcp:tools/call",
+        timestamp: new Date(),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockPublishEvent).not.toHaveBeenCalled();
+      expect(writeToLog).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to redact event (event-level hook)"),
+      );
+    });
+
+    it("should run the event hook before string redaction and compose both", async () => {
+      const seenByEventHook: string[] = [];
+      (getServerTrackingData as any).mockReturnValue({
+        projectId: "test-project",
+        sessionId: "test-session",
+        options: {
+          enableTracing: true,
+          redactEvent: (event: any) => {
+            seenByEventHook.push(event.userIntent);
+            return { ...event, userIntent: `${event.userIntent} (reviewed)` };
+          },
+        },
+      });
+
+      publishEvent({} as MCPServerLike, {
+        sessionId: "test-session",
+        eventType: "mcp:tools/call",
+        userIntent: "raw secret",
+        timestamp: new Date(),
+        redactionFn: async (text: string) =>
+          text.replace("secret", "[REDACTED]"),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Event hook saw the raw value; string redaction ran on its output
+      expect(seenByEventHook).toEqual(["raw secret"]);
+      expect(mockPublishEvent).toHaveBeenCalledTimes(1);
+      const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+      expect(sent.userIntent).toBe("raw [REDACTED] (reviewed)");
+    });
+  });
+
   describe("Process lifecycle handling", () => {
     it("should handle SIGINT signal", () => {
       // Test that signal handlers are registered
