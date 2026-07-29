@@ -48,7 +48,7 @@ describe("diagnostics sink never receives event payloads", () => {
     await cleanup();
   });
 
-  it("identify log carries the actor id but never userName/userData (PII)", async () => {
+  it("never logs identity PII (userName/userData) for an identified call", async () => {
     const userId = `actor-${randomUUID()}`;
     const SECRET_NAME = `name-${randomUUID()}`;
     const SECRET_DATA = `data-${randomUUID()}`;
@@ -76,13 +76,13 @@ describe("diagnostics sink never receives event payloads", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const identifyLine = captured.find((l) => l.includes("Identified session"));
-    expect(identifyLine).toBeDefined();
-    expect(identifyLine).toContain(userId); // the actor id is metadata — fine
-
-    // No identity PII (name / custom data) is ever published, and the old
-    // full-object dump is gone.
+    // Identity is now resolved per request and stamped straight onto the event.
+    // Nothing about it is written to the diagnostics sink at all — not the
+    // per-session "Identified session" line (identify runs on every call now,
+    // so that line would be pure noise) and above all no PII.
+    expect(captured.some((l) => l.includes("Identified session"))).toBe(false);
     expect(captured.some((l) => l.includes("with identity:"))).toBe(false);
+    expect(captured.some((l) => l.includes(userId))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_NAME))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_DATA))).toBe(false);
   });

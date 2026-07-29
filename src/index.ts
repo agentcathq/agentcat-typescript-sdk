@@ -2,7 +2,6 @@
 import {
   AgentCatOptions,
   AgentCatData,
-  UserIdentity,
   MCPServerLike,
   HighLevelMCPServerLike,
   CustomEventData,
@@ -241,7 +240,6 @@ function track(
       projectId: projectId || "", // Use empty string for null projectId
       sessionId: newSessionId(),
       lastActivity: new Date(),
-      identifiedSessions: new Map<string, UserIdentity>(),
       sessionInfo,
       options: {
         enableReportMissing: options.enableReportMissing ?? true,

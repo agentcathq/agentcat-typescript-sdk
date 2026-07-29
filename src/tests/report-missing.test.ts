@@ -10,7 +10,6 @@ import {
 } from "@modelcontextprotocol/sdk/types";
 import { EventCapture } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
-import { getServerTrackingData } from "../modules/internal";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "../modules/constants";
 
@@ -429,25 +428,18 @@ describe("Report Missing Tool", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify identify event was triggered
+      // The actor is stamped directly on the tool call event - there is no
+      // separate identify event and nothing is cached between requests.
       const events = eventCapture.getEvents();
-      const identifyEvent = events.find(
+      const toolCallEvent = events.find(
         (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+          e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall &&
+          e.resourceName === "get_more_tools",
       );
 
-      expect(identifyEvent).toBeDefined();
-      expect(identifyEvent?.resourceName).toBe("get_more_tools");
-
-      // Verify user identity was stored
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-
-      expect(storedIdentity).toEqual({
-        userId: testUserId,
-        userData: testUserData,
-      });
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBe(testUserId);
+      expect(toolCallEvent?.identifyActorData).toEqual(testUserData);
 
       await eventCapture.stop();
     });

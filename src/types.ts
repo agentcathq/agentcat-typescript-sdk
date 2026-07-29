@@ -184,16 +184,12 @@ export interface SessionInfo {
   serverVersion?: string;
   clientName?: string;
   clientVersion?: string;
-  identifyActorGivenId?: string; // Actor ID for agentcat:identify events
-  identifyActorName?: string; // Actor name for agentcat:identify events
-  identifyActorData?: object;
 }
 
 export interface AgentCatData {
   projectId: string; // Project ID for AgentCat
   sessionId: string; // Unique identifier for the session (KSUID with ses prefix)
   lastActivity: Date; // Last activity timestamp
-  identifiedSessions: Map<string, UserIdentity>;
   sessionInfo: SessionInfo;
   options: AgentCatOptions;
   lastMcpSessionId?: string; // Track the last MCP sessionId we saw

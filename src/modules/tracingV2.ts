@@ -9,7 +9,7 @@ import {
 import { writeToLog } from "./logging.js";
 import {
   getServerTrackingData,
-  handleIdentify,
+  resolveIdentity,
   resolveEventTags,
   resolveEventProperties,
 } from "./internal.js";
@@ -310,8 +310,13 @@ function createToolsCallWrapper(
           redactionFn: data.options.redactSensitiveInformation,
         };
 
-        // Identify user session
-        await handleIdentify(server, data, request, extra);
+        // Resolve the actor for this request and stamp it on this event only
+        const identity = await resolveIdentity(data, request, extra);
+        if (identity) {
+          event.identifyActorGivenId = identity.userId;
+          event.identifyActorName = identity.userName;
+          event.identifyActorData = identity.userData;
+        }
         event.sessionId = data.sessionId;
 
         const resolvedTags = await resolveEventTags(data, request, extra);

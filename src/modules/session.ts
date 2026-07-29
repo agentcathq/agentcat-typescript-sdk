@@ -125,8 +125,6 @@ export function getSessionInfo(
   if (!data?.sessionInfo.clientName) {
     clientInfo = server.getClientVersion();
   }
-  const actorInfo = data?.identifiedSessions.get(data.sessionId);
-
   const sessionInfo: SessionInfo = {
     ipAddress: undefined, // grab from django
     sdkLanguage: "TypeScript", // hardcoded for now
@@ -135,9 +133,6 @@ export function getSessionInfo(
     serverVersion: server._serverInfo?.version,
     clientName: clientInfo?.name,
     clientVersion: clientInfo?.version,
-    identifyActorGivenId: actorInfo?.userId,
-    identifyActorName: actorInfo?.userName,
-    identifyActorData: actorInfo?.userData || {},
   };
 
   if (!data) {

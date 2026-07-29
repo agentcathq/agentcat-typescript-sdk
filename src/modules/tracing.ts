@@ -12,7 +12,7 @@ import { writeToLog } from "./logging.js";
 import { handleReportMissing } from "./tools.js";
 import {
   getServerTrackingData,
-  handleIdentify,
+  resolveIdentity,
   resolveEventTags,
   resolveEventProperties,
 } from "./internal.js";
@@ -148,8 +148,13 @@ export function setupToolCallTracing(server: MCPServerLike): void {
       };
 
       try {
-        // Try to identify the session if we haven't already and identify function is provided
-        await handleIdentify(server, data, request, extra);
+        // Resolve the actor for this request and stamp it on this event only
+        const identity = await resolveIdentity(data, request, extra);
+        if (identity) {
+          event.identifyActorGivenId = identity.userId;
+          event.identifyActorName = identity.userName;
+          event.identifyActorData = identity.userData;
+        }
 
         const resolvedTags = await resolveEventTags(data, request, extra);
         if (resolvedTags) event.tags = resolvedTags;

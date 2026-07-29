@@ -293,10 +293,10 @@ export function publishEvent(
     clientName: sessionInfo.clientName,
     clientVersion: sessionInfo.clientVersion,
 
-    // Actor information from sessionInfo
-    identifyActorGivenId: sessionInfo.identifyActorGivenId,
-    identifyActorName: sessionInfo.identifyActorName,
-    identifyActorData: sessionInfo.identifyActorData,
+    // Actor information resolved per request and stamped on the event
+    identifyActorGivenId: eventInput.identifyActorGivenId,
+    identifyActorName: eventInput.identifyActorName,
+    identifyActorData: eventInput.identifyActorData,
 
     // Event-specific data from input
     resourceName: eventInput.resourceName,
