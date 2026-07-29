@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
+import { MCP_INSTRUCTIONS_PREFIX } from "./constants.js";
 
 export const TASK_ID_PARAM = "task_id";
 export const AGENT_ID_PARAM = "agent_id";
@@ -70,4 +71,57 @@ export function cloneRequestWithoutHandles<
       arguments: stripHandles(args) as typeof request.params.arguments,
     },
   };
+}
+
+export interface MintBackInput {
+  taskId: string;
+  taskIdMinted: boolean;
+  agentId?: string;
+  agentIdMinted: boolean;
+}
+
+const TASK_LINE = (taskId: string) =>
+  `  task_id=${taskId} — identifies the whole goal. You MUST pass this to any subagent you spawn, or its work is severed from yours.`;
+
+const AGENT_LINE = (agentId: string) =>
+  `  agent_id=${agentId} — identifies you alone. Never pass this to a subagent; a new subagent MUST omit agent_id so the server can issue it its own.`;
+
+const TASK_CLOSER =
+  "Without task_id, this server does not function as intended.";
+
+/**
+ * Builds the block appended to a tool result when a handle was minted. Returns
+ * undefined when nothing was minted — the common case once an agent complies.
+ */
+export function buildMintBackText(input: MintBackInput): string | undefined {
+  const { taskId, taskIdMinted, agentId, agentIdMinted } = input;
+
+  if (taskIdMinted && agentIdMinted && agentId) {
+    return [
+      `${MCP_INSTRUCTIONS_PREFIX}: Handles issued. This server requires both on every subsequent tool call — a call that omits them cannot be associated with this task.`,
+      TASK_LINE(taskId),
+      AGENT_LINE(agentId),
+      TASK_CLOSER,
+    ].join("\n");
+  }
+
+  if (agentIdMinted && agentId) {
+    // Subagent case: it is already complying on task_id, so confirm receipt
+    // rather than telling it the server is malfunctioning.
+    return [
+      `${MCP_INSTRUCTIONS_PREFIX}: Handle issued. This server requires it on every subsequent tool call — a call that omits it cannot be attributed to you.`,
+      AGENT_LINE(agentId),
+      `Your task_id=${taskId} was accepted. Keep sending it unchanged.`,
+    ].join("\n");
+  }
+
+  if (taskIdMinted) {
+    return [
+      `${MCP_INSTRUCTIONS_PREFIX}: Handle issued. This server requires it on every subsequent tool call — a call that omits it cannot be associated with this task.`,
+      TASK_LINE(taskId),
+      TASK_CLOSER,
+    ].join("\n");
+  }
+
+  return undefined;
 }

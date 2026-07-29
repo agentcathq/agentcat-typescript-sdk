@@ -8,6 +8,7 @@ import {
   extractHandle,
   stripHandles,
   cloneRequestWithoutHandles,
+  buildMintBackText,
 } from "../modules/handles.js";
 
 describe("handle primitives", () => {
@@ -88,5 +89,62 @@ describe("handle primitives", () => {
     const cloned = cloneRequestWithoutHandles(request);
     expect(cloned.params.arguments).toEqual({ text: "x" });
     expect(request.params.arguments).toHaveProperty(TASK_ID_PARAM);
+  });
+});
+
+describe("mint-back text", () => {
+  it("returns undefined when nothing was minted", () => {
+    expect(
+      buildMintBackText({
+        taskId: "ses_a",
+        taskIdMinted: false,
+        agentId: "agt_b",
+        agentIdMinted: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("builds the both-minted variant", () => {
+    const text = buildMintBackText({
+      taskId: "ses_a",
+      taskIdMinted: true,
+      agentId: "agt_b",
+      agentIdMinted: true,
+    })!;
+    expect(text.startsWith("[MCP INSTRUCTIONS]: Handles issued.")).toBe(true);
+    expect(text).toContain("task_id=ses_a");
+    expect(text).toContain("agent_id=agt_b");
+    expect(text).toContain(
+      "Without task_id, this server does not function as intended.",
+    );
+  });
+
+  it("builds the agent-only variant and confirms the inherited task ID", () => {
+    const text = buildMintBackText({
+      taskId: "ses_a",
+      taskIdMinted: false,
+      agentId: "agt_b",
+      agentIdMinted: true,
+    })!;
+    expect(text.startsWith("[MCP INSTRUCTIONS]: Handle issued.")).toBe(true);
+    expect(text).toContain("agent_id=agt_b");
+    expect(text).toContain(
+      "Your task_id=ses_a was accepted. Keep sending it unchanged.",
+    );
+    // The subagent is complying on task_id — never tell it the server is broken.
+    expect(text).not.toContain("does not function as intended");
+  });
+
+  it("builds the task-only variant", () => {
+    const text = buildMintBackText({
+      taskId: "ses_a",
+      taskIdMinted: true,
+      agentIdMinted: false,
+    })!;
+    expect(text).toContain("task_id=ses_a");
+    expect(text).not.toContain("agent_id=");
+    expect(text).toContain(
+      "Without task_id, this server does not function as intended.",
+    );
   });
 });
