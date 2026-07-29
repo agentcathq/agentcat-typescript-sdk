@@ -10,6 +10,16 @@ export interface AgentCatOptions {
    */
   enableAgentTracking?: boolean;
   enableToolCallContext?: boolean;
+  /**
+   * Takes precedence over an agent-supplied `task_id`. Return a stable
+   * identifier for the goal (a workflow id, a ticket id) and AgentCat derives a
+   * deterministic Task ID from it. Return null — or throw — to fall back to the
+   * agent-supplied-or-minted chain. May be sync or async.
+   */
+  resolveTaskId?: (
+    request: any,
+    extra?: CompatibleRequestHandlerExtra,
+  ) => string | null | Promise<string | null>;
   customContextDescription?: string;
   identify?: (
     request: any,
@@ -67,6 +77,7 @@ export interface Exporter {
 export enum AgentCatIDPrefixes {
   Session = "ses",
   Event = "evt",
+  Agent = "agt",
 }
 
 export interface Event {

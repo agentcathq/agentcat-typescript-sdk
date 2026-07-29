@@ -9,7 +9,10 @@ import {
   stripHandles,
   cloneRequestWithoutHandles,
   buildMintBackText,
+  resolveHandles,
+  HANDLE_COLLISION_TAG,
 } from "../modules/handles.js";
+import { toolDeclaresHandle } from "../modules/handle-parameters.js";
 import {
   TASK_ID_PARAMETER_DESCRIPTION,
   AGENT_ID_PARAMETER_DESCRIPTION,
@@ -226,5 +229,218 @@ describe("agent-facing copy", () => {
     expect(AGENT_ID_PARAMETER_DESCRIPTION).toBe(
       "REQUIRED on every call after your first. This server distinguishes you from every other agent working this task using agent_id; a call that arrives without it is recorded as coming from a different agent, fracturing your work and causing unintended consequences. Omit it on your first call only — the server will issue one — then echo that exact value on every later call. Never invent a value. Unlike task_id, agent_id identifies you alone: never pass it to a subagent, and if you ARE a newly spawned subagent you MUST omit it so the server can issue you your own. Without agent_id, this server does not function as intended.",
     );
+  });
+});
+
+const dataWith = (options: any = {}) =>
+  ({ projectId: "proj_a", options, sessionInfo: {} }) as any;
+
+const requestWith = (args: any) => ({
+  params: { name: "add_todo", arguments: args },
+});
+
+describe("resolveHandles", () => {
+  it("mints both handles when neither is supplied", async () => {
+    const r = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({}),
+    );
+    expect(r.taskIdSource).toBe("minted");
+    expect(r.agentIdSource).toBe("minted");
+    expect(r.taskId.startsWith("ses_")).toBe(true);
+    expect(r.agentId!.startsWith("agt_")).toBe(true);
+  });
+
+  it("uses supplied handles verbatim", async () => {
+    const r = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "ses_supplied", agent_id: "agt_supplied" }),
+    );
+    expect(r.taskId).toBe("ses_supplied");
+    expect(r.taskIdSource).toBe("supplied");
+    expect(r.agentId).toBe("agt_supplied");
+    expect(r.agentIdSource).toBe("supplied");
+  });
+
+  it("mints a new agent ID for a subagent that inherited the task ID", async () => {
+    const r = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "ses_parent" }),
+    );
+    expect(r.taskId).toBe("ses_parent");
+    expect(r.taskIdSource).toBe("supplied");
+    expect(r.agentIdSource).toBe("minted");
+  });
+
+  it("prefers the resolveTaskId hook and derives deterministically", async () => {
+    const options = {
+      enableAgentTracking: true,
+      resolveTaskId: async () => "cust-1",
+    };
+    const a = await resolveHandles(
+      dataWith(options),
+      requestWith({ task_id: "ses_ignored" }),
+    );
+    const b = await resolveHandles(dataWith(options), requestWith({}));
+    expect(a.taskIdSource).toBe("hook");
+    expect(a.taskId).toBe(b.taskId);
+    expect(a.taskId).not.toBe("ses_ignored");
+  });
+
+  it("derives the hook value with the project ID", async () => {
+    const options = { resolveTaskId: async () => "cust-1" };
+    const r = await resolveHandles(dataWith(options), requestWith({}));
+    expect(r.taskId).toBe(deriveTaskId("cust-1", "proj_a"));
+  });
+
+  it("falls back when the hook returns null or throws", async () => {
+    const nullHook = await resolveHandles(
+      dataWith({ resolveTaskId: async () => null }),
+      requestWith({ task_id: "ses_supplied" }),
+    );
+    expect(nullHook.taskId).toBe("ses_supplied");
+
+    const throwing = await resolveHandles(
+      dataWith({
+        resolveTaskId: async () => {
+          throw new Error("boom");
+        },
+      }),
+      requestWith({}),
+    );
+    expect(throwing.taskIdSource).toBe("minted");
+  });
+
+  it("falls back when the hook returns a blank string", async () => {
+    const r = await resolveHandles(
+      dataWith({ resolveTaskId: () => "   " }),
+      requestWith({ task_id: "ses_supplied" }),
+    );
+    expect(r.taskId).toBe("ses_supplied");
+    expect(r.taskIdSource).toBe("supplied");
+  });
+
+  it("passes the request and extra through to the hook", async () => {
+    const seen: any[] = [];
+    const request = requestWith({});
+    const extra = { sessionId: "mcp-1" } as any;
+    await resolveHandles(
+      dataWith({
+        resolveTaskId: (req: any, ex: any) => {
+          seen.push(req, ex);
+          return "cust-1";
+        },
+      }),
+      request,
+      extra,
+    );
+    expect(seen[0]).toBe(request);
+    expect(seen[1]).toBe(extra);
+  });
+
+  it("resolves agent tracking on by default", async () => {
+    const r = await resolveHandles(dataWith({}), requestWith({}));
+    expect(r.agentIdSource).toBe("minted");
+    expect(r.agentId!.startsWith("agt_")).toBe(true);
+  });
+
+  it("omits the agent ID entirely when agent tracking is off", async () => {
+    const r = await resolveHandles(
+      dataWith({ enableAgentTracking: false }),
+      requestWith({ agent_id: "agt_supplied" }),
+    );
+    expect(r.agentId).toBeUndefined();
+    expect(r.agentIdSource).toBeUndefined();
+  });
+
+  it("tolerates a request with no arguments at all", async () => {
+    const r = await resolveHandles(dataWith({}), { params: { name: "x" } });
+    expect(r.taskIdSource).toBe("minted");
+    expect(r.agentIdSource).toBe("minted");
+  });
+
+  it("mints a distinct task ID per request — nothing is carried between calls", async () => {
+    const data = dataWith({});
+    const a = await resolveHandles(data, requestWith({}));
+    const b = await resolveHandles(data, requestWith({}));
+    expect(a.taskId).not.toBe(b.taskId);
+    expect(a.agentId).not.toBe(b.agentId);
+  });
+
+  it("attaches no tags in the ordinary case", async () => {
+    const r = await resolveHandles(dataWith({}), requestWith({}));
+    expect(r.tags).toBeUndefined();
+  });
+});
+
+describe("resolveHandles collisions", () => {
+  it("mints rather than adopting the customer's value when the tool owns the handle", async () => {
+    const r = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "customer-42", agent_id: "customer-agent" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+    expect(r.taskId).not.toBe("customer-42");
+    expect(r.taskId.startsWith("ses_")).toBe(true);
+    expect(r.taskIdSource).toBe("minted");
+    expect(r.agentId).not.toBe("customer-agent");
+    expect(r.agentIdSource).toBe("minted");
+  });
+
+  it("tags the colliding parameter name so the case is diagnosable", async () => {
+    const r = await resolveHandles(
+      dataWith({}),
+      requestWith({ task_id: "customer-42" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+    expect(r.tags).toEqual({ [HANDLE_COLLISION_TAG]: TASK_ID_PARAM });
+  });
+
+  it("still tags when the caller only knows that a handle is owned", async () => {
+    const r = await resolveHandles(
+      dataWith({}),
+      requestWith({ agent_id: "customer-agent" }),
+      undefined,
+      true,
+    );
+    expect(r.taskIdSource).toBe("minted");
+    expect(r.tags![HANDLE_COLLISION_TAG]).toBeTruthy();
+  });
+
+  it("still honours the resolveTaskId hook for a colliding tool", async () => {
+    const r = await resolveHandles(
+      dataWith({ resolveTaskId: async () => "cust-1" }),
+      requestWith({ task_id: "customer-42" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+    expect(r.taskId).toBe(deriveTaskId("cust-1", "proj_a"));
+    expect(r.taskIdSource).toBe("hook");
+    expect(r.tags![HANDLE_COLLISION_TAG]).toBe(TASK_ID_PARAM);
+  });
+
+  it("a complex-schema tool does not own the parameter, so extraction stays normal", async () => {
+    // toolDeclaresHandle is deliberately narrower than the injector's guard:
+    // oneOf/allOf/anyOf tools are skipped for injection but do NOT own task_id.
+    expect(toolDeclaresHandle({ oneOf: [{ type: "object" }] })).toBe(false);
+    expect(
+      toolDeclaresHandle({
+        type: "object",
+        properties: { [TASK_ID_PARAM]: { type: "string" } },
+      }),
+    ).toBe(true);
+
+    const r = await resolveHandles(
+      dataWith({}),
+      requestWith({ task_id: "ses_supplied", agent_id: "agt_supplied" }),
+      undefined,
+      toolDeclaresHandle({ oneOf: [{ type: "object" }] }),
+    );
+    expect(r.taskId).toBe("ses_supplied");
+    expect(r.taskIdSource).toBe("supplied");
+    expect(r.agentId).toBe("agt_supplied");
+    expect(r.tags).toBeUndefined();
   });
 });

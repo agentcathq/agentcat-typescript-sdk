@@ -246,6 +246,7 @@ function track(
         enableTracing: options.enableTracing ?? true,
         enableAgentTracking: options.enableAgentTracking ?? true,
         enableToolCallContext: options.enableToolCallContext ?? true,
+        resolveTaskId: options.resolveTaskId,
         customContextDescription: options.customContextDescription,
         identify: options.identify,
         redactSensitiveInformation: options.redactSensitiveInformation,

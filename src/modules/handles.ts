@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
+import { AgentCatData, CompatibleRequestHandlerExtra } from "../types.js";
 import { MCP_INSTRUCTIONS_PREFIX } from "./constants.js";
+import { writeToLog } from "./logging.js";
 
 export const TASK_ID_PARAM = "task_id";
 export const AGENT_ID_PARAM = "agent_id";
@@ -70,6 +72,110 @@ export function cloneRequestWithoutHandles<
       ...request.params,
       arguments: stripHandles(args) as typeof request.params.arguments,
     },
+  };
+}
+
+export type HandleSource = "hook" | "supplied" | "minted";
+
+/** An agent ID is never resolved from a hook — only supplied or minted. */
+export type AgentIdSource = "supplied" | "minted";
+
+/** Tag naming the parameter a customer tool declares as its own. */
+export const HANDLE_COLLISION_TAG = "agentcat_handle_collision";
+
+/**
+ * Whether the called tool declares `task_id`/`agent_id` itself (see
+ * `toolDeclaresHandle`). Pass the colliding parameter name when the caller
+ * knows it — the high-level path reads the tool's own schema — or `true` when
+ * it only knows that the tool collides, which is all the low-level path can
+ * learn from `AgentCatData.handleCollisionTools`.
+ */
+export type HandleOwnership = boolean | string;
+
+/**
+ * The handles for one request.
+ *
+ * `agentId` and `agentIdSource` are one inseparable unit: either agent tracking
+ * resolved both, or neither is present. Splitting them would let a caller claim
+ * an agent ID was minted without saying which one, which is exactly the state
+ * `buildMintBackText` silently degrades on.
+ */
+export type ResolvedHandles = {
+  taskId: string;
+  taskIdSource: HandleSource;
+  /** Present only for the collision case; merged into the event's tags. */
+  tags?: Record<string, string>;
+} & (
+  | { agentId: string; agentIdSource: AgentIdSource }
+  | { agentId?: undefined; agentIdSource?: undefined }
+);
+
+/**
+ * Resolves both handles for a single request. Entirely stateless — nothing is
+ * read from or written to the server between requests, which is what makes
+ * concurrent tool calls safe.
+ *
+ * Task ID precedence: the `resolveTaskId` hook (derived deterministically), then
+ * the agent-supplied `task_id` taken verbatim, then a freshly minted one. A hook
+ * that throws or returns nothing falls through to the rest of the chain rather
+ * than failing the call, matching how `eventTags` degrades.
+ */
+export async function resolveHandles(
+  data: AgentCatData,
+  request: any,
+  extra?: CompatibleRequestHandlerExtra,
+  ownsHandle: HandleOwnership = false,
+): Promise<ResolvedHandles> {
+  // A tool that declares its own task_id/agent_id owns those arguments: reading
+  // them would poison correlation with a value that means something else.
+  const args = ownsHandle ? undefined : request?.params?.arguments;
+
+  let taskId: string | undefined;
+  let taskIdSource: HandleSource = "minted";
+
+  if (data.options.resolveTaskId) {
+    try {
+      const supplied = await data.options.resolveTaskId(request, extra);
+      if (typeof supplied === "string" && supplied.trim().length > 0) {
+        taskId = deriveTaskId(supplied.trim(), data.projectId || undefined);
+        taskIdSource = "hook";
+      }
+    } catch (error) {
+      writeToLog(`resolveTaskId callback error: ${error}`);
+    }
+  }
+
+  if (!taskId) {
+    const supplied = extractHandle(args, TASK_ID_PARAM);
+    if (supplied) {
+      taskId = supplied;
+      taskIdSource = "supplied";
+    } else {
+      taskId = newTaskId();
+      taskIdSource = "minted";
+    }
+  }
+
+  const tags = ownsHandle
+    ? {
+        [HANDLE_COLLISION_TAG]:
+          typeof ownsHandle === "string"
+            ? ownsHandle
+            : `${TASK_ID_PARAM}|${AGENT_ID_PARAM}`,
+      }
+    : undefined;
+
+  if (!(data.options.enableAgentTracking ?? true)) {
+    return { taskId, taskIdSource, ...(tags ? { tags } : {}) };
+  }
+
+  const suppliedAgentId = extractHandle(args, AGENT_ID_PARAM);
+  return {
+    taskId,
+    taskIdSource,
+    ...(tags ? { tags } : {}),
+    agentId: suppliedAgentId ?? newAgentId(),
+    agentIdSource: suppliedAgentId ? "supplied" : "minted",
   };
 }
 
