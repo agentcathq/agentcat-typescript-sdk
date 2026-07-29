@@ -17,7 +17,7 @@ import { writeToLog } from "./modules/logging.js";
 import { setupAgentCatTools } from "./modules/tools.js";
 import { setupToolCallTracing } from "./modules/tracing.js";
 import { getSessionInfo } from "./modules/session.js";
-import { deriveTaskId, newTaskId } from "./modules/handles.js";
+import { deriveTaskId } from "./modules/handles.js";
 import {
   setServerTrackingData,
   getServerTrackingData,
@@ -295,39 +295,69 @@ function track(
   }
 }
 
+/** Prefix `newTaskId` mints Task IDs with. */
+const TASK_ID_PREFIX = "ses_";
+
 /**
- * Publishes a custom event to AgentCat with flexible session management.
+ * A Task ID supplied by a customer, normalised. A value that already looks like
+ * a handle this SDK minted (`ses_…`) is used verbatim — that is the intended
+ * case, a handle the agent read off a tool call and handed back. Anything else
+ * is a customer identifier and gets the same deterministic derivation
+ * `resolveHandles` applies to the `resolveTaskId` hook, so custom events
+ * correlate with the tool calls made under that same identifier.
+ */
+function resolveCustomTaskId(id: string, projectId: string): string {
+  return id.startsWith(TASK_ID_PREFIX) ? id : deriveTaskId(id, projectId);
+}
+
+/**
+ * Publishes a custom event to AgentCat.
  *
- * @param serverOrSessionId - Either a tracked MCP server instance or a MCP session ID string
+ * @param serverOrTaskId - Either a tracked MCP server instance or a Task ID string
  * @param projectId - Your AgentCat project ID (required)
  * @param eventData - Optional event data to include with the custom event
  *
  * @returns Promise that resolves when the event is queued for publishing
  *
  * @remarks
+ * Handles are resolved per request, so a tracked server carries no ambient Task
+ * ID. To correlate a custom event with a task, pass the Task ID — either as the
+ * first argument or as `eventData.taskId`, which takes precedence. A value that
+ * already looks like a handle this SDK minted (`ses_…`) is used verbatim;
+ * anything else is derived exactly as the `resolveTaskId` hook is, so an id a
+ * customer already uses for both lines up automatically. Without either, the
+ * event is published with no session ID and a warning is logged.
+ *
+ * Custom events carry no actor unless one is supplied via `eventData.actor`:
+ * there is no request to run `identify` against, and identity is never carried
+ * between requests.
+ *
  * When a tracked server is passed, the `redactEvent` hook configured via `track()`
  * is applied to the custom event before it is published. Events published with a
- * bare session ID string bypass redaction, since no tracked configuration exists.
+ * bare Task ID string bypass redaction, since no tracked configuration exists.
  *
  * @example
  * ```typescript
- * // With a tracked server
+ * // With a tracked server and the Task ID the agent handed back
  * await agentcat.publishCustomEvent(
  *   server,
  *   "proj_abc123xyz",
  *   {
+ *     taskId: "ses_2Zx...",
  *     resourceName: "custom-action",
  *     parameters: { action: "user-feedback", rating: 5 },
- *     message: "User provided feedback"
+ *     message: "User provided feedback",
+ *     actor: { userId: "user-123", userName: "Ada" }
  *   }
  * );
  * ```
  *
  * @example
  * ```typescript
- * // With a MCP session ID
+ * // With your own workflow identifier, which correlates with the tool calls
+ * // made under the same identifier via `resolveTaskId`
  * await agentcat.publishCustomEvent(
- *   "user-session-12345",
+ *   "workflow-12345",
  *   "proj_abc123xyz",
  *   {
  *     isError: true,
@@ -335,20 +365,9 @@ function track(
  *   }
  * );
  * ```
- *
- * @example
- * ```typescript
- * await agentcat.publishCustomEvent(
- *   server,
- *   "proj_abc123xyz",
- *   {
- *     resourceName: "feature-usage",
- *   }
- * );
- * ```
  */
 export async function publishCustomEvent(
-  serverOrSessionId: any | string,
+  serverOrTaskId: any | string,
   projectId: string,
   eventData?: CustomEventData,
 ): Promise<void> {
@@ -357,40 +376,42 @@ export async function publishCustomEvent(
     throw new Error("projectId is required for publishCustomEvent");
   }
 
-  let sessionId: string;
+  // An explicit taskId always wins, in either call form.
+  let sessionId: string | undefined = eventData?.taskId
+    ? resolveCustomTaskId(eventData.taskId, projectId)
+    : undefined;
 
-  // Determine if the first parameter is a tracked server or a session ID string
+  // Determine if the first parameter is a tracked server or a Task ID string
   const isServer =
-    typeof serverOrSessionId === "object" && serverOrSessionId !== null;
+    typeof serverOrTaskId === "object" && serverOrTaskId !== null;
   let lowLevelServer: MCPServerLike | null = null;
 
   if (isServer) {
     // Try to get tracking data for the server
-    lowLevelServer = serverOrSessionId.server
-      ? serverOrSessionId.server
-      : serverOrSessionId;
-    const trackingData = getServerTrackingData(lowLevelServer as MCPServerLike);
+    lowLevelServer = serverOrTaskId.server
+      ? serverOrTaskId.server
+      : serverOrTaskId;
 
-    if (trackingData) {
-      // A tracked server no longer carries an ambient session: Task IDs are
-      // minted per request from the handles the agent supplies, and a custom
-      // event has no request to read them from. Mint a standalone one so the
-      // event is still well-formed. Pass a stable id string instead of the
-      // server to correlate a custom event with a task.
-      sessionId = newTaskId();
-    } else {
+    if (!getServerTrackingData(lowLevelServer as MCPServerLike)) {
       // Server is not tracked - treat it as an error
       throw new Error(
-        "Server is not tracked. Please call agentcat.track() first or provide a session ID string.",
+        "Server is not tracked. Please call agentcat.track() first or provide a task ID string.",
       );
     }
-  } else if (typeof serverOrSessionId === "string") {
-    // Custom identifier provided - derive a deterministic Task ID. Same
-    // construction the MCP-session derivation used, so ids stay stable.
-    sessionId = deriveTaskId(serverOrSessionId, projectId);
+
+    if (!sessionId) {
+      // A tracked server carries no ambient session: handles are per request
+      // and a custom event has no request to read them from. Publish without a
+      // Task ID rather than inventing one that correlates with nothing.
+      writeToLog(
+        "Warning: publishCustomEvent called with a tracked server and no taskId. Handles are per-request, so the event will be published without a session ID.",
+      );
+    }
+  } else if (typeof serverOrTaskId === "string") {
+    sessionId = sessionId || resolveCustomTaskId(serverOrTaskId, projectId);
   } else {
     throw new Error(
-      "First parameter must be either an MCP server object or a session ID string",
+      "First parameter must be either an MCP server object or a task ID string",
     );
   }
 
@@ -405,6 +426,11 @@ export async function publishCustomEvent(
 
     // Timestamp
     timestamp: new Date(),
+
+    // Actor, supplied per call — never inherited from another request
+    identifyActorGivenId: eventData?.actor?.userId,
+    identifyActorName: eventData?.actor?.userName,
+    identifyActorData: eventData?.actor?.userData,
 
     // Event data from parameters
     resourceName: eventData?.resourceName,
@@ -434,7 +460,7 @@ export async function publishCustomEvent(
   }
 
   writeToLog(
-    `Published custom event for session ${sessionId} with type 'agentcat:custom'`,
+    `Published custom event for session ${sessionId ?? "(none)"} with type 'agentcat:custom'`,
   );
 }
 

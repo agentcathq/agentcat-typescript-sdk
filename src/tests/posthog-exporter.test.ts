@@ -463,6 +463,52 @@ describe("PostHogExporter", () => {
     expect(span.properties.client_name).toBe("claude-desktop");
   });
 
+  it("should omit session properties for an event with no session ID", async () => {
+    // PostHog groups every event sharing a $session_id, so a session-less event
+    // must carry none rather than a placeholder that would fuse unrelated
+    // events into one bogus session.
+    const exporter = new PostHogExporter({
+      type: "posthog",
+      apiKey: "phc_test_key",
+      enableAITracing: true,
+    });
+
+    await exporter.export(makeEvent({ sessionId: undefined }));
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const regular = body.batch[0];
+    expect(regular.properties.$session_id).toBeUndefined();
+    expect(regular.distinct_id).toBe("anonymous");
+
+    const span = body.batch.find((e: any) => e.event === "$ai_span");
+    expect(span.properties.$session_id).toBeUndefined();
+    expect(span.properties.$ai_session_id).toBeUndefined();
+    // A span must still have a trace: the event becomes its own single-span
+    // trace instead of joining a fabricated one.
+    expectUUIDv7(span.properties.$ai_trace_id);
+    expect(span.properties.$ai_trace_id).toBe(span.properties.$ai_span_id);
+  });
+
+  it("should omit $session_id on an exception event with no session ID", async () => {
+    const exporter = new PostHogExporter({
+      type: "posthog",
+      apiKey: "phc_test_key",
+    });
+
+    await exporter.export(
+      makeEvent({
+        sessionId: undefined,
+        isError: true,
+        error: { message: "boom", type: "Error" },
+      }),
+    );
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const exception = body.batch.find((e: any) => e.event === "$exception");
+    expect(exception).toBeDefined();
+    expect(exception.properties.$session_id).toBeUndefined();
+  });
+
   it("should generate deterministic UUIDs for $ai_span trace and span IDs", async () => {
     const exporter = new PostHogExporter({
       type: "posthog",

@@ -60,6 +60,15 @@ function getDistinctId(event: Event): string {
   return event.identifyActorGivenId || event.sessionId || "anonymous";
 }
 
+/**
+ * PostHog session properties for an event, or nothing at all when the event
+ * carries no Task ID. PostHog groups every event sharing a `$session_id`, so a
+ * placeholder would fuse unrelated session-less events into one bogus session.
+ */
+function sessionProperties(event: Event): Record<string, string> {
+  return event.sessionId ? { $session_id: toUUIDv7(event.sessionId) } : {};
+}
+
 function getTimestamp(event: Event): string {
   return event.timestamp
     ? event.timestamp.toISOString()
@@ -157,7 +166,7 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $session_id: toUUIDv7(event.sessionId),
+      ...sessionProperties(event),
       source: AGENTCAT_SOURCE,
     };
 
@@ -224,7 +233,7 @@ export class PostHogExporter implements Exporter {
 
     const properties: Record<string, any> = {
       $exception_source: "backend",
-      $session_id: toUUIDv7(event.sessionId),
+      ...sessionProperties(event),
     };
 
     if (event.error) {
@@ -265,12 +274,16 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $ai_session_id: `agentcat_${event.sessionId}`,
-      $ai_trace_id: toUUIDv7(event.sessionId),
+      ...(event.sessionId
+        ? { $ai_session_id: `agentcat_${event.sessionId}` }
+        : {}),
+      // A span must have a trace. Without a Task ID to group by, the event is
+      // its own single-span trace rather than joining a fabricated one.
+      $ai_trace_id: toUUIDv7(event.sessionId ?? event.id),
       $ai_span_id: toUUIDv7(event.id),
       $ai_span_name: event.resourceName || "unknown_tool",
       $ai_is_error: event.isError || false,
-      $session_id: toUUIDv7(event.sessionId),
+      ...sessionProperties(event),
       source: AGENTCAT_SOURCE,
     };
 

@@ -83,7 +83,13 @@ export enum AgentCatIDPrefixes {
 export interface Event {
   // Core identification
   id: string;
-  sessionId: string;
+  /**
+   * The Task ID this event belongs to. Undefined when no handle was available —
+   * a custom event published against a tracked server without a `taskId`, for
+   * instance. Handles are per request, so there is nothing ambient to fall back
+   * on and an invented ID would be worse than none.
+   */
+  sessionId?: string;
   projectId?: string; // Optional for telemetry-only mode
 
   // Event metadata
@@ -239,6 +245,20 @@ export interface ErrorData {
 
 // Custom event types for publishCustomEvent function
 export interface CustomEventData {
+  /**
+   * The Task ID to attribute this event to. Takes precedence over the first
+   * argument of `publishCustomEvent`. A value that already looks like a handle
+   * this SDK minted (`ses_…`) is used verbatim; anything else is treated as a
+   * customer identifier and derived exactly as the `resolveTaskId` hook does,
+   * so it correlates with the tool calls made under that same identifier.
+   */
+  taskId?: string;
+  /**
+   * The actor this event belongs to. Must be supplied per call: custom events
+   * have no request to run `identify` against, and identity is never carried
+   * between requests.
+   */
+  actor?: UserIdentity;
   resourceName?: string;
   parameters?: any;
   response?: any;

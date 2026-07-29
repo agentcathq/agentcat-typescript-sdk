@@ -13,7 +13,7 @@ import {
   setupTestServerAndClient,
   resetTodos,
 } from "./test-utils/client-server-factory.js";
-import { track } from "../index.js";
+import { track, publishCustomEvent } from "../index.js";
 import { EventCapture } from "./test-utils.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 50));
@@ -53,7 +53,7 @@ describe("handle flow", () => {
     );
 
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(event.sessionId.startsWith("ses_")).toBe(true);
+    expect(event.sessionId!.startsWith("ses_")).toBe(true);
     expect(event.tags!.agentcat_agent_id.startsWith("agt_")).toBe(true);
     expect(event.tags!.agentcat_task_id_source).toBe("minted");
     expect(event.tags!.agentcat_agent_id_source).toBe("minted");
@@ -182,7 +182,7 @@ describe("handle flow", () => {
     await settle();
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(event.tags!.agentcat_task_id_source).toBe("hook");
-    expect(event.sessionId.startsWith("ses_")).toBe(true);
+    expect(event.sessionId!.startsWith("ses_")).toBe(true);
     // The hook won the task ID, so only the agent ID was minted.
     const last = result.content[result.content.length - 1];
     expect(last.text.startsWith("[MCP INSTRUCTIONS]: Handle issued.")).toBe(
@@ -191,6 +191,69 @@ describe("handle flow", () => {
     expect(last.text).toContain(
       `Your task_id=${event.sessionId} was accepted.`,
     );
+  });
+
+  it("correlates a custom event published with the same identifier the resolveTaskId hook returns", async () => {
+    track(server, "proj_test", { resolveTaskId: () => "workflow-42" });
+    await client.callTool({
+      name: "add_todo",
+      arguments: { text: "a", context: "c" },
+    });
+    // The customer's own workflow id, not a handle we minted: derived, exactly
+    // as the hook's return value is, so both land on one task.
+    await publishCustomEvent("workflow-42", "proj_test", {
+      resourceName: "checkout-completed",
+    });
+    await settle();
+
+    const toolCall = capture.findEventByType("mcp:tools/call")!;
+    const custom = capture.findEventByType("agentcat:custom")!;
+    expect(custom).toBeDefined();
+    expect(toolCall.sessionId!.startsWith("ses_")).toBe(true);
+    expect(custom.sessionId).toBe(toolCall.sessionId);
+  });
+
+  it("correlates a custom event published with a Task ID the agent handed back", async () => {
+    track(server, "proj_test");
+    await client.callTool({
+      name: "add_todo",
+      arguments: { text: "a", context: "c", task_id: "ses_handed_back" },
+    });
+    // Already one of ours: used verbatim, never re-derived.
+    await publishCustomEvent("ses_handed_back", "proj_test", {
+      resourceName: "checkout-completed",
+    });
+    await settle();
+
+    const toolCall = capture.findEventByType("mcp:tools/call")!;
+    expect(toolCall.sessionId).toBe("ses_handed_back");
+    expect(capture.findEventByType("agentcat:custom")!.sessionId).toBe(
+      "ses_handed_back",
+    );
+  });
+
+  it("publishes a custom event against a tracked server with no session ID", async () => {
+    track(server, "proj_test");
+    await publishCustomEvent(server, "proj_test", { resourceName: "x" });
+    await settle();
+
+    const custom = capture.findEventByType("agentcat:custom")!;
+    expect(custom).toBeDefined();
+    expect(custom.sessionId).toBeUndefined();
+  });
+
+  it("attributes a custom event to an explicitly supplied actor", async () => {
+    track(server, "proj_test");
+    await publishCustomEvent("ses_actor_flow", "proj_test", {
+      resourceName: "x",
+      actor: { userId: "user-1", userName: "Ada", userData: { plan: "pro" } },
+    });
+    await settle();
+
+    const custom = capture.findEventByType("agentcat:custom")!;
+    expect(custom.identifyActorGivenId).toBe("user-1");
+    expect(custom.identifyActorName).toBe("Ada");
+    expect(custom.identifyActorData).toEqual({ plan: "pro" });
   });
 });
 
@@ -256,7 +319,7 @@ describe("handle flow — a tool that owns task_id", () => {
       expect(event).toBeDefined();
       // The customer's value was NOT adopted as the Task ID.
       expect(event.sessionId).not.toBe("customer-owned-123");
-      expect(event.sessionId.startsWith("ses_")).toBe(true);
+      expect(event.sessionId!.startsWith("ses_")).toBe(true);
       expect(event.tags!.agentcat_handle_collision).toBe("task_id");
     } finally {
       await capture.stop();
@@ -504,7 +567,7 @@ describe("low-level server handle wiring", () => {
       );
 
       const event = capture.findEventByType("mcp:tools/call")!;
-      expect(event.sessionId.startsWith("ses_")).toBe(true);
+      expect(event.sessionId!.startsWith("ses_")).toBe(true);
       expect(event.tags!.agentcat_task_id_source).toBe("minted");
       expect(event.tags!.agentcat_agent_id.startsWith("agt_")).toBe(true);
     } finally {
