@@ -246,6 +246,7 @@ function track(
       options: {
         enableReportMissing: options.enableReportMissing ?? true,
         enableTracing: options.enableTracing ?? true,
+        enableAgentTracking: options.enableAgentTracking ?? true,
         enableToolCallContext: options.enableToolCallContext ?? true,
         customContextDescription: options.customContextDescription,
         identify: options.identify,
@@ -255,6 +256,7 @@ function track(
         eventProperties: options.eventProperties,
       },
       sessionSource: "agentcat", // Initially AgentCat-generated, will change to "mcp" if MCP sessionId is provided in requests
+      handleCollisionTools: new Set<string>(),
     };
 
     setServerTrackingData(lowLevelServer, agentcatData);

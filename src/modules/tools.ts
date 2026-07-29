@@ -2,14 +2,14 @@ import {
   ListToolsRequestSchema,
   ListToolsResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { MCPServerLike, UnredactedEvent } from "../types.js";
+import { MCPServerLike } from "../types.js";
 import { writeToLog } from "./logging.js";
-import { getServerTrackingData, handleIdentify } from "./internal.js";
+import { getServerTrackingData } from "./internal.js";
 import { addContextParameterToTools } from "./context-parameters.js";
-import { publishEvent } from "./eventQueue.js";
-import { getServerSessionId } from "./session.js";
-import { PublishEventRequestEventTypeEnum } from "agentcat-api";
-import { getMCPCompatibleErrorMessage } from "./compatibility.js";
+import {
+  addHandleParametersToTools,
+  recordHandleCollisions,
+} from "./handle-parameters.js";
 
 export const GET_MORE_TOOLS_NAME = "get_more_tools" as const;
 
@@ -61,45 +61,16 @@ export function setupAgentCatTools(server: MCPServerLike): void {
     return;
   }
 
-  // Override tools list to include get_more_tools and add context parameter
+  // Override tools list to include get_more_tools and inject handle/context parameters
   try {
     server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
-      let tools: any[] = [];
       const data = getServerTrackingData(server);
-      let event: UnredactedEvent = {
-        sessionId: getServerSessionId(server, extra),
-        parameters: {
-          request: request,
-          extra: extra,
-        },
-        eventType: PublishEventRequestEventTypeEnum.mcpToolsList,
-        timestamp: new Date(),
-        redactionFn: data?.options.redactSensitiveInformation,
-      };
-      if (data) {
-        await handleIdentify(server, data, request, extra);
-        event.sessionId = data.sessionId;
-      }
-      try {
-        const originalResponse = (await originalListToolsHandler(
-          request,
-          extra,
-        )) as ListToolsResult;
-        tools = originalResponse.tools || [];
-      } catch (error) {
-        // If original handler fails, start with empty tools
-        writeToLog(
-          `Warning: Original list tools handler failed, this suggests an error AgentCat did not cause - ${error}`,
-        );
-        event.error = { message: getMCPCompatibleErrorMessage(error) };
-        event.isError = true;
-        event.duration =
-          (event.timestamp &&
-            new Date().getTime() - event.timestamp.getTime()) ||
-          0;
-        publishEvent(server, event);
-        throw error;
-      }
+
+      const originalResponse = (await originalListToolsHandler(
+        request,
+        extra,
+      )) as ListToolsResult;
+      let tools: any[] = originalResponse.tools || [];
 
       if (!data) {
         writeToLog(
@@ -112,17 +83,26 @@ export function setupAgentCatTools(server: MCPServerLike): void {
         writeToLog(
           "Warning: No tools found in the original list. This is likely due to the tools not being registered before AgentCat.track().",
         );
-        event.error = { message: "No tools were sent to MCP client." };
-        event.isError = true;
-        event.duration =
-          (event.timestamp &&
-            new Date().getTime() - event.timestamp.getTime()) ||
-          0;
-        publishEvent(server, event);
         return { tools };
       }
 
-      // Add context parameter to all existing tools if enableToolCallContext is true
+      // get_more_tools is pushed first so handle injection reaches it.
+      if (data.options.enableReportMissing) {
+        const alreadyPresent = tools.some(
+          (t: any) => t?.name === GET_MORE_TOOLS_NAME,
+        );
+        if (!alreadyPresent) tools.push(getReportMissingToolDescriptor());
+      }
+
+      recordHandleCollisions(data, tools);
+
+      if (data.options.enableTracing) {
+        tools = addHandleParametersToTools(
+          tools,
+          data.options.enableAgentTracking ?? true,
+        );
+      }
+
       if (data.options.enableToolCallContext) {
         tools = addContextParameterToTools(
           tools,
@@ -130,22 +110,6 @@ export function setupAgentCatTools(server: MCPServerLike): void {
         );
       }
 
-      // Add report_missing tool if enabled
-      if (data.options.enableReportMissing) {
-        const alreadyPresent = tools.some(
-          (t: any) => t?.name === GET_MORE_TOOLS_NAME,
-        );
-        if (!alreadyPresent) {
-          tools.push(getReportMissingToolDescriptor());
-        }
-      }
-
-      event.response = { tools };
-      event.isError = false;
-      event.duration =
-        (event.timestamp && new Date().getTime() - event.timestamp.getTime()) ||
-        0;
-      publishEvent(server, event);
       return { tools };
     });
   } catch (error) {

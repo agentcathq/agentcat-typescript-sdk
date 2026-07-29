@@ -20,9 +20,12 @@ import {
 import { getServerSessionId } from "./session.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
-import { getMCPCompatibleErrorMessage } from "./compatibility.js";
 import { captureException } from "./exceptions.js";
 import { addContextParameterToTools } from "./context-parameters.js";
+import {
+  addHandleParametersToTools,
+  recordHandleCollisions,
+} from "./handle-parameters.js";
 import {
   GET_MORE_TOOLS_NAME,
   getReportMissingToolDescriptor,
@@ -61,66 +64,13 @@ export function setupListToolsTracing(
 
   try {
     server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
-      let tools: any[] = [];
       const data = getServerTrackingData(server);
-      let event: UnredactedEvent = {
-        sessionId: getServerSessionId(server, extra),
-        parameters: {
-          request: request,
-          extra: extra,
-        },
-        eventType: PublishEventRequestEventTypeEnum.mcpToolsList,
-        timestamp: new Date(),
-        redactionFn: data?.options.redactSensitiveInformation,
-      };
-      if (data) {
-        await handleIdentify(server, data, request, extra);
-        event.sessionId = data.sessionId;
-        const resolvedTags = await resolveEventTags(data, request, extra);
-        if (resolvedTags) event.tags = resolvedTags;
-        const resolvedProperties = await resolveEventProperties(
-          data,
-          request,
-          extra,
-        );
-        if (resolvedProperties) event.properties = resolvedProperties;
-      }
-      try {
-        const originalResponse = (await originalListToolsHandler(
-          request,
-          extra,
-        )) as ListToolsResult;
-        tools = originalResponse.tools || [];
 
-        // Inject context parameters AFTER MCP SDK has converted Zod to JSON Schema
-        if (data?.options.enableToolCallContext) {
-          tools = addContextParameterToTools(
-            tools,
-            data.options.customContextDescription,
-          );
-        }
-
-        // Add get_more_tools tool when enabled
-        if (data?.options.enableReportMissing) {
-          const alreadyPresent = tools.some(
-            (t: any) => t?.name === GET_MORE_TOOLS_NAME,
-          );
-          if (!alreadyPresent) tools.push(getReportMissingToolDescriptor());
-        }
-      } catch (error) {
-        // If original handler fails, start with empty tools
-        writeToLog(
-          `Warning: Original list tools handler failed, this suggests an error AgentCat did not cause - ${error}`,
-        );
-        event.error = { message: getMCPCompatibleErrorMessage(error) };
-        event.isError = true;
-        event.duration =
-          (event.timestamp &&
-            new Date().getTime() - event.timestamp.getTime()) ||
-          0;
-        publishEvent(server, event);
-        throw error;
-      }
+      const originalResponse = (await originalListToolsHandler(
+        request,
+        extra,
+      )) as ListToolsResult;
+      let tools: any[] = originalResponse.tools || [];
 
       if (!data) {
         writeToLog(
@@ -133,22 +83,33 @@ export function setupListToolsTracing(
         writeToLog(
           "Warning: No tools found in the original list. This is likely due to the tools not being registered before AgentCat.track().",
         );
-        event.error = { message: "No tools were sent to MCP client." };
-        event.isError = true;
-        event.duration =
-          (event.timestamp &&
-            new Date().getTime() - event.timestamp.getTime()) ||
-          0;
-        publishEvent(server, event);
         return { tools };
       }
 
-      event.response = { tools };
-      event.isError = false;
-      event.duration =
-        (event.timestamp && new Date().getTime() - event.timestamp.getTime()) ||
-        0;
-      publishEvent(server, event);
+      // get_more_tools is pushed first so handle injection reaches it.
+      if (data.options.enableReportMissing) {
+        const alreadyPresent = tools.some(
+          (t: any) => t?.name === GET_MORE_TOOLS_NAME,
+        );
+        if (!alreadyPresent) tools.push(getReportMissingToolDescriptor());
+      }
+
+      recordHandleCollisions(data, tools);
+
+      if (data.options.enableTracing) {
+        tools = addHandleParametersToTools(
+          tools,
+          data.options.enableAgentTracking ?? true,
+        );
+      }
+
+      if (data.options.enableToolCallContext) {
+        tools = addContextParameterToTools(
+          tools,
+          data.options.customContextDescription,
+        );
+      }
+
       return { tools };
     });
 

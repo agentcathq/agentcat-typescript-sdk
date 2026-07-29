@@ -1,10 +1,24 @@
-import { RegisteredTool } from "../types.js";
+import { AgentCatData, RegisteredTool } from "../types.js";
 import {
   TASK_ID_PARAMETER_DESCRIPTION,
   AGENT_ID_PARAMETER_DESCRIPTION,
 } from "./constants.js";
 import { TASK_ID_PARAM, AGENT_ID_PARAM } from "./handles.js";
 import { writeToLog } from "./logging.js";
+
+/**
+ * True when a tool's own JSON Schema already declares task_id or agent_id.
+ *
+ * This is the single source of truth for the collision guard: injection skips
+ * such tools, and the call path must never extract or strip a parameter we did
+ * not inject.
+ */
+export function toolDeclaresHandle(inputSchema: unknown): boolean {
+  const properties = (inputSchema as Record<string, any> | undefined)
+    ?.properties;
+  if (!properties || typeof properties !== "object") return false;
+  return Boolean(properties[TASK_ID_PARAM] || properties[AGENT_ID_PARAM]);
+}
 
 /**
  * Adds task_id and agent_id to a tool's JSON Schema as OPTIONAL properties.
@@ -28,10 +42,7 @@ export function addHandleParametersToTool(
   const schema = modifiedTool.inputSchema as Record<string, any> | undefined;
 
   // Skip tools that already declare either handle - avoid collision
-  if (
-    schema?.properties?.[TASK_ID_PARAM] ||
-    schema?.properties?.[AGENT_ID_PARAM]
-  ) {
+  if (toolDeclaresHandle(schema)) {
     writeToLog(
       `WARN: Tool "${toolName}" already has a '${TASK_ID_PARAM}' or '${AGENT_ID_PARAM}' parameter. Skipping handle injection.`,
     );
@@ -87,4 +98,32 @@ export function addHandleParametersToTools(
   return tools.map((tool) =>
     addHandleParametersToTool(tool, enableAgentTracking),
   );
+}
+
+/**
+ * Records which tools declare their own task_id/agent_id, so the tools/call
+ * path can leave those arguments alone. tools/list is the only place that sees
+ * every tool's schema, which is why the bookkeeping lives here.
+ *
+ * Call this BEFORE handle injection — afterwards every tool declares a handle.
+ *
+ * The delete on the else branch keeps the set accurate when a server
+ * re-registers a tool without the colliding parameter.
+ */
+export function recordHandleCollisions(
+  data: AgentCatData,
+  tools: RegisteredTool[],
+): void {
+  for (const t of tools) {
+    const name = (t as any)?.name;
+    if (typeof name !== "string") continue;
+    if (toolDeclaresHandle((t as any).inputSchema)) {
+      data.handleCollisionTools.add(name);
+      writeToLog(
+        `WARN: Tool "${name}" declares its own task_id/agent_id. AgentCat will not inject, extract, or strip handles for it.`,
+      );
+    } else {
+      data.handleCollisionTools.delete(name);
+    }
+  }
 }

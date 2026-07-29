@@ -3,6 +3,12 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 export interface AgentCatOptions {
   enableReportMissing?: boolean;
   enableTracing?: boolean;
+  /**
+   * Injects an `agent_id` handle alongside `task_id` so subagents can be told
+   * apart within a single task. Defaults to true. Set false to drop agent_id
+   * from tool schemas entirely.
+   */
+  enableAgentTracking?: boolean;
   enableToolCallContext?: boolean;
   customContextDescription?: string;
   identify?: (
@@ -192,6 +198,13 @@ export interface AgentCatData {
   options: AgentCatOptions;
   lastMcpSessionId?: string; // Track the last MCP sessionId we saw
   sessionSource: "mcp" | "agentcat"; // Track whether session ID came from MCP protocol or AgentCat generation
+  /**
+   * Names of tools that declare their own task_id/agent_id parameter. Server
+   * configuration, identical for every caller and bounded by tool count — not
+   * per-request state. The low-level tools/call path reads this to avoid
+   * stripping a customer's own parameter.
+   */
+  handleCollisionTools: Set<string>;
 }
 
 // Error tracking types
