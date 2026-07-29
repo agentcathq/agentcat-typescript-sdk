@@ -23,8 +23,7 @@
   <a href="https://github.com/agentcathq/agentcat-typescript-sdk/actions"><img src="https://github.com/agentcathq/agentcat-typescript-sdk/workflows/CI/badge.svg" alt="CI"></a>
 </p>
 
-> [!IMPORTANT]
-> **MCPcat is now AgentCat** 🐱 — same team, same product, new name. This package was previously published as [`mcpcat`](https://www.npmjs.com/package/mcpcat), which keeps working forever, but new features land here. Upgrading takes a few minutes — see the [migration guide](./MIGRATION.md).
+> [!IMPORTANT] > **MCPcat is now AgentCat** 🐱 — same team, same product, new name. This package was previously published as [`mcpcat`](https://www.npmjs.com/package/mcpcat), which keeps working forever, but new features land here. Upgrading takes a few minutes — see the [migration guide](./MIGRATION.md).
 
 > [!NOTE]
 > Looking for the Python SDK? Check it out here [agentcat-python](https://github.com/agentcathq/agentcat-python-sdk).
@@ -179,6 +178,7 @@ Meet the cats behind AgentCat! Add your cat to our community by submitting a PR 
 <div align="left">
   <img src="docs/cats/bibi.png" alt="bibi" width="80" height="80">
   <img src="docs/cats/zelda.jpg" alt="zelda" width="80" height="80">
+  <img src="docs/cats/void.jpg" alt="void" width="80" height="80">
 </div>
 
 _Want to add your cat? Create a PR adding your cat's photo to `docs/cats/` and update this section!_
