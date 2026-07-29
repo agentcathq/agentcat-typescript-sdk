@@ -1,6 +1,5 @@
 import {
   CallToolRequestSchema,
-  InitializeRequestSchema,
   ListToolsRequestSchema,
   ListToolsResult,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -120,112 +119,11 @@ export function setupListToolsTracing(
   }
 }
 
-export function setupInitializeTracing(
-  highLevelServer: HighLevelMCPServerLike,
-): void {
-  const server = highLevelServer.server;
-  const handlers = server._requestHandlers;
-  const originalInitializeHandler = handlers.get("initialize");
-
-  if (originalInitializeHandler) {
-    server.setRequestHandler(
-      InitializeRequestSchema,
-      async (request, extra) => {
-        const data = getServerTrackingData(server);
-        if (!data) {
-          writeToLog(
-            "Warning: AgentCat is unable to find server tracking data. Please ensure you have called track(server, options) before using tool calls.",
-          );
-          return await originalInitializeHandler(request, extra);
-        }
-
-        const sessionId = getServerSessionId(server, extra);
-
-        // Try to identify the session
-        await handleIdentify(server, data, request, extra);
-
-        let event: UnredactedEvent = {
-          sessionId: sessionId,
-          resourceName: request.params?.name || "Unknown Tool Name",
-          eventType: PublishEventRequestEventTypeEnum.mcpInitialize,
-          parameters: {
-            request: request,
-            extra: extra,
-          },
-          timestamp: new Date(),
-          redactionFn: data.options.redactSensitiveInformation,
-        };
-
-        const resolvedTags = await resolveEventTags(data, request, extra);
-        if (resolvedTags) event.tags = resolvedTags;
-        const resolvedProperties = await resolveEventProperties(
-          data,
-          request,
-          extra,
-        );
-        if (resolvedProperties) event.properties = resolvedProperties;
-
-        const result = await originalInitializeHandler(request, extra);
-        event.response = result;
-        publishEvent(server, event);
-        return result;
-      },
-    );
-  }
-}
-
 export function setupToolCallTracing(server: MCPServerLike): void {
   try {
     const handlers = server._requestHandlers;
 
     const originalCallToolHandler = handlers.get("tools/call");
-    const originalInitializeHandler = handlers.get("initialize");
-
-    if (originalInitializeHandler) {
-      server.setRequestHandler(
-        InitializeRequestSchema,
-        async (request, extra) => {
-          const data = getServerTrackingData(server);
-          if (!data) {
-            writeToLog(
-              "Warning: AgentCat is unable to find server tracking data. Please ensure you have called track(server, options) before using tool calls.",
-            );
-            return await originalInitializeHandler(request, extra);
-          }
-
-          const sessionId = getServerSessionId(server, extra);
-
-          // Try to identify the session
-          await handleIdentify(server, data, request, extra);
-
-          let event: UnredactedEvent = {
-            sessionId: sessionId,
-            resourceName: request.params?.name || "Unknown Tool Name",
-            eventType: PublishEventRequestEventTypeEnum.mcpInitialize,
-            parameters: {
-              request: request,
-              extra: extra,
-            },
-            timestamp: new Date(),
-            redactionFn: data.options.redactSensitiveInformation,
-          };
-
-          const resolvedTags = await resolveEventTags(data, request, extra);
-          if (resolvedTags) event.tags = resolvedTags;
-          const resolvedProperties = await resolveEventProperties(
-            data,
-            request,
-            extra,
-          );
-          if (resolvedProperties) event.properties = resolvedProperties;
-
-          const result = await originalInitializeHandler(request, extra);
-          event.response = result;
-          publishEvent(server, event);
-          return result;
-        },
-      );
-    }
 
     server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const data = getServerTrackingData(server);

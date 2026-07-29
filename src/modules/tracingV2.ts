@@ -17,7 +17,7 @@ import { getServerSessionId } from "./session.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { handleReportMissing } from "./tools.js";
-import { setupInitializeTracing, setupListToolsTracing } from "./tracing.js";
+import { setupListToolsTracing } from "./tracing.js";
 import { captureException } from "./exceptions.js";
 import {
   getToolFunction,
@@ -412,8 +412,6 @@ export function setupTracking(server: HighLevelMCPServerLike): void {
 
     // Setup handler wrapping before any tools are registered
     setupToolsCallHandlerWrapping(server);
-
-    setupInitializeTracing(server);
 
     // Modify existing callbacks to include tracing and publishing events
     // This now includes get_more_tools if it was added

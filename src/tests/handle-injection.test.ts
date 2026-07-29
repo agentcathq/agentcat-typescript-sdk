@@ -179,6 +179,42 @@ describe("tools/list wiring", () => {
   });
 });
 
+describe("initialize is not intercepted", () => {
+  // The shared fixture connects the client inside setupTestServerAndClient(),
+  // i.e. BEFORE track() runs, so `initialize` has already been and gone and an
+  // assertion made there would be vacuous. This fixture deliberately inverts
+  // the order — track() first, then connect — so the initialize request really
+  // does travel through whatever handler track() installed.
+  it("publishes no mcp:initialize event", async () => {
+    const server = new McpServer({ name: "init server", version: "1.0" });
+    server.tool("noop", "does nothing", {}, async () => ({
+      content: [{ type: "text" as const, text: "ok" }],
+    }));
+
+    const capture = new EventCapture();
+    await capture.start();
+
+    track(server, "proj_test");
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    try {
+      await Promise.all([
+        client.connect(clientTransport),
+        server.server.connect(serverTransport),
+      ]);
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(capture.findEventByType("mcp:initialize")).toBeUndefined();
+    } finally {
+      await capture.stop();
+      await clientTransport.close?.();
+      await serverTransport.close?.();
+    }
+  });
+});
+
 describe("tools/list handle collisions", () => {
   it("skips injection and records a tool that declares its own task_id", async () => {
     const server = new McpServer({ name: "collision server", version: "1.0" });
