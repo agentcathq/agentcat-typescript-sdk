@@ -2,11 +2,21 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 
 export interface AgentCatOptions {
   enableReportMissing?: boolean;
+  /**
+   * Enables tracking of tool calls and usage patterns. Defaults to true. Also
+   * gates handles entirely: when false, `task_id`/`agent_id` are not added to
+   * tool schemas, not read from incoming calls, not stripped from your
+   * arguments, and never minted back.
+   */
   enableTracing?: boolean;
   /**
-   * Injects an `agent_id` handle alongside `task_id` so subagents can be told
-   * apart within a single task. Defaults to true. Set false to drop agent_id
-   * from tool schemas entirely.
+   * Injects an optional `agent_id` handle alongside `task_id` so subagents can
+   * be told apart within a single task. Each agent omits `agent_id` on its
+   * first call and is issued its own, while one `task_id` is shared by every
+   * agent working the same goal. Defaults to true. Set false to drop `agent_id`
+   * from tool schemas, from the `agentcat_agent_id` /
+   * `agentcat_agent_id_source` event tags, and from the mint-back instructions
+   * entirely; `task_id` is unaffected.
    */
   enableAgentTracking?: boolean;
   enableToolCallContext?: boolean;

@@ -86,7 +86,10 @@ function resolveHandleOwnership(
  *
  * The low-level path gets this for free: `setupToolCallTracing` is simply not
  * installed (`index.ts`). The high-level wrappers are installed
- * unconditionally, so they have to ask.
+ * unconditionally, so they have to ask — and in the tools/call wrapper the
+ * answer gates the whole tracing block, not just the handles, so that a
+ * disabled high-level server runs no customer callback the low-level one would
+ * not have run either.
  */
 function handlesEnabled(data: AgentCatData | undefined): boolean {
   if (!data) return false;
@@ -377,28 +380,34 @@ function createToolsCallWrapper(
         writeToLog(
           "Warning: AgentCat is unable to find server tracking data. Please ensure you have called track(server, options) before using tool calls.",
         );
+      } else if (!handlesEnabled(data)) {
+        // enableTracing: false. Nothing below this point has an observable
+        // effect: no handles were injected so none may be resolved, read,
+        // stripped or minted back, and `publishEvent` discards every event on
+        // this server anyway. Building the event regardless would still run the
+        // customer's identify/eventTags/eventProperties callbacks — commonly a
+        // DB or API lookup with real side effects — to populate a value nothing
+        // ever reads. `handles`, `event` and `shouldPublishEvent` all stay at
+        // their off values, so this call passes straight through. The low-level
+        // path gets the same behaviour for free: `setupToolCallTracing` is
+        // never installed (`index.ts`), and the two must not diverge.
       } else {
         shouldPublishEvent = true;
 
-        // With tracing off no handles were ever injected, so none are resolved,
-        // read, stripped, or minted back. `handles` stays undefined, which is
-        // what switches every handle-dependent step below off.
-        if (handlesEnabled(data)) {
-          ownsHandle = resolveHandleOwnership(
-            data,
-            highLevelServer,
-            request.params?.name,
+        ownsHandle = resolveHandleOwnership(
+          data,
+          highLevelServer,
+          request.params?.name,
+        );
+        if (ownsHandle) {
+          writeToLog(
+            `WARN: Tool "${request.params?.name}" declares its own '${
+              typeof ownsHandle === "string" ? ownsHandle : "task_id/agent_id"
+            }' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
           );
-          if (ownsHandle) {
-            writeToLog(
-              `WARN: Tool "${request.params?.name}" declares its own '${
-                typeof ownsHandle === "string" ? ownsHandle : "task_id/agent_id"
-              }' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
-            );
-          }
-
-          handles = await resolveHandles(data, request, extra, ownsHandle);
         }
+
+        handles = await resolveHandles(data, request, extra, ownsHandle);
 
         event = {
           sessionId: handles?.taskId,

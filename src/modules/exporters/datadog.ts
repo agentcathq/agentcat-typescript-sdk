@@ -152,7 +152,12 @@ export class DatadogExporter implements Exporter {
       timestamp: event.timestamp ? event.timestamp.getTime() : Date.now(),
       status: event.isError ? "error" : "info",
       dd: {
-        trace_id: traceContext.getDatadogTraceId(event.sessionId),
+        // Without a Task ID, getTraceId would return fresh random bytes on
+        // every call, so a session-less event would land on a new nonexistent
+        // trace — a different one on every export retry. Fall back to the event
+        // id so it is deterministically its own single-event trace, as in the
+        // OTLP, Sentry and PostHog paths.
+        trace_id: traceContext.getDatadogTraceId(event.sessionId || event.id),
         span_id: traceContext.getDatadogSpanId(event.id),
       },
       mcp: {

@@ -154,6 +154,13 @@ If one of your own tools already declares a `task_id` or `agent_id` parameter,
 AgentCat leaves that tool alone — it will not inject, read, or strip the
 parameter — and tags the resulting events with `agentcat_handle_collision`.
 
+One caveat on the low-level `Server` path: it has no tool registry to read, so
+collision detection there depends on the declaration seen while serving
+`tools/list`, and applies only once the same process has served it at least
+once. A call that arrives before any `tools/list` is treated as non-colliding
+and its `task_id` is read and stripped. The high-level `McpServer` path reads
+the registry directly and has no such dependency.
+
 #### Custom events and handle conventions
 
 `publishCustomEvent` has no request to read handles from, so you must pass the

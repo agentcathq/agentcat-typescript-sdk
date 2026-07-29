@@ -20,13 +20,18 @@ import { EventCapture } from "./test-utils.js";
  * builder read it back after the customer's handler had run, so under
  * `Promise.all` the last writer won for every published event.
  *
- * Two things make this test able to detect that, and both are load-bearing:
+ * Two things shape this test:
  *
- *  1. The customer's tool handler awaits a REAL timer, so every call is
- *     genuinely suspended while the others run. A handler that only awaits an
- *     already-resolved promise never leaves the current macrotask, which is the
- *     regime in which this class of bug can hide entirely — and a concurrency
- *     test that passes against the buggy implementation is worse than none.
+ *  1. The customer's tool handler awaits a REAL timer, so the calls overlap in
+ *     wall-clock time and the interleaving — which call wins the race — varies
+ *     run to run rather than following one fixed schedule. It is NOT what makes
+ *     detection possible. `InMemoryTransport` delivers each message on its own
+ *     task, so the requests interleave regardless: with the timer replaced by a
+ *     bare `await Promise.resolve()`, a field written at the top of a call and
+ *     read back after the handler ran was measured to belong to a DIFFERENT
+ *     call in 19 of 20 cases, on both the high-level and the low-level path.
+ *     The timer buys varied interleavings and a wider overlap window, not the
+ *     detection itself.
  *  2. Every asserted value is derived per call from that call's own arguments —
  *     Task ID, agent ID, actor, and response — so a value belonging to a
  *     different call is visible as a mismatch rather than merely as a missing

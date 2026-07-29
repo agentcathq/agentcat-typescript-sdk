@@ -603,6 +603,139 @@ describe("low-level server handle wiring", () => {
       await cleanup();
     }
   });
+
+  // A raw JSON Schema tool that declares its own task_id, on a server with no
+  // tool registry to consult. This is the one combination the collision matrix
+  // did not cover, and the one where the guarantee is conditional.
+  const setupLowLevelCollisionServer = async () => {
+    const server = new Server(
+      { name: "low level collision server", version: "1.0" },
+      { capabilities: { tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [
+        {
+          name: "legacy_tool",
+          description: "A raw-JSON-Schema tool that already owns task_id",
+          inputSchema: {
+            type: "object",
+            properties: { task_id: { type: "string" } },
+            required: ["task_id"],
+          },
+        },
+      ],
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => ({
+      content: [
+        {
+          type: "text" as const,
+          text: `got:${JSON.stringify(request.params.arguments)}`,
+        },
+      ],
+    }));
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    return {
+      server,
+      client,
+      connect: async () =>
+        Promise.all([
+          client.connect(clientTransport),
+          server.connect(serverTransport),
+        ]),
+      cleanup: async () => {
+        await clientTransport.close?.();
+        await serverTransport.close?.();
+      },
+    };
+  };
+
+  it("passes a raw-schema tool's own task_id through after a tools/list", async () => {
+    const capture = new EventCapture();
+    await capture.start();
+    const { server, client, connect, cleanup } =
+      await setupLowLevelCollisionServer();
+    try {
+      track(server, "proj_test", { enableReportMissing: false });
+      await connect();
+
+      const { tools } = await client.listTools();
+      // The colliding tool is skipped by the injector entirely.
+      const legacy: any = tools[0];
+      expect(legacy.inputSchema.properties.agent_id).toBeUndefined();
+      expect(legacy.inputSchema.properties.task_id.type).toBe("string");
+
+      const result: any = await client.callTool({
+        name: "legacy_tool",
+        arguments: { task_id: "ORDER-42" },
+      });
+      await settle();
+
+      expect(result.content[0].text).toBe('got:{"task_id":"ORDER-42"}');
+      expect(
+        result.content.some((c: any) =>
+          String(c.text).includes("[MCP INSTRUCTIONS]"),
+        ),
+      ).toBe(false);
+
+      const event = capture
+        .getEvents()
+        .find((e) => e.resourceName === "legacy_tool")!;
+      expect(event.sessionId).not.toBe("ORDER-42");
+      expect(event.sessionId!.startsWith("ses_")).toBe(true);
+      // The low-level path knows only *that* the tool collides.
+      expect(event.tags!.agentcat_handle_collision).toBe("task_id|agent_id");
+      // No agent ID: nothing could have supplied one and no mint-back could
+      // ever have handed a minted one to the agent.
+      expect(event.tags!.agentcat_agent_id).toBeUndefined();
+      expect(event.tags!.agentcat_agent_id_source).toBeUndefined();
+    } finally {
+      await capture.stop();
+      await cleanup();
+    }
+  });
+
+  it("KNOWN RESIDUAL: strips a raw-schema tool's own task_id when no tools/list preceded the call", async () => {
+    // Accepted, documented in README/MIGRATION, and pinned here so it is not
+    // rediscovered as a fresh bug. The low-level path has no tool registry, so
+    // collision detection lives entirely in `handleCollisionTools`, which is
+    // populated while serving tools/list. A process that has never served one
+    // cannot know the tool owns the parameter: the customer's domain value is
+    // adopted as the correlation handle and the handler receives {}.
+    //
+    // Every real MCP client calls tools/list before tools/call, so this needs a
+    // client that deliberately does not.
+    const capture = new EventCapture();
+    await capture.start();
+    const { server, client, connect, cleanup } =
+      await setupLowLevelCollisionServer();
+    try {
+      track(server, "proj_test", { enableReportMissing: false });
+      await connect();
+
+      const result: any = await client.callTool({
+        name: "legacy_tool",
+        arguments: { task_id: "ORDER-42" },
+      });
+      await settle();
+
+      // Stripped: the handler never sees its own required parameter.
+      expect(result.content[0].text).toBe("got:{}");
+
+      const event = capture
+        .getEvents()
+        .find((e) => e.resourceName === "legacy_tool")!;
+      // And the customer's domain value became the correlation handle.
+      expect(event.sessionId).toBe("ORDER-42");
+      expect(event.tags!.agentcat_task_id_source).toBe("supplied");
+      expect(event.tags!.agentcat_handle_collision).toBeUndefined();
+    } finally {
+      await capture.stop();
+      await cleanup();
+    }
+  });
 });
 
 describe("handle flow — enableTracing: false", () => {
@@ -618,7 +751,13 @@ describe("handle flow — enableTracing: false", () => {
       "echo",
       {
         description: "Echoes its arguments",
-        inputSchema: { text: z.string() },
+        // .passthrough() is load-bearing. With a plain shape the MCP SDK's own
+        // zod parse strips every unknown key before the handler runs, so a
+        // leaked `task_id` would vanish for a reason that has nothing to do
+        // with AgentCat and "arguments untouched" could not fail. Passthrough
+        // hands unknown keys to the handler, leaving AgentCat's strip as the
+        // only thing that could remove one.
+        inputSchema: z.object({ text: z.string() }).passthrough() as any,
       },
       async (args: any) => ({
         content: [
@@ -711,12 +850,18 @@ describe("handle flow — enableTracing: false", () => {
     try {
       track(server, "proj_test", { enableTracing: false });
       await connect();
+      // A handle-shaped argument is required for the "untouched" half to be
+      // able to fail at all: with only `text` the strip is a no-op and the
+      // assertion passes just as well against a broken gate.
       const result: any = await client.callTool({
         name: "echo",
-        arguments: { text: "a" },
+        arguments: { text: "a", task_id: "ses_x" },
       });
 
-      expect(result.content[0].text).toBe('echo:{"text":"a"}');
+      // Not injected, so not stripped: the handler sees exactly what was sent.
+      expect(result.content[0].text).toBe(
+        'echo:{"text":"a","task_id":"ses_x"}',
+      );
       expect(
         result.content.some((c: any) =>
           String(c.text).includes("[MCP INSTRUCTIONS]"),
@@ -746,6 +891,77 @@ describe("handle flow — enableTracing: false", () => {
       expect(calls).toEqual([]);
     } finally {
       await cleanup();
+    }
+  });
+
+  it("runs no customer callback on either path", async () => {
+    // `identify` is a customer callback that commonly does a DB or API lookup
+    // and may have side effects; `eventTags`/`eventProperties` are the same
+    // shape. With tracing off the event they populate is discarded by
+    // publishEvent, so running them is pure cost a customer who switched
+    // tracking off never asked for. The low-level path never installed the
+    // wrapper at all — the high-level one has to match it.
+    const calls: string[] = [];
+    const options = {
+      enableTracing: false,
+      enableReportMissing: false,
+      identify: async () => {
+        calls.push("identify");
+        return null;
+      },
+      eventTags: () => {
+        calls.push("eventTags");
+        return null;
+      },
+      eventProperties: () => {
+        calls.push("eventProperties");
+        return null;
+      },
+      resolveTaskId: () => {
+        calls.push("resolveTaskId");
+        return null;
+      },
+    };
+
+    const high = await setupHighLevelEchoServer();
+    try {
+      track(high.server, "proj_test", options);
+      await high.connect();
+      await high.client.callTool({ name: "echo", arguments: { text: "a" } });
+      await settle();
+      expect(calls).toEqual([]);
+    } finally {
+      await high.cleanup();
+    }
+
+    const low = await setupLowLevelEchoServer();
+    try {
+      track(low.server, "proj_test", options);
+      await low.connect();
+      await low.client.callTool({ name: "echo", arguments: { text: "a" } });
+      await settle();
+      expect(calls).toEqual([]);
+    } finally {
+      await low.cleanup();
+    }
+
+    // Positive control: the same callbacks on the same server DO fire with
+    // tracing left on, so an empty `calls` above means suppression rather than
+    // a harness that never wired the callbacks up.
+    const control = await setupHighLevelEchoServer();
+    try {
+      track(control.server, "proj_test", { ...options, enableTracing: true });
+      await control.connect();
+      await control.client.callTool({ name: "echo", arguments: { text: "a" } });
+      await settle();
+      expect(calls.sort()).toEqual([
+        "eventProperties",
+        "eventTags",
+        "identify",
+        "resolveTaskId",
+      ]);
+    } finally {
+      await control.cleanup();
     }
   });
 

@@ -179,7 +179,13 @@ Every tool served through `tools/list` gains optional `task_id` and (unless
 an `[MCP INSTRUCTIONS]:` text block on calls where a handle was minted. Injection
 is skipped for tools with `oneOf`/`allOf`/`anyOf` schemas, and for tools that
 already declare a `task_id` or `agent_id` parameter of their own — those are left
-completely alone and their events are tagged `agentcat_handle_collision`.
+completely alone and their events are tagged `agentcat_handle_collision`. On the
+low-level `Server` path there is no tool registry to read, so that detection
+depends on the declaration seen while serving `tools/list` and applies only once
+the same process has served it at least once; a call arriving before any
+`tools/list` is treated as non-colliding and its `task_id` is read and stripped.
+The high-level `McpServer` path reads the registry directly and has no such
+dependency.
 
 Handle injection is gated on `enableTracing`; with `enableTracing: false` nothing
 is injected, read, or stripped.

@@ -169,7 +169,14 @@ export async function resolveHandles(
       }
     : undefined;
 
-  if (!(data.options.enableAgentTracking ?? true)) {
+  // No agent ID for a colliding tool. `args` was nulled above, so nothing can
+  // ever be *supplied* — every call would mint a fresh `agt_` — and the
+  // mint-back that would hand it to the agent is suppressed for this exact
+  // case, so the agent can never learn it and never echo it back. The tag would
+  // be a new unique value on every single call: unbounded cardinality with no
+  // analytic meaning. Omitting it says the truth, which is that this call has
+  // no known agent.
+  if (ownsHandle || !(data.options.enableAgentTracking ?? true)) {
     return { taskId, taskIdSource, ...(tags ? { tags } : {}) };
   }
 

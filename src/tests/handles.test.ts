@@ -10,6 +10,7 @@ import {
   cloneRequestWithoutHandles,
   buildMintBackText,
   resolveHandles,
+  stampHandlesOnEvent,
   HANDLE_COLLISION_TAG,
 } from "../modules/handles.js";
 import { toolDeclaresHandle } from "../modules/handle-parameters.js";
@@ -398,7 +399,47 @@ describe("resolveHandles collisions", () => {
     expect(r.taskId.startsWith("ses_")).toBe(true);
     expect(r.taskIdSource).toBe("minted");
     expect(r.agentId).not.toBe("customer-agent");
-    expect(r.agentIdSource).toBe("minted");
+  });
+
+  it("omits the agent ID entirely when the tool owns the handle", async () => {
+    // A colliding call can neither read an agent ID (its arguments are off
+    // limits) nor communicate one (mint-back is suppressed for exactly this
+    // case). Minting anyway would write a brand-new `agentcat_agent_id` tag on
+    // every single call — unbounded cardinality naming an agent that was never
+    // told its own ID and so can never echo it back.
+    const first = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "customer-42", agent_id: "customer-agent" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+    const second = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "customer-42", agent_id: "customer-agent" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+
+    expect(first.agentId).toBeUndefined();
+    expect(first.agentIdSource).toBeUndefined();
+    expect(second.agentId).toBeUndefined();
+    // The collision itself is still recorded — only the meaningless handle goes.
+    expect(first.tags![HANDLE_COLLISION_TAG]).toBe(TASK_ID_PARAM);
+  });
+
+  it("stamps no agent tags on a colliding call's event", async () => {
+    const handles = await resolveHandles(
+      dataWith({ enableAgentTracking: true }),
+      requestWith({ task_id: "customer-42" }),
+      undefined,
+      TASK_ID_PARAM,
+    );
+    const event: any = {};
+    stampHandlesOnEvent(event, handles);
+
+    expect(event.tags.agentcat_agent_id).toBeUndefined();
+    expect(event.tags.agentcat_agent_id_source).toBeUndefined();
+    expect(event.tags[HANDLE_COLLISION_TAG]).toBe(TASK_ID_PARAM);
   });
 
   it("tags the colliding parameter name so the case is diagnosable", async () => {
