@@ -90,7 +90,10 @@ export class OTLPExporter implements Exporter {
       : startTimeNanos;
 
     return {
-      traceId: traceContext.getTraceId(event.sessionId),
+      // Without a Task ID, getTraceId would return fresh random bytes on every
+      // call. Fall back to the event id so a session-less span is
+      // deterministically its own trace, as in the Sentry and PostHog paths.
+      traceId: traceContext.getTraceId(event.sessionId || event.id),
       spanId: traceContext.getSpanId(event.id),
       name: event.eventType || "mcp.event",
       kind: 2, // SPAN_KIND_SERVER
@@ -105,10 +108,16 @@ export class OTLPExporter implements Exporter {
           key: "mcp.event_type",
           value: { stringValue: event.eventType || "" },
         },
-        {
-          key: "mcp.session_id",
-          value: { stringValue: event.sessionId || "" },
-        },
+        // Omitted entirely when absent: a backend grouping on this attribute
+        // would fuse every session-less event under a single "" bucket.
+        ...(event.sessionId
+          ? [
+              {
+                key: "mcp.session_id",
+                value: { stringValue: event.sessionId },
+              },
+            ]
+          : []),
         {
           key: "mcp.project_id",
           value: { stringValue: event.projectId || "" },

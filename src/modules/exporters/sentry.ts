@@ -219,12 +219,23 @@ export class SentryExporter implements Exporter {
     }
   }
 
+  /**
+   * The trace every envelope for one event joins. `getTraceId` returns fresh
+   * random bytes for a falsy input, and `export()` derives a trace id up to
+   * three times per event (log, transaction, error) — so a session-less event
+   * would scatter across three unrelated traces. Falling back to the event id
+   * makes it deterministically its own single-event trace instead.
+   */
+  private traceIdFor(event: Event): string {
+    return traceContext.getTraceId(event.sessionId || event.id);
+  }
+
   private eventToLog(event: Event): SentryLog {
     const timestamp = event.timestamp
       ? new Date(event.timestamp).getTime() / 1000
       : Date.now() / 1000;
 
-    const traceId = traceContext.getTraceId(event.sessionId);
+    const traceId = this.traceIdFor(event);
 
     // Generate deterministic event_id for Sentry
     const eventId =
@@ -341,7 +352,7 @@ export class SentryExporter implements Exporter {
       ? endTimestamp - event.duration / 1000
       : endTimestamp;
 
-    const traceId = traceContext.getTraceId(event.sessionId);
+    const traceId = this.traceIdFor(event);
     const spanId = traceContext.getSpanId(event.id);
 
     // Build transaction name
@@ -448,7 +459,7 @@ export class SentryExporter implements Exporter {
     // Use same trace context as the transaction for correlation (if available)
     const traceId = transaction
       ? transaction.contexts.trace.trace_id
-      : traceContext.getTraceId(event.sessionId);
+      : this.traceIdFor(event);
     const spanId = traceContext.getSpanId(event.id);
 
     const timestamp = transaction

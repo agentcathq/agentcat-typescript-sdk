@@ -473,7 +473,16 @@ describe("PostHogExporter", () => {
       enableAITracing: true,
     });
 
-    await exporter.export(makeEvent({ sessionId: undefined }));
+    // Use a real KSUID so toUUIDv7 can parse the embedded timestamp
+    // deterministically. With an unparseable id it falls back to Date.now(),
+    // and the two adjacent toUUIDv7 calls behind $ai_trace_id and $ai_span_id
+    // straddle a millisecond boundary often enough to flake (~0.8%).
+    await exporter.export(
+      makeEvent({
+        id: KSUID.withPrefix("evt").randomSync(),
+        sessionId: undefined,
+      }),
+    );
 
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const regular = body.batch[0];

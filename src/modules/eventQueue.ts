@@ -170,7 +170,7 @@ class EventQueue {
           publishEventRequest: publishRequest,
         });
         writeToLog(
-          `Successfully sent event ${event.id} | ${event.eventType} | session ${event.sessionId} | ${event.projectId} | ${event.duration} ms | ${event.identifyActorGivenId || "anonymous"}`,
+          `Successfully sent event ${event.id} | ${event.eventType} | session ${event.sessionId ?? "(none)"} | ${event.projectId} | ${event.duration} ms | ${event.identifyActorGivenId || "anonymous"}`,
         );
       } catch (error) {
         writeToLog(

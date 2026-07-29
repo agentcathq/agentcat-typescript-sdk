@@ -279,7 +279,7 @@ export class PostHogExporter implements Exporter {
         : {}),
       // A span must have a trace. Without a Task ID to group by, the event is
       // its own single-span trace rather than joining a fabricated one.
-      $ai_trace_id: toUUIDv7(event.sessionId ?? event.id),
+      $ai_trace_id: toUUIDv7(event.sessionId || event.id),
       $ai_span_id: toUUIDv7(event.id),
       $ai_span_name: event.resourceName || "unknown_tool",
       $ai_is_error: event.isError || false,
