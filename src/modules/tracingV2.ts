@@ -75,6 +75,24 @@ function resolveHandleOwnership(
   return data?.handleCollisionTools.has(toolName) ?? false;
 }
 
+/**
+ * Whether AgentCat's handles apply to this server at all.
+ *
+ * `enableTracing: false` withholds `task_id`/`agent_id` from tool schemas
+ * (`tools.ts`, `tracing.ts`), so nothing on the wire carries them — reading,
+ * stripping, or minting one would be acting on a parameter we never advertised,
+ * and the mint-back block would order an agent to echo handles no schema
+ * declared, on a server whose owner switched tracking off.
+ *
+ * The low-level path gets this for free: `setupToolCallTracing` is simply not
+ * installed (`index.ts`). The high-level wrappers are installed
+ * unconditionally, so they have to ask.
+ */
+function handlesEnabled(data: AgentCatData | undefined): boolean {
+  if (!data) return false;
+  return data.options.enableTracing ?? true;
+}
+
 function addTracingToToolRegistry(
   tools: Record<string, RegisteredTool>,
   server: HighLevelMCPServerLike,
@@ -236,17 +254,17 @@ function addTracingToToolCallbackInternal(
       extra = params[0];
     }
 
+    const data = server?.server
+      ? getServerTrackingData(server.server as MCPServerLike)
+      : undefined;
+
     // Never strip a parameter we did not inject: a tool that declares its own
-    // task_id/agent_id must receive it intact. Same authority the tools/call
-    // wrapper uses — the two must never be able to disagree.
-    const ownsHandle = Boolean(
-      resolveHandleOwnership(
-        server?.server ? getServerTrackingData(server.server) : undefined,
-        server,
-        toolName,
-      ),
-    );
-    const dropHandles = (a: any): any => (ownsHandle ? a : stripHandles(a));
+    // task_id/agent_id must receive it intact, and with tracing off we injected
+    // no handles anywhere. Same authority the tools/call wrapper uses — the two
+    // must never be able to disagree.
+    const ownsHandle = Boolean(resolveHandleOwnership(data, server, toolName));
+    const keepHandles = ownsHandle || !handlesEnabled(data);
+    const dropHandles = (a: any): any => (keepHandles ? a : stripHandles(a));
 
     const removeInjectedParams = (args: any): any => {
       if (args && typeof args === "object") {
@@ -362,23 +380,28 @@ function createToolsCallWrapper(
       } else {
         shouldPublishEvent = true;
 
-        ownsHandle = resolveHandleOwnership(
-          data,
-          highLevelServer,
-          request.params?.name,
-        );
-        if (ownsHandle) {
-          writeToLog(
-            `WARN: Tool "${request.params?.name}" declares its own '${
-              typeof ownsHandle === "string" ? ownsHandle : "task_id/agent_id"
-            }' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
+        // With tracing off no handles were ever injected, so none are resolved,
+        // read, stripped, or minted back. `handles` stays undefined, which is
+        // what switches every handle-dependent step below off.
+        if (handlesEnabled(data)) {
+          ownsHandle = resolveHandleOwnership(
+            data,
+            highLevelServer,
+            request.params?.name,
           );
+          if (ownsHandle) {
+            writeToLog(
+              `WARN: Tool "${request.params?.name}" declares its own '${
+                typeof ownsHandle === "string" ? ownsHandle : "task_id/agent_id"
+              }' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
+            );
+          }
+
+          handles = await resolveHandles(data, request, extra, ownsHandle);
         }
 
-        handles = await resolveHandles(data, request, extra, ownsHandle);
-
         event = {
-          sessionId: handles.taskId,
+          sessionId: handles?.taskId,
           resourceName: request.params?.name || "Unknown Tool",
           parameters: { request, extra },
           eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
@@ -404,7 +427,7 @@ function createToolsCallWrapper(
         if (resolvedProperties) event.properties = resolvedProperties;
 
         // AFTER the customer's tags, so ours always survive validateTags().
-        stampHandlesOnEvent(event, handles);
+        if (handles) stampHandlesOnEvent(event, handles);
 
         // Extract context for userIntent
         if (
@@ -421,10 +444,11 @@ function createToolsCallWrapper(
       );
     }
 
-    // Two reasons to pass the request straight through: the tool owns the
-    // parameter (never touch what we did not inject), or handle resolution
-    // never ran at all (untracked server / tracing setup threw), in which case
-    // AgentCat must be transparent rather than half-applied.
+    // Three reasons to pass the request straight through: the tool owns the
+    // parameter (never touch what we did not inject), tracing is off so no
+    // handle was ever advertised, or handle resolution never ran at all
+    // (untracked server / tracing setup threw). In each case AgentCat must be
+    // transparent rather than half-applied.
     const applyHandles = Boolean(handles) && !ownsHandle;
     const finalize = (result: any): any =>
       applyHandles ? appendMintBack(result, handles!) : result;

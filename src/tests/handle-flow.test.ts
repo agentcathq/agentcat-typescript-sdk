@@ -604,3 +604,172 @@ describe("low-level server handle wiring", () => {
     }
   });
 });
+
+describe("handle flow — enableTracing: false", () => {
+  // Handles are advertised only when tracing is on, so with tracing off there
+  // is nothing of ours on the wire. The low-level path gets this for free —
+  // setupToolCallTracing is never installed — but the high-level wrappers are
+  // installed unconditionally and once appended a mint-back block, telling an
+  // agent to echo handles that no schema declared, on a server whose owner had
+  // switched tracking off.
+  const setupHighLevelEchoServer = async () => {
+    const server = new McpServer({ name: "echo server", version: "1.0" });
+    server.registerTool(
+      "echo",
+      {
+        description: "Echoes its arguments",
+        inputSchema: { text: z.string() },
+      },
+      async (args: any) => ({
+        content: [
+          { type: "text" as const, text: `echo:${JSON.stringify(args)}` },
+        ],
+      }),
+    );
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    return {
+      server,
+      client,
+      connect: async () =>
+        Promise.all([
+          client.connect(clientTransport),
+          server.server.connect(serverTransport),
+        ]),
+      cleanup: async () => {
+        await clientTransport.close?.();
+        await serverTransport.close?.();
+      },
+    };
+  };
+
+  const setupLowLevelEchoServer = async () => {
+    const server = new Server(
+      { name: "low level echo server", version: "1.0" },
+      { capabilities: { tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [
+        {
+          name: "echo",
+          description: "Echoes",
+          inputSchema: {
+            type: "object",
+            properties: { text: { type: "string" } },
+            required: ["text"],
+          },
+        },
+      ],
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (request: any) => ({
+      content: [
+        {
+          type: "text" as const,
+          text: `echo:${JSON.stringify(request.params.arguments)}`,
+        },
+      ],
+    }));
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    return {
+      server,
+      client,
+      connect: async () =>
+        Promise.all([
+          client.connect(clientTransport),
+          server.connect(serverTransport),
+        ]),
+      cleanup: async () => {
+        await clientTransport.close?.();
+        await serverTransport.close?.();
+      },
+    };
+  };
+
+  it("injects no handles into the high-level tools/list schema", async () => {
+    const { server, client, connect, cleanup } =
+      await setupHighLevelEchoServer();
+    try {
+      track(server, "proj_test", { enableTracing: false });
+      await connect();
+      const { tools } = await client.listTools();
+      const echo: any = tools.find((t: any) => t.name === "echo");
+      expect(echo.inputSchema.properties.task_id).toBeUndefined();
+      expect(echo.inputSchema.properties.agent_id).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("appends no mint-back and leaves arguments untouched on the high-level path", async () => {
+    const { server, client, connect, cleanup } =
+      await setupHighLevelEchoServer();
+    try {
+      track(server, "proj_test", { enableTracing: false });
+      await connect();
+      const result: any = await client.callTool({
+        name: "echo",
+        arguments: { text: "a" },
+      });
+
+      expect(result.content[0].text).toBe('echo:{"text":"a"}');
+      expect(
+        result.content.some((c: any) =>
+          String(c.text).includes("[MCP INSTRUCTIONS]"),
+        ),
+      ).toBe(false);
+      // Nothing but the customer's own content.
+      expect(result.content).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not resolve handles at all on the high-level path", async () => {
+    const { server, client, connect, cleanup } =
+      await setupHighLevelEchoServer();
+    const calls: string[] = [];
+    try {
+      track(server, "proj_test", {
+        enableTracing: false,
+        resolveTaskId: (request: any) => {
+          calls.push(request?.params?.name);
+          return "workflow-1";
+        },
+      });
+      await connect();
+      await client.callTool({ name: "echo", arguments: { text: "a" } });
+      expect(calls).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("appends no mint-back and leaves arguments untouched on the low-level path", async () => {
+    const { server, client, connect, cleanup } =
+      await setupLowLevelEchoServer();
+    try {
+      track(server, "proj_test", {
+        enableTracing: false,
+        enableReportMissing: false,
+      });
+      await connect();
+      const result: any = await client.callTool({
+        name: "echo",
+        arguments: { text: "a", task_id: "ses_x" },
+      });
+
+      // Not injected, so not stripped: the handler sees exactly what was sent.
+      expect(result.content[0].text).toBe(
+        'echo:{"text":"a","task_id":"ses_x"}',
+      );
+      expect(result.content).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+});

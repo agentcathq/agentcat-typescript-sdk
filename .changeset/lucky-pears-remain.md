@@ -13,6 +13,6 @@ Breaking:
 - `mcp:initialize`, `mcp:tools/list`, and `agentcat:identify` events are no longer published. Actor fields ride on the remaining events.
 - Custom events are anonymous unless `CustomEventData.actor` is supplied.
 - `publishCustomEvent` takes a Task ID: a `ses_`-prefixed value is used verbatim, anything else is derived as before. A tracked server with no `taskId` now publishes without a session ID.
-- Tool schemas gain optional `task_id` / `agent_id` parameters.
+- Tool schemas gain optional `task_id` / `agent_id` parameters. `enableTracing: false` disables handles entirely — nothing is injected, read, stripped, or minted back.
 
 New: `enableAgentTracking` and `resolveTaskId` options, `CustomEventData.actor` / `CustomEventData.taskId`, and `AgentCatIDPrefixes.Agent`.

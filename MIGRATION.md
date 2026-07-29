@@ -13,13 +13,13 @@ session semantics left to hang correlation on. AgentCat v2 replaces every
 session-derived identifier with two **explicit handles** that the agent threads
 back as ordinary tool parameters.
 
-|                    | v1 (session-derived)                                                      | v2 (explicit handles)                                                      |
-| ------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Correlation source | the MCP session ID, hashed                                                | `task_id`, an optional parameter injected into every tool                  |
-| Per-agent identity | none                                                                      | `agent_id`, an optional parameter injected into every tool                 |
-| `Event.sessionId`  | hashed MCP session ID (`ses_…`)                                           | the Task ID (still `ses_…` — dashboards and saved queries are unaffected)  |
-| `identify`         | ran once per session, result cached and merged                            | runs on every tool call, result stamped on that event only, nothing cached |
-| Events published   | `mcp:initialize`, `mcp:tools/list`, `agentcat:identify`, `mcp:tools/call` | `mcp:tools/call` only (plus `agentcat:custom`)                             |
+|                    | v1 (session-derived)                                                       | v2 (explicit handles)                                                      |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Correlation source | the MCP session ID (hashed), or an SDK-minted ID on a 30-minute idle timer | `task_id`, an optional parameter injected into every tool                  |
+| Per-agent identity | none                                                                       | `agent_id`, an optional parameter injected into every tool                 |
+| `Event.sessionId`  | hashed MCP session ID, or the SDK-minted one (`ses_…`)                     | the Task ID (still `ses_…` — dashboards and saved queries are unaffected)  |
+| `identify`         | ran on every request; result cached and merged across the session          | runs on every tool call, result stamped on that event only, nothing cached |
+| Events published   | `mcp:initialize`, `mcp:tools/list`, `agentcat:identify`, `mcp:tools/call`  | `mcp:tools/call` only (plus `agentcat:custom`)                             |
 
 The handle protocol is _omit, then echo_: an agent omits `task_id`/`agent_id` on
 its first call, the server mints them and appends an `[MCP INSTRUCTIONS]:` block
@@ -40,6 +40,13 @@ the resolved Task ID and keeps the `ses_` prefix, so existing dashboards, saved
 filters, and queries continue to work — they just group by task instead of by
 transport session.
 
+**This applies to you even if you never had an MCP session ID.** On stdio — and
+anywhere else the transport supplied no `Mcp-Session-Id` — v1 minted its own
+session ID and rolled it over after 30 minutes of inactivity, so a long-running
+server produced a new "session" whenever a user went quiet. v2 replaces that
+timer with the agent-supplied `task_id`: correlation now follows the goal rather
+than the clock, and a paused-then-resumed conversation stays in one task.
+
 `Event.sessionId` is now optional. It is `undefined` when no handle was
 available — for example a custom event published against a tracked server with no
 `taskId`.
@@ -55,16 +62,24 @@ Actor fields (`identifyActorGivenId`, `identifyActorName`, `identifyActorData`)
 now ride on every remaining event instead. If you have alerts, funnels, or
 exporter filters keyed on those three event types, they will go quiet.
 
-### 3. `identify` runs per tool call, and its result is never cached
+### 3. `identify` results are no longer cached or merged
+
+**Your callback is not called any more often than before.** v1 already invoked
+`identify` on every tool call (as well as on `initialize` and `tools/list`); what
+was once-per-session was the _caching_, the _merging_, and the change-gated
+`agentcat:identify` event — not the callback. v2 drops the cache, so if your
+`identify` does a database or API lookup, its cost per tool call is unchanged and
+you do not need to add memoization you did not need before.
 
 ```diff
-- // v1: identify ran once per session; the result was cached and reused
-- // for every later event on that session.
+- // v1: identify ran on every request, but the result was merged into a
+- // per-session cache and reused to stamp every later event on that session.
 + // v2: identify runs on every tool call. What it returns is stamped on
-+ // that call's event and nothing else.
++ // that call's event and nothing else. Nothing is cached or merged.
 ```
 
-Two consequences:
+The cache was also the mechanism behind the cross-request actor leak this release
+removes. Two consequences follow:
 
 **`userData` no longer accumulates.** v1 merged each result into the cached
 identity, so returning `{ a: 1 }` on one call and `{ b: 2 }` on the next yielded
@@ -90,13 +105,18 @@ only on `initialize` — loses that input permanently:
 
 ```diff
   identify: async (request, extra) => {
--   const client = request.params.clientInfo;        // never present in v2
-+   const client = mcpServer.getClientVersion();     // negotiated client info
+-   const client = request.params.clientInfo;          // never present in v2
++   // Low-level `Server`: server.getClientVersion()
++   // High-level `McpServer`: mcpServer.server.getClientVersion()
++   const client = mcpServer.server.getClientVersion(); // negotiated client info
     return { userId: await resolveUser(extra?.headers), userName: client?.name };
   },
 ```
 
-Use `extra` (headers, auth context) or `server.getClientVersion()` instead.
+Use `extra` (headers, auth context) or `getClientVersion()` instead.
+`getClientVersion()` is defined on the low-level `Server`, so a high-level
+`McpServer` must reach it through `.server` — calling it directly on the
+`McpServer` throws a `TypeError`.
 
 ### 4. Custom events are anonymous unless you supply an actor
 
