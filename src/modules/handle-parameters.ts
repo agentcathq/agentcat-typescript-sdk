@@ -4,6 +4,7 @@ import {
   AGENT_ID_PARAMETER_DESCRIPTION,
 } from "./constants.js";
 import { TASK_ID_PARAM, AGENT_ID_PARAM } from "./handles.js";
+import { getObjectShape, isZ4Schema } from "./mcp-sdk-compat.js";
 import { writeToLog } from "./logging.js";
 
 /**
@@ -25,11 +26,18 @@ export function toolDeclaresHandle(inputSchema: unknown): boolean {
  * can hand us:
  *
  * - JSON Schema (`{ properties: {...} }`) — what tools/list serves.
- * - A Zod object (`z.object({...})`) — what the high-level server stores in
+ * - A Zod object — what the high-level server stores in
  *   `_registeredTools[name].inputSchema`. NOT JSON Schema: reading
  *   `.properties` off it silently yields nothing, which would disable the
  *   collision guard on the high-level tools/call path entirely.
  * - A bare Zod shape (`{ text: z.string() }`) — older high-level SDKs.
+ *
+ * Zod is read through `getObjectShape`, the project's single Zod reader, and
+ * never by hand. @modelcontextprotocol/sdk accepts `zod ^3.25 || ^4.0` and
+ * normalises every v4 shape through `objectFromShape` -> `z4mini.object()`; a
+ * ZodMiniObject has no `_def` at all (its shape is at `_zod.def.shape`) and
+ * enumerating its own keys yields method names, so a hand-rolled `_def.shape`
+ * chain misses v4 collisions entirely.
  */
 function schemaParameterNames(inputSchema: unknown): string[] {
   if (!inputSchema || typeof inputSchema !== "object") return [];
@@ -39,14 +47,12 @@ function schemaParameterNames(inputSchema: unknown): string[] {
     return Object.keys(schema.properties);
   }
 
-  const zodShape = schema._def?.shape;
-  if (zodShape) {
-    const shape = typeof zodShape === "function" ? zodShape() : zodShape;
-    if (shape && typeof shape === "object") return Object.keys(shape);
-    return [];
-  }
+  const shape = getObjectShape(schema);
+  if (shape) return Object.keys(shape);
 
-  // Bare shape: plain object whose own keys are the parameter names.
+  // Anything Zod-shaped that got here is a non-object schema with no
+  // parameters to report; only a bare shape lists its parameters as own keys.
+  if (isZ4Schema(schema) || schema._def) return [];
   return Object.keys(schema);
 }
 

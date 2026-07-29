@@ -8,6 +8,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import * as z4 from "zod/v4";
 import {
   setupTestServerAndClient,
   resetTodos,
@@ -314,6 +315,102 @@ describe("handle flow — a tool that owns task_id", () => {
         .find((e) => e.resourceName === "legacy_tool")!;
       expect(event.tags!.agentcat_task_id_source).toBe("hook");
       expect(event.tags!.agentcat_handle_collision).toBe("task_id");
+    } finally {
+      await capture.stop();
+      await cleanup();
+    }
+  });
+});
+
+describe("handle flow — a zod-v4 tool that owns task_id", () => {
+  // The MCP SDK accepts zod ^3.25 || ^4.0 and normalises any v4 shape through
+  // objectFromShape -> z4mini.object(shape). A ZodMiniObject has NO `_def` —
+  // its shape lives at `_zod.def.shape` — so a schema reader that only knows
+  // `.properties` and `._def.shape` sees no parameters at all and misses the
+  // collision. Both cases below were hard-broken before that was fixed.
+  const setupV4CollisionServer = async () => {
+    const server = new McpServer({ name: "v4 collision", version: "1.0" });
+    server.registerTool(
+      "legacy_v4_tool",
+      {
+        description: "A zod-v4 tool that already owns task_id",
+        inputSchema: { task_id: z4.string() },
+      },
+      async (args: any) => ({
+        content: [{ type: "text" as const, text: `got:${args.task_id}` }],
+      }),
+    );
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      client.connect(clientTransport),
+      server.server.connect(serverTransport),
+    ]);
+    return {
+      server,
+      client,
+      cleanup: async () => {
+        await clientTransport.close?.();
+        await serverTransport.close?.();
+      },
+    };
+  };
+
+  it("passes its own task_id through with no preceding tools/list", async () => {
+    // Nothing has populated handleCollisionTools, so the registry lookup is
+    // the ONLY defence. Missing it strips task_id, the SDK's zod parse then
+    // rejects the call, and the customer's tool is hard-broken with
+    // "Input validation error ... expected string, received undefined".
+    const { server, client, cleanup } = await setupV4CollisionServer();
+    try {
+      track(server, "proj_test");
+      const result: any = await client.callTool({
+        name: "legacy_v4_tool",
+        arguments: { task_id: "customer-owned-v4" },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toBe("got:customer-owned-v4");
+      expect(
+        result.content.some((c: any) =>
+          String(c.text).includes("[MCP INSTRUCTIONS]"),
+        ),
+      ).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("passes its own task_id through after a tools/list", async () => {
+    // handleCollisionTools now rescues the outer wrapper, but the
+    // callback-level strip is a separate check — if it disagrees, the handler
+    // silently receives {} and the argument is lost without any error.
+    const capture = new EventCapture();
+    await capture.start();
+    const { server, client, cleanup } = await setupV4CollisionServer();
+    try {
+      track(server, "proj_test");
+      await client.listTools();
+      const result: any = await client.callTool({
+        name: "legacy_v4_tool",
+        arguments: { task_id: "customer-owned-v4" },
+      });
+      await settle();
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toBe("got:customer-owned-v4");
+      expect(
+        result.content.some((c: any) =>
+          String(c.text).includes("[MCP INSTRUCTIONS]"),
+        ),
+      ).toBe(false);
+
+      const event = capture
+        .getEvents()
+        .find((e) => e.resourceName === "legacy_v4_tool")!;
+      expect(event.tags!.agentcat_handle_collision).toBe("task_id");
+      expect(event.sessionId).not.toBe("customer-owned-v4");
     } finally {
       await capture.stop();
       await cleanup();

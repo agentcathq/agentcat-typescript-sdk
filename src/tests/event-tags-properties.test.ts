@@ -23,8 +23,13 @@ const customerTags = (event: { tags?: Record<string, string> | null }) => {
   return tags;
 };
 
+// Pins values, not mere presence: `customerTags` filters every agentcat_* key
+// out of the assertions above, so this helper is the ONLY thing standing
+// between a silent loss of the namespaced tags and a green suite. No test in
+// this file configures resolveTaskId, so both handles are always minted here.
 const expectHandleTags = (event: { tags?: Record<string, string> | null }) => {
-  expect(event.tags!.agentcat_task_id_source).toBeDefined();
+  expect(event.tags!.agentcat_task_id_source).toBe("minted");
+  expect(event.tags!.agentcat_agent_id_source).toBe("minted");
   expect(event.tags!.agentcat_agent_id).toMatch(/^agt_/);
 };
 

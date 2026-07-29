@@ -21,6 +21,8 @@ import {
   cloneRequestWithoutHandles,
   stampHandlesOnEvent,
   appendMintBack,
+  newTaskId,
+  ResolvedHandles,
 } from "./handles.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
@@ -151,7 +153,20 @@ export function setupToolCallTracing(server: MCPServerLike): void {
         );
       }
 
-      const handles = await resolveHandles(data, request, extra, ownsHandle);
+      // Handle resolution must never be able to fail a customer's tool call.
+      // tracingV2 gets this from its setup try/catch, which logs and continues
+      // to the original handler; this path's try/catch wraps the handler call
+      // itself, so the degradation is local: fall back to a freshly minted
+      // task rather than propagating.
+      let handles: ResolvedHandles;
+      try {
+        handles = await resolveHandles(data, request, extra, ownsHandle);
+      } catch (error) {
+        writeToLog(
+          `Warning: AgentCat handle resolution failed for tool ${request.params?.name}, minting a task instead - ${error}`,
+        );
+        handles = { taskId: newTaskId(), taskIdSource: "minted" };
+      }
 
       let event: UnredactedEvent = {
         sessionId: handles.taskId,

@@ -52,12 +52,17 @@ function isToolResultError(result: any): boolean {
  *
  * The high-level registry is exact and needs no cached state, so it is asked
  * first — and it answers with the parameter name, which is what the collision
- * tag records. `handleCollisionTools` is the fallback for tools the registry
- * does not know about (registered straight onto the low-level server), and it
- * can only say that the tool collides.
+ * tag records. `handleCollisionTools`, recorded during tools/list, is the
+ * fallback for tools the registry cannot answer for; it can only say *that*
+ * the tool collides.
+ *
+ * THE single ownership authority. Both the tools/call wrapper and the
+ * callback wrapper must call this and nothing else: when they disagreed, a
+ * schema the registry reader could not parse left the call half-protected —
+ * the outer wrapper spared the argument and the inner one still ate it.
  */
 function resolveHandleOwnership(
-  data: AgentCatData,
+  data: AgentCatData | undefined,
   highLevelServer: HighLevelMCPServerLike | undefined,
   toolName: string | undefined,
 ): HandleOwnership {
@@ -67,7 +72,7 @@ function resolveHandleOwnership(
     const param = declaredHandleParam(registered.inputSchema);
     if (param) return param;
   }
-  return data.handleCollisionTools.has(toolName);
+  return data?.handleCollisionTools.has(toolName) ?? false;
 }
 
 function addTracingToToolRegistry(
@@ -232,9 +237,14 @@ function addTracingToToolCallbackInternal(
     }
 
     // Never strip a parameter we did not inject: a tool that declares its own
-    // task_id/agent_id must receive it intact.
+    // task_id/agent_id must receive it intact. Same authority the tools/call
+    // wrapper uses — the two must never be able to disagree.
     const ownsHandle = Boolean(
-      declaredHandleParam(server?._registeredTools?.[toolName]?.inputSchema),
+      resolveHandleOwnership(
+        server?.server ? getServerTrackingData(server.server) : undefined,
+        server,
+        toolName,
+      ),
     );
     const dropHandles = (a: any): any => (ownsHandle ? a : stripHandles(a));
 
