@@ -70,7 +70,7 @@ agentcat.track(mcpServer, "proj_0000000");
 
 ### Identifying users
 
-You can identify your user sessions with a simple callback AgentCat exposes, called `identify`.
+You can identify the actor behind each request with a simple callback AgentCat exposes, called `identify`.
 
 ```ts
 agentcat.track(mcpServer, "proj_0000000", {
@@ -84,6 +84,113 @@ agentcat.track(mcpServer, "proj_0000000", {
   },
 });
 ```
+
+`identify` runs on **every tool call**, and what it returns is stamped on that
+call's event and nothing else. Nothing is cached or merged between calls, so
+return the complete `userData` object each time — a partial object will not be
+combined with what you returned earlier. Returning `null` (or throwing) leaves
+that event anonymous.
+
+### Task and agent handles
+
+MCP 2026-07-28 ([SEP-2567](https://modelcontextprotocol.io)) removed
+protocol-level sessions, so there is no transport identifier left to correlate
+tool calls with. AgentCat instead asks the agent for two explicit handles, both
+injected into your tools' schemas as **optional** string parameters:
+
+| Parameter  | Scope                                                                     | Lands in                                  |
+| ---------- | ------------------------------------------------------------------------- | ----------------------------------------- |
+| `task_id`  | One goal from start to finish. Subagents reuse the **same** `task_id`.    | `Event.sessionId` (still `ses_`-prefixed) |
+| `agent_id` | One per agent. A freshly spawned subagent **omits** it and is issued one. | the `agentcat_agent_id` tag               |
+
+The protocol is _omit, then echo_:
+
+1. On its first call the agent omits the handles.
+2. The server mints them and appends an `[MCP INSTRUCTIONS]:` text block to the
+   tool result telling the agent which values to reuse.
+3. The agent echoes those exact values on every later call, and passes `task_id`
+   (never `agent_id`) to any subagent it spawns.
+
+Nothing changes in your handler: AgentCat strips both parameters from the
+arguments before your tool code runs, and the mint-back block is appended only
+when something was actually minted — never to an error result, and never to a
+result without an array `content` field.
+
+Because `Event.sessionId` still carries a `ses_`-prefixed ID, a "session" in the
+AgentCat dashboard is now one task, and existing saved views and queries keep
+working.
+
+Each tool-call event is also tagged with `agentcat_task_id_source`
+(`hook` | `supplied` | `minted`) and, when agent tracking is on,
+`agentcat_agent_id` plus `agentcat_agent_id_source` (`supplied` | `minted`).
+
+#### Options
+
+```ts
+agentcat.track(mcpServer, "proj_0000000", {
+  // Drop `agent_id` entirely — schemas, tags, and mint-back text. Default: true.
+  enableAgentTracking: false,
+
+  // Supply your own correlation ID instead. Takes precedence over the
+  // agent-supplied `task_id`; return null (or throw) to fall back to it.
+  resolveTaskId: (request, extra) => {
+    const header = extra?.headers?.["x-workflow-id"];
+    return typeof header === "string" ? header : null;
+  },
+});
+```
+
+`resolveTaskId` runs on every tool call and receives the same `(request, extra)`
+arguments as `identify`. Whatever it returns is hashed together with your project
+ID into a deterministic `ses_…` Task ID, so the same identifier always maps to
+the same task. You will see that hashed `ses_…` in the dashboard, **not** the
+string you returned — passing `"checkout-flow"` does not make `"checkout-flow"`
+appear anywhere in the UI.
+
+Handle injection is gated on `enableTracing`. With `enableTracing: false` no
+handles are added to your schemas and none are read from incoming calls.
+
+If one of your own tools already declares a `task_id` or `agent_id` parameter,
+AgentCat leaves that tool alone — it will not inject, read, or strip the
+parameter — and tags the resulting events with `agentcat_handle_collision`.
+
+#### Custom events and handle conventions
+
+`publishCustomEvent` has no request to read handles from, so you must pass the
+Task ID yourself — as the first argument, or as `eventData.taskId`, which wins.
+Custom events are **anonymous** unless you also supply `eventData.actor`.
+
+```ts
+await agentcat.publishCustomEvent(server, "proj_0000000", {
+  taskId: "ses_2Zx...", // the handle the agent echoed back
+  resourceName: "custom-action",
+  actor: { userId: "user-123", userName: "Ada" },
+});
+```
+
+The string is interpreted by prefix: a value starting with `ses_` is used
+**verbatim**, and anything else is **derived** with the same hash `resolveTaskId`
+uses. That one-bit heuristic is all a bare string carries, so two mixed
+conventions do not correlate — and neither is fixable from the string alone:
+
+- An agent-supplied `task_id` that is **not** `ses_`-prefixed is taken verbatim
+  on a tool call (deliberately, so a caller can thread its own ID through), but
+  the same string handed to `publishCustomEvent` gets derived.
+- A `resolveTaskId` hook returning a **`ses_`-prefixed** value is derived (hook
+  return values always are), but the same string handed to `publishCustomEvent`
+  is used verbatim.
+
+**Pick one convention and stay in it.** Either use the handles the agent gave you
+— always `ses_`-prefixed, therefore verbatim everywhere — or always use your own
+identifiers via `resolveTaskId` — never `ses_`-prefixed, therefore derived
+everywhere. Do not mix.
+
+#### ID prefixes
+
+`AgentCatIDPrefixes` is exported as documentation of the ID scheme AgentCat
+mints (`ses` for tasks, `agt` for agents, `evt` for events). It is a reference
+constant with no internal consumers — the SDK hardcodes its own prefixes — so
+you never need to pass it anywhere.
 
 ### Redacting sensitive data
 
@@ -115,7 +222,7 @@ agentcat.track(mcpServer, "proj_0000000", {
 });
 ```
 
-When both hooks are configured, `redactEvent` runs first and sees the raw, unredacted values; `redactSensitiveInformation` then runs on its output as a final string-level scrub. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed by the hook, and if the hook throws, the event is dropped. The hook also applies to `publishCustomEvent` when called with a tracked server.
+When both hooks are configured, `redactEvent` runs first and sees the raw, unredacted values; `redactSensitiveInformation` then runs on its output as a final string-level scrub. The system-managed fields `id`, `sessionId` (the Task ID — see [Task and agent handles](#task-and-agent-handles)), `projectId`, `eventType`, and `timestamp` cannot be changed by the hook, and if the hook throws, the event is dropped. The hook also applies to `publishCustomEvent` when called with a tracked server.
 
 ### Existing Platform Support
 

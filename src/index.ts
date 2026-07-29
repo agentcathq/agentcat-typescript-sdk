@@ -40,13 +40,15 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * @param projectId - Your AgentCat project ID obtained from agentcat.com when creating an account. Pass null for telemetry-only mode.
  * @param options - Optional configuration to customize tracking behavior.
  * @param options.enableReportMissing - Adds a "get_more_tools" tool that allows LLMs to automatically report missing functionality.
- * @param options.enableTracing - Enables tracking of tool calls and usage patterns.
+ * @param options.enableTracing - Enables tracking of tool calls and usage patterns. Also gates handle injection: when false, `task_id`/`agent_id` are not added to tool schemas.
+ * @param options.enableAgentTracking - Injects an optional `agent_id` handle alongside `task_id` so subagents can be told apart within a single task. Each agent omits `agent_id` on its first call and is issued its own, while one `task_id` is shared by every agent working the same goal. Defaults to true. Set false to drop `agent_id` from tool schemas, from the `agentcat_agent_id` / `agentcat_agent_id_source` event tags, and from the mint-back instructions entirely; `task_id` is unaffected.
  * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent.
+ * @param options.resolveTaskId - Callback returning your own correlation identifier for a request (a workflow id, a ticket id). The returned string is trimmed and combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same Task ID across processes and restarts. Takes precedence over an agent-supplied `task_id`. Return null or an empty string — or throw — to fall back to the agent-supplied value, then to a freshly minted one. Runs on every tool call and receives the same `(request, extra)` arguments as `identify`. Note that the returned value is always derived, even if it already looks like a `ses_`-prefixed handle.
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
- * @param options.identify - Async function to identify users and attach custom data to their sessions.
+ * @param options.identify - Async function returning the actor behind a request. Runs on every tool call and the result is stamped on that call's event only — nothing is cached or merged between calls, so return the complete `userData` object each time.
  * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
- * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
- * @param options.eventTags - Callback invoked on every auto-captured event (tool calls, tool lists, initialize) to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId` (the Task ID), `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
+ * @param options.eventTags - Callback invoked on every auto-captured event (tool calls) to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`. AgentCat adds its own `agentcat_`-prefixed tags (`agentcat_task_id_source`, `agentcat_agent_id`, `agentcat_agent_id_source`) after your tags are validated, so they neither collide with your keys nor consume your 50-tag budget.
  * @param options.eventProperties - Callback invoked on every auto-captured event to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.apiBaseUrl - Custom API base URL for sending events. Falls back to the `AGENTCAT_API_URL` environment variable if not set (then legacy `MCPCAT_API_URL`), then to the default `https://api.agentcat.com`.
  * @param options.disableDiagnostics - Disables AgentCat's internal SDK diagnostics (anonymous error/telemetry reporting used to monitor SDK setup failures). Diagnostics are on by default, automatically disabled in test environments (`VITEST`, `JEST_WORKER_ID`, or `NODE_ENV=test`), and can also be disabled with the `DISABLE_DIAGNOSTICS` environment variable. Local `~/agentcat.log` logging is unaffected.
@@ -89,6 +91,27 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  *       userData: { plan: user.plan, company: user.company }
  *     };
  *   }
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Task and agent handles
+ * //
+ * // By default every tool gains optional `task_id` and `agent_id` parameters.
+ * // An agent omits them on its first call, the server mints them and appends an
+ * // "[MCP INSTRUCTIONS]:" block to the result, and the agent echoes them back on
+ * // every later call. AgentCat strips both before your handler runs.
+ * agentcat.track(mcpServer, "proj_abc123xyz", {
+ *   enableAgentTracking: false, // task_id only, no per-agent handle
+ * });
+ *
+ * // Or correlate by your own identifier instead of the agent-supplied handle
+ * agentcat.track(mcpServer, "proj_abc123xyz", {
+ *   resolveTaskId: (request, extra) => {
+ *     const header = extra?.headers?.["x-workflow-id"];
+ *     return typeof header === "string" ? header : null;
+ *   },
  * });
  * ```
  *
