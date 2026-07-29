@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { addHandleParametersToTools } from "../modules/handle-parameters.js";
 import { addContextParameterToTools } from "../modules/context-parameters.js";
+import {
+  TASK_ID_PARAMETER_DESCRIPTION,
+  AGENT_ID_PARAMETER_DESCRIPTION,
+} from "../modules/constants.js";
 
 const tool = (name: string, inputSchema: any) => ({ name, inputSchema }) as any;
 
@@ -19,6 +23,14 @@ describe("handle parameter injection", () => {
     expect(out.inputSchema.properties.task_id.type).toBe("string");
     expect(out.inputSchema.properties.agent_id.type).toBe("string");
     expect(out.inputSchema.required).toEqual(["text"]);
+    // Pin the injected copy to the constants: a re-typed inline literal at the
+    // injection site must not be able to diverge from constants.ts silently.
+    expect(out.inputSchema.properties.task_id.description).toBe(
+      TASK_ID_PARAMETER_DESCRIPTION,
+    );
+    expect(out.inputSchema.properties.agent_id.description).toBe(
+      AGENT_ID_PARAMETER_DESCRIPTION,
+    );
   });
 
   it("omits agent_id when agent tracking is disabled", () => {
@@ -48,7 +60,7 @@ describe("handle parameter injection", () => {
     ]);
   });
 
-  it("does not inject into get_more_tools's exemption list", () => {
+  it("injects into get_more_tools (deliberately not exempted)", () => {
     // get_more_tools is deliberately NOT skipped for handles.
     const [out] = addHandleParametersToTools(
       [
@@ -74,13 +86,16 @@ describe("handle parameter injection", () => {
     expect(out.inputSchema.properties.agent_id).toBeUndefined();
   });
 
-  it("skips complex schemas", () => {
-    const [out] = addHandleParametersToTools(
-      [tool("x", { oneOf: [{ type: "object" }] })],
-      true,
-    ) as any[];
-    expect(out.inputSchema.properties).toBeUndefined();
-  });
+  it.each(["oneOf", "allOf", "anyOf"])(
+    "skips complex schemas (%s)",
+    (keyword) => {
+      const [out] = addHandleParametersToTools(
+        [tool("x", { [keyword]: [{ type: "object" }] })],
+        true,
+      ) as any[];
+      expect(out.inputSchema.properties).toBeUndefined();
+    },
+  );
 
   it("removes additionalProperties: false so the schema stays valid", () => {
     const [out] = addHandleParametersToTools(
