@@ -59,7 +59,9 @@ describe("E2E Sanitization - real MCP tool calls", () => {
 
       expect(toolEvent).toBeDefined();
       const content = toolEvent!.response.content;
-      expect(content).toHaveLength(2);
+      // The tool's own two blocks, plus the handle mint-back block the SDK
+      // appends to the result (and records on the event).
+      expect(content).toHaveLength(3);
       // Text block preserved
       expect(content[0]).toEqual({
         type: "text",
@@ -70,6 +72,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
         type: "text",
         text: "[image content redacted - not supported by AgentCat]",
       });
+      expect(content[2].text).toContain("[MCP INSTRUCTIONS]");
 
       await eventCapture.stop();
     } finally {

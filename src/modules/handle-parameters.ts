@@ -21,6 +21,51 @@ export function toolDeclaresHandle(inputSchema: unknown): boolean {
 }
 
 /**
+ * The parameter names a schema declares, across every representation the SDK
+ * can hand us:
+ *
+ * - JSON Schema (`{ properties: {...} }`) — what tools/list serves.
+ * - A Zod object (`z.object({...})`) — what the high-level server stores in
+ *   `_registeredTools[name].inputSchema`. NOT JSON Schema: reading
+ *   `.properties` off it silently yields nothing, which would disable the
+ *   collision guard on the high-level tools/call path entirely.
+ * - A bare Zod shape (`{ text: z.string() }`) — older high-level SDKs.
+ */
+function schemaParameterNames(inputSchema: unknown): string[] {
+  if (!inputSchema || typeof inputSchema !== "object") return [];
+  const schema = inputSchema as Record<string, any>;
+
+  if (schema.properties && typeof schema.properties === "object") {
+    return Object.keys(schema.properties);
+  }
+
+  const zodShape = schema._def?.shape;
+  if (zodShape) {
+    const shape = typeof zodShape === "function" ? zodShape() : zodShape;
+    if (shape && typeof shape === "object") return Object.keys(shape);
+    return [];
+  }
+
+  // Bare shape: plain object whose own keys are the parameter names.
+  return Object.keys(schema);
+}
+
+/**
+ * The handle parameter a tool declares as its own, or undefined. Returning the
+ * name (not a boolean) is what lets the collision tag say which parameter
+ * collided — `handleCollisionTools` records tool names only, so the parameter
+ * is unrecoverable after the fact.
+ */
+export function declaredHandleParam(
+  inputSchema: unknown,
+): typeof TASK_ID_PARAM | typeof AGENT_ID_PARAM | undefined {
+  const names = schemaParameterNames(inputSchema);
+  if (names.includes(TASK_ID_PARAM)) return TASK_ID_PARAM;
+  if (names.includes(AGENT_ID_PARAM)) return AGENT_ID_PARAM;
+  return undefined;
+}
+
+/**
  * Adds task_id and agent_id to a tool's JSON Schema as OPTIONAL properties.
  * Optionality is the minting mechanism: an omitted handle is the signal for the
  * server to issue one, so these are never added to `required`.

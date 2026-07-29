@@ -71,7 +71,7 @@ import {
   isCompatibleServerType,
   isHighLevelServer,
 } from "../modules/compatibility.js";
-import { getSessionInfo, newSessionId } from "../modules/session.js";
+import { getSessionInfo } from "../modules/session.js";
 import {
   setServerTrackingData,
   getServerTrackingData,
@@ -113,7 +113,6 @@ describe("track() URL resolution", () => {
 
     // Setup session/internal mocks
     (getSessionInfo as any).mockReturnValue({});
-    (newSessionId as any).mockReturnValue("ses_test123");
     (getServerTrackingData as any).mockReturnValue(null); // Not yet tracked
     (setServerTrackingData as any).mockImplementation(() => {});
 

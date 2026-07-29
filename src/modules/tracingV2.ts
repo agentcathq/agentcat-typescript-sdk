@@ -1,5 +1,6 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  AgentCatData,
   HighLevelMCPServerLike,
   MCPServerLike,
   UnredactedEvent,
@@ -13,7 +14,16 @@ import {
   resolveEventTags,
   resolveEventProperties,
 } from "./internal.js";
-import { getServerSessionId } from "./session.js";
+import {
+  resolveHandles,
+  cloneRequestWithoutHandles,
+  stripHandles,
+  stampHandlesOnEvent,
+  appendMintBack,
+  ResolvedHandles,
+  HandleOwnership,
+} from "./handles.js";
+import { declaredHandleParam } from "./handle-parameters.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { handleReportMissing } from "./tools.js";
@@ -35,6 +45,29 @@ const AGENTCAT_PROCESSED = Symbol("__agentcat_processed__");
 
 function isToolResultError(result: any): boolean {
   return result && typeof result === "object" && result.isError === true;
+}
+
+/**
+ * Whether the called tool owns `task_id`/`agent_id` itself.
+ *
+ * The high-level registry is exact and needs no cached state, so it is asked
+ * first — and it answers with the parameter name, which is what the collision
+ * tag records. `handleCollisionTools` is the fallback for tools the registry
+ * does not know about (registered straight onto the low-level server), and it
+ * can only say that the tool collides.
+ */
+function resolveHandleOwnership(
+  data: AgentCatData,
+  highLevelServer: HighLevelMCPServerLike | undefined,
+  toolName: string | undefined,
+): HandleOwnership {
+  if (!toolName) return false;
+  const registered = highLevelServer?._registeredTools?.[toolName];
+  if (registered) {
+    const param = declaredHandleParam(registered.inputSchema);
+    if (param) return param;
+  }
+  return data.handleCollisionTools.has(toolName);
 }
 
 function addTracingToToolRegistry(
@@ -170,7 +203,7 @@ function setupListenerToRegisteredTools(server: HighLevelMCPServerLike): void {
 function addTracingToToolCallbackInternal(
   tool: RegisteredTool,
   toolName: string,
-  _server: HighLevelMCPServerLike,
+  server: HighLevelMCPServerLike,
 ): RegisteredTool {
   const originalCallback = getToolFunction(tool);
 
@@ -198,16 +231,27 @@ function addTracingToToolCallbackInternal(
       extra = params[0];
     }
 
-    const removeContextFromArgs = (args: any): any => {
-      if (args && typeof args === "object" && "context" in args) {
-        const { context: _context, ...argsWithoutContext } = args;
-        return argsWithoutContext;
+    // Never strip a parameter we did not inject: a tool that declares its own
+    // task_id/agent_id must receive it intact.
+    const ownsHandle = Boolean(
+      declaredHandleParam(server?._registeredTools?.[toolName]?.inputSchema),
+    );
+    const dropHandles = (a: any): any => (ownsHandle ? a : stripHandles(a));
+
+    const removeInjectedParams = (args: any): any => {
+      if (args && typeof args === "object") {
+        const { context: _context, ...rest } = args as Record<string, unknown>;
+        return dropHandles(rest);
       }
       return args;
     };
 
+    // get_more_tools keeps its own context (its handler needs it) but must
+    // still have the handles removed.
     const cleanedArgs =
-      toolName === "get_more_tools" ? args : removeContextFromArgs(args);
+      toolName === "get_more_tools"
+        ? dropHandles(args)
+        : removeInjectedParams(args);
 
     try {
       if (cleanedArgs === undefined) {
@@ -254,6 +298,7 @@ function setupToolsCallHandlerWrapping(server: HighLevelMCPServerLike): void {
     const wrappedHandler = createToolsCallWrapper(
       existingHandler,
       lowLevelServer,
+      server,
     );
     lowLevelServer._requestHandlers.set("tools/call", wrappedHandler);
   }
@@ -271,7 +316,11 @@ function setupToolsCallHandlerWrapping(server: HighLevelMCPServerLike): void {
 
     // Only wrap tools/call handler
     if (method === "tools/call") {
-      const wrappedHandler = createToolsCallWrapper(handler, lowLevelServer);
+      const wrappedHandler = createToolsCallWrapper(
+        handler,
+        lowLevelServer,
+        server,
+      );
       return originalSetRequestHandler(requestSchema, wrappedHandler);
     }
 
@@ -283,11 +332,15 @@ function setupToolsCallHandlerWrapping(server: HighLevelMCPServerLike): void {
 function createToolsCallWrapper(
   originalHandler: any,
   server: MCPServerLike,
+  highLevelServer?: HighLevelMCPServerLike,
 ): any {
   return async (request: any, extra: any) => {
     const startTime = new Date();
     let shouldPublishEvent = false;
     let event: UnredactedEvent | null = null;
+    // Hoisted so the return paths below can append the mint-back block.
+    let handles: ResolvedHandles | undefined;
+    let ownsHandle: HandleOwnership = false;
 
     try {
       const data = getServerTrackingData(server);
@@ -299,10 +352,23 @@ function createToolsCallWrapper(
       } else {
         shouldPublishEvent = true;
 
-        const sessionId = getServerSessionId(server, extra);
+        ownsHandle = resolveHandleOwnership(
+          data,
+          highLevelServer,
+          request.params?.name,
+        );
+        if (ownsHandle) {
+          writeToLog(
+            `WARN: Tool "${request.params?.name}" declares its own '${
+              typeof ownsHandle === "string" ? ownsHandle : "task_id/agent_id"
+            }' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
+          );
+        }
+
+        handles = await resolveHandles(data, request, extra, ownsHandle);
 
         event = {
-          sessionId,
+          sessionId: handles.taskId,
           resourceName: request.params?.name || "Unknown Tool",
           parameters: { request, extra },
           eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
@@ -317,7 +383,6 @@ function createToolsCallWrapper(
           event.identifyActorName = identity.userName;
           event.identifyActorData = identity.userData;
         }
-        event.sessionId = data.sessionId;
 
         const resolvedTags = await resolveEventTags(data, request, extra);
         if (resolvedTags) event.tags = resolvedTags;
@@ -327,6 +392,9 @@ function createToolsCallWrapper(
           extra,
         );
         if (resolvedProperties) event.properties = resolvedProperties;
+
+        // AFTER the customer's tags, so ours always survive validateTags().
+        stampHandlesOnEvent(event, handles);
 
         // Extract context for userIntent
         if (
@@ -343,20 +411,32 @@ function createToolsCallWrapper(
       );
     }
 
+    // Two reasons to pass the request straight through: the tool owns the
+    // parameter (never touch what we did not inject), or handle resolution
+    // never ran at all (untracked server / tracing setup threw), in which case
+    // AgentCat must be transparent rather than half-applied.
+    const applyHandles = Boolean(handles) && !ownsHandle;
+    const finalize = (result: any): any =>
+      applyHandles ? appendMintBack(result, handles!) : result;
+    const delegatedRequest = applyHandles
+      ? cloneRequestWithoutHandles(request)
+      : request;
+
     // If this is get_more_tools, handle it directly without relying on server registration
     if (request?.params?.name === "get_more_tools") {
       try {
         const result = await handleReportMissing({
           context: request?.params?.arguments?.context,
         });
+        const finalResult = finalize(result);
 
         if (event && shouldPublishEvent) {
           event.userIntent = request?.params?.arguments?.context;
-          event.response = result;
+          event.response = finalResult;
           event.duration = new Date().getTime() - startTime.getTime();
           publishEvent(server, event);
         }
-        return result;
+        return finalResult;
       } catch (error) {
         if (event && shouldPublishEvent) {
           event.isError = true;
@@ -370,7 +450,8 @@ function createToolsCallWrapper(
 
     // Execute other tools (even if tracing setup failed)
     try {
-      const result = await originalHandler(request, extra);
+      const result = await originalHandler(delegatedRequest, extra);
+      const finalResult = finalize(result);
 
       if (event && shouldPublishEvent) {
         // Check for execution errors (SDK converts them to CallToolResult)
@@ -390,12 +471,12 @@ function createToolsCallWrapper(
           }
         }
 
-        event.response = result;
+        event.response = finalResult;
         event.duration = new Date().getTime() - startTime.getTime();
         publishEvent(server, event);
       }
 
-      return result;
+      return finalResult;
     } catch (error) {
       // Validation errors, unknown tool, disabled tool
       if (event && shouldPublishEvent) {

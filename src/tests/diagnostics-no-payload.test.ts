@@ -14,7 +14,8 @@ import { randomUUID } from "node:crypto";
 // The diagnostics sink publishes every writeToLog entry, verbatim, to AgentCat's
 // central collector. These tests register a capturing sink on that exact path
 // and assert that real tool calls never push actual event payloads (tool-call
-// arguments, actor PII, user free-text) through it — only metadata.
+// arguments, identity PII, user free-text) through it — only metadata. Note the
+// actor ID is a deliberate exception: the publish-confirmation line carries it.
 describe("diagnostics sink never receives event payloads", () => {
   let server: HighLevelMCPServerLike;
   let client: any;
@@ -76,15 +77,31 @@ describe("diagnostics sink never receives event payloads", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
 
+    // Liveness: the sink really is wired, so the negatives below mean
+    // something. Without this the whole test would pass vacuously if the
+    // writeToLog -> sink tee ever regressed.
+    expect(captured.some((l) => l.includes("AgentCat setup complete"))).toBe(
+      true,
+    );
+
     // Identity is now resolved per request and stamped straight onto the event.
-    // Nothing about it is written to the diagnostics sink at all — not the
-    // per-session "Identified session" line (identify runs on every call now,
-    // so that line would be pure noise) and above all no PII.
+    // The per-session "Identified session" line is gone (identify runs on every
+    // call now, so that line would be pure noise) and no PII is logged.
     expect(captured.some((l) => l.includes("Identified session"))).toBe(false);
     expect(captured.some((l) => l.includes("with identity:"))).toBe(false);
-    expect(captured.some((l) => l.includes(userId))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_NAME))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_DATA))).toBe(false);
+
+    // The actor ID is NOT withheld from the sink outright: eventQueue's
+    // send-confirmation line embeds it, and writeToLog tees verbatim. That line
+    // does not run here only because EventCapture stubs sendEvent. So assert
+    // the honest property — the actor id appears in no line OTHER than the
+    // send confirmation — rather than the false one that it never appears.
+    expect(
+      captured
+        .filter((l) => l.includes(userId))
+        .every((l) => l.includes("Successfully sent event")),
+    ).toBe(true);
   });
 
   it("emits start + complete setup beacons (metadata only) on track()", async () => {

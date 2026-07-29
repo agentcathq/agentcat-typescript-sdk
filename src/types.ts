@@ -199,12 +199,8 @@ export interface SessionInfo {
 
 export interface AgentCatData {
   projectId: string; // Project ID for AgentCat
-  sessionId: string; // Unique identifier for the session (KSUID with ses prefix)
-  lastActivity: Date; // Last activity timestamp
   sessionInfo: SessionInfo;
   options: AgentCatOptions;
-  lastMcpSessionId?: string; // Track the last MCP sessionId we saw
-  sessionSource: "mcp" | "agentcat"; // Track whether session ID came from MCP protocol or AgentCat generation
   /**
    * Names of tools that declare their own task_id/agent_id parameter. Server
    * configuration, identical for every caller and bounded by tool count — not

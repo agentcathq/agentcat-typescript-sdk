@@ -16,11 +16,8 @@ import {
 import { writeToLog } from "./modules/logging.js";
 import { setupAgentCatTools } from "./modules/tools.js";
 import { setupToolCallTracing } from "./modules/tracing.js";
-import {
-  getSessionInfo,
-  newSessionId,
-  deriveSessionIdFromMCPSession,
-} from "./modules/session.js";
+import { getSessionInfo } from "./modules/session.js";
+import { deriveTaskId, newTaskId } from "./modules/handles.js";
 import {
   setServerTrackingData,
   getServerTrackingData,
@@ -238,8 +235,6 @@ function track(
     const sessionInfo = getSessionInfo(lowLevelServer, undefined);
     const agentcatData: AgentCatData = {
       projectId: projectId || "", // Use empty string for null projectId
-      sessionId: newSessionId(),
-      lastActivity: new Date(),
       sessionInfo,
       options: {
         enableReportMissing: options.enableReportMissing ?? true,
@@ -254,7 +249,6 @@ function track(
         eventTags: options.eventTags,
         eventProperties: options.eventProperties,
       },
-      sessionSource: "agentcat", // Initially AgentCat-generated, will change to "mcp" if MCP sessionId is provided in requests
       handleCollisionTools: new Set<string>(),
     };
 
@@ -263,12 +257,15 @@ function track(
       const highLevelServer = validatedServer as HighLevelMCPServerLike;
       setupTracking(highLevelServer);
     } else {
-      if (agentcatData.options.enableReportMissing) {
-        try {
-          setupAgentCatTools(lowLevelServer);
-        } catch (error) {
-          writeToLog(`Warning: Failed to setup report missing tool - ${error}`);
-        }
+      // Unconditional: this is the ONLY thing that wraps tools/list on the
+      // low-level path, and that wrap owns handle injection and collision
+      // recording as well as get_more_tools. Gating it on enableReportMissing
+      // silently disabled handles for anyone who turned that option off. The
+      // get_more_tools descriptor itself stays gated, inside.
+      try {
+        setupAgentCatTools(lowLevelServer);
+      } catch (error) {
+        writeToLog(`Warning: Failed to setup tools/list wrapping - ${error}`);
       }
 
       if (agentcatData.options.enableTracing) {
@@ -375,8 +372,12 @@ export async function publishCustomEvent(
     const trackingData = getServerTrackingData(lowLevelServer as MCPServerLike);
 
     if (trackingData) {
-      // Use the tracked server's session ID and configuration
-      sessionId = trackingData.sessionId;
+      // A tracked server no longer carries an ambient session: Task IDs are
+      // minted per request from the handles the agent supplies, and a custom
+      // event has no request to read them from. Mint a standalone one so the
+      // event is still well-formed. Pass a stable id string instead of the
+      // server to correlate a custom event with a task.
+      sessionId = newTaskId();
     } else {
       // Server is not tracked - treat it as an error
       throw new Error(
@@ -384,8 +385,9 @@ export async function publishCustomEvent(
       );
     }
   } else if (typeof serverOrSessionId === "string") {
-    // Custom session ID provided - derive a deterministic session ID
-    sessionId = deriveSessionIdFromMCPSession(serverOrSessionId, projectId);
+    // Custom identifier provided - derive a deterministic Task ID. Same
+    // construction the MCP-session derivation used, so ids stay stable.
+    sessionId = deriveTaskId(serverOrSessionId, projectId);
   } else {
     throw new Error(
       "First parameter must be either an MCP server object or a session ID string",

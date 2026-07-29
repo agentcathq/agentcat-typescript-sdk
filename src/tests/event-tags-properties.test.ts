@@ -9,6 +9,25 @@ import { EventCapture } from "./test-utils";
 import { HighLevelMCPServerLike } from "../types";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
+/**
+ * Every auto-captured tool call now also carries AgentCat's own namespaced
+ * handle tags. This file is about the CUSTOMER's tags, so it asserts on the
+ * customer's slice exactly — and `expectHandleTags` separately pins that the
+ * namespaced ones really are there, so the filter can never hide their loss.
+ */
+const customerTags = (event: { tags?: Record<string, string> | null }) => {
+  const tags = { ...(event.tags ?? {}) };
+  for (const key of Object.keys(tags)) {
+    if (key.startsWith("agentcat_")) delete tags[key];
+  }
+  return tags;
+};
+
+const expectHandleTags = (event: { tags?: Record<string, string> | null }) => {
+  expect(event.tags!.agentcat_task_id_source).toBeDefined();
+  expect(event.tags!.agentcat_agent_id).toMatch(/^agt_/);
+};
+
 describe("Event Tags & Properties", () => {
   let server: HighLevelMCPServerLike;
   let client: any;
@@ -56,7 +75,11 @@ describe("Event Tags & Properties", () => {
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
       expect(toolCallEvent).toBeDefined();
-      expect(toolCallEvent!.tags).toEqual({ env: "test", trace_id: "abc-123" });
+      expect(customerTags(toolCallEvent!)).toEqual({
+        env: "test",
+        trace_id: "abc-123",
+      });
+      expectHandleTags(toolCallEvent!);
     });
 
     it("should not block tool calls when callback throws", async () => {
@@ -85,8 +108,10 @@ describe("Event Tags & Properties", () => {
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
       expect(toolCallEvent).toBeDefined();
-      // When callback throws, resolveEventTags returns null, and conditional assignment means field stays undefined
-      expect(toolCallEvent!.tags).toBeUndefined();
+      // When the callback throws, resolveEventTags returns null and no
+      // customer tag is written — only AgentCat's own handle tags remain.
+      expect(customerTags(toolCallEvent!)).toEqual({});
+      expectHandleTags(toolCallEvent!);
     });
 
     it("should handle null return from callback", async () => {
@@ -111,7 +136,8 @@ describe("Event Tags & Properties", () => {
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
       expect(toolCallEvent).toBeDefined();
-      expect(toolCallEvent!.tags).toBeUndefined();
+      expect(customerTags(toolCallEvent!)).toEqual({});
+      expectHandleTags(toolCallEvent!);
     });
 
     it("should validate tags from callback", async () => {
@@ -138,7 +164,8 @@ describe("Event Tags & Properties", () => {
       const toolCallEvent = events.find(
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
-      expect(toolCallEvent!.tags).toEqual({ valid: "value" });
+      expect(customerTags(toolCallEvent!)).toEqual({ valid: "value" });
+      expectHandleTags(toolCallEvent!);
     });
   });
 
@@ -246,7 +273,8 @@ describe("Event Tags & Properties", () => {
       const toolCallEvent = events.find(
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
-      expect(toolCallEvent!.tags).toEqual({ env: "test" });
+      expect(customerTags(toolCallEvent!)).toEqual({ env: "test" });
+      expectHandleTags(toolCallEvent!);
       expect(toolCallEvent!.properties).toEqual({ device: "mobile" });
     });
   });
@@ -328,21 +356,19 @@ describe("Event Tags & Properties", () => {
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
       expect(toolCallEvent).toBeDefined();
-      expect(toolCallEvent!.tags).toBeUndefined();
+      // No customer tags at all — only AgentCat's own handle tags.
+      expect(customerTags(toolCallEvent!)).toEqual({});
+      expectHandleTags(toolCallEvent!);
       expect(toolCallEvent!.properties).toBeUndefined();
     });
   });
 
-  describe("tags/properties on initialize event", () => {
-    it("should attach tags and properties to initialize events", async () => {
-      // track() must be called BEFORE connecting so that the initialize handler is wrapped
-      // setupTestServerAndClient connects automatically, so we need a fresh setup
-      // The initialize event fires during client.connect(), which already happened.
-      // But the initialize handler IS wrapped — we just need to trigger a new connection.
-      // Since the test factory already connected, let's verify via a reconnection approach.
-      // Actually: the initialize event was already emitted during beforeEach setup.
-      // We need to set up tracking BEFORE the client connects.
-
+  describe("tags/properties when track() runs before the client connects", () => {
+    // `initialize` is no longer intercepted, so there is no initialize event to
+    // assert on. The track()-before-connect ordering is still worth covering —
+    // the shared fixture connects first — so this now drives a tool call and
+    // asserts tags/properties resolve on the mcp:tools/call event.
+    it("should attach tags and properties to tool call events", async () => {
       // Create a fresh server/client pair without auto-connect
       const { McpServer } =
         await import("@modelcontextprotocol/sdk/server/mcp.js");
@@ -378,49 +404,75 @@ describe("Event Tags & Properties", () => {
       const [clientTransport, serverTransport] =
         InMemoryTransport.createLinkedPair();
 
-      // Connect triggers the initialize event
       await Promise.all([
         freshClient.connect(clientTransport),
         freshServer.server.connect(serverTransport),
       ]);
 
+      await freshClient.callTool({
+        name: "test_tool",
+        arguments: { input: "hi" },
+      });
+
       await new Promise((resolve) => setTimeout(resolve, 100));
       const events = eventCapture.getEvents();
-      const initEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpInitialize,
+      const toolCallEvent = events.find(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
-      expect(initEvent).toBeDefined();
-      expect(initEvent!.tags).toEqual({ env: "test", source: "init" });
-      expect(initEvent!.properties).toEqual({ device: "desktop" });
+      expect(toolCallEvent).toBeDefined();
+      expect(customerTags(toolCallEvent!)).toEqual({
+        env: "test",
+        source: "init",
+      });
+      expectHandleTags(toolCallEvent!);
+      expect(toolCallEvent!.properties).toEqual({ device: "desktop" });
 
       await clientTransport.close?.();
       await serverTransport.close?.();
     });
   });
 
-  describe("tags/properties on tools/list event", () => {
-    it("should attach tags and properties to tools/list events", async () => {
+  describe("tags/properties after a tools/list round-trip", () => {
+    // tools/list no longer publishes an event of its own; what still matters is
+    // that the list wrapper leaves tag/property resolution on the following
+    // tool call intact.
+    it("should attach tags and properties to the tool call that follows", async () => {
       track(server, "test-project", {
         eventTags: async () => ({ env: "test", action: "list" }),
         eventProperties: async () => ({ source: "list-test" }),
       });
 
-      // Trigger a tools/list request
       const { ListToolsResultSchema } =
         await import("@modelcontextprotocol/sdk/types.js");
       await client.request(
         { method: "tools/list", params: {} },
         ListToolsResultSchema,
       );
+      await client.request(
+        {
+          method: "tools/call",
+          params: { name: "add_todo", arguments: { text: "Test todo" } },
+        },
+        CallToolResultSchema,
+      );
 
       await new Promise((resolve) => setTimeout(resolve, 50));
       const events = eventCapture.getEvents();
-      const listEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsList,
+      expect(
+        events.find(
+          (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsList,
+        ),
+      ).toBeUndefined();
+      const toolCallEvent = events.find(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
-      expect(listEvent).toBeDefined();
-      expect(listEvent!.tags).toEqual({ env: "test", action: "list" });
-      expect(listEvent!.properties).toEqual({ source: "list-test" });
+      expect(toolCallEvent).toBeDefined();
+      expect(customerTags(toolCallEvent!)).toEqual({
+        env: "test",
+        action: "list",
+      });
+      expectHandleTags(toolCallEvent!);
+      expect(toolCallEvent!.properties).toEqual({ source: "list-test" });
     });
   });
 
@@ -457,10 +509,11 @@ describe("Event Tags & Properties", () => {
       );
       expect(toolCallEvent).toBeDefined();
       // Tags should NOT be redacted — customer explicitly provides this data
-      expect(toolCallEvent!.tags).toEqual({
+      expect(customerTags(toolCallEvent!)).toEqual({
         env: "production",
         trace_id: "abc-123",
       });
+      expectHandleTags(toolCallEvent!);
       // Properties should NOT be redacted
       expect(toolCallEvent!.properties).toEqual({
         device: "desktop",

@@ -1,6 +1,10 @@
 import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
-import { AgentCatData, CompatibleRequestHandlerExtra } from "../types.js";
+import {
+  AgentCatData,
+  CompatibleRequestHandlerExtra,
+  UnredactedEvent,
+} from "../types.js";
 import { MCP_INSTRUCTIONS_PREFIX } from "./constants.js";
 import { writeToLog } from "./logging.js";
 
@@ -177,6 +181,43 @@ export async function resolveHandles(
     agentId: suppliedAgentId ?? newAgentId(),
     agentIdSource: suppliedAgentId ? "supplied" : "minted",
   };
+}
+
+/**
+ * Stamps resolved handles onto an event. Tags are namespaced and written AFTER
+ * validateTags(customerTags) so they cannot collide with customer keys, cannot
+ * be dropped by the validator, and do not consume the customer's 50-tag budget.
+ */
+export function stampHandlesOnEvent(
+  event: UnredactedEvent,
+  handles: ResolvedHandles,
+): void {
+  event.sessionId = handles.taskId;
+  const tags = { ...(event.tags ?? {}), ...(handles.tags ?? {}) };
+  tags.agentcat_task_id_source = handles.taskIdSource;
+  if (handles.agentId && handles.agentIdSource) {
+    tags.agentcat_agent_id = handles.agentId;
+    tags.agentcat_agent_id_source = handles.agentIdSource;
+  }
+  event.tags = tags;
+}
+
+/**
+ * Appends the mint-back block to a tool result. No-op unless something was
+ * minted, the result carries an array `content`, and it is not an error.
+ */
+export function appendMintBack(result: any, handles: ResolvedHandles): any {
+  const text = buildMintBackText({
+    taskId: handles.taskId,
+    taskIdMinted: handles.taskIdSource === "minted",
+    agentId: handles.agentId,
+    agentIdMinted: handles.agentIdSource === "minted",
+  });
+  if (!text) return result;
+  if (!result || typeof result !== "object") return result;
+  if (result.isError === true) return result;
+  if (!Array.isArray(result.content)) return result;
+  return { ...result, content: [...result.content, { type: "text", text }] };
 }
 
 export interface MintBackInput {

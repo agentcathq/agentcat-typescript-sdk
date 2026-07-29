@@ -640,23 +640,6 @@ describe("redactEvent integration tests", () => {
       "Adding a todo item for reset task",
     ); // Context should not be redacted
 
-    // Find the identify event
-    const identifyEvent = events.find(
-      (e) => e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-    );
-
-    expect(identifyEvent).toBeDefined();
-
-    // The identify event should have the same parameters structure as the tool call
-    // since it's created from the same base event
-    const identifyParams = identifyEvent?.parameters as any;
-    expect(identifyParams.request.params.arguments.text).toBe(
-      "[REDACTED-EMAIL]",
-    );
-    expect(identifyParams.request.params.arguments.context).toBe(
-      "Adding a todo item for reset task",
-    );
-
     // Verify protected fields were NOT redacted
     expect(toolCallEvent?.sessionId).toMatch(/^ses_/); // Should start with ses_
     expect(toolCallEvent?.projectId).toBe("test-project");
@@ -665,9 +648,16 @@ describe("redactEvent integration tests", () => {
       PublishEventRequestEventTypeEnum.mcpToolsCall,
     );
 
-    // The identify event includes actor info from sessionInfo
-    expect(identifyEvent?.identifyActorGivenId).toBe("test-user-123");
-    expect(identifyEvent?.identifyActorName).toBe("John Doe");
+    // Identity is resolved per request and stamped on the tool call event
+    // itself; there is no separate agentcat:identify event any more.
+    expect(
+      events.find(
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+      ),
+    ).toBeUndefined();
+    expect(toolCallEvent?.identifyActorGivenId).toBe("test-user-123");
+    expect(toolCallEvent?.identifyActorName).toBe("John Doe");
 
     await eventCapture.stop();
   });
@@ -786,21 +776,17 @@ describe("redactEvent integration tests", () => {
     expect(params.request.params.arguments.text).toBe("[REDACTED-ID]");
     expect(params.request.params.arguments.context).toBe("[REDACTED-ID]"); // Context contains 'id' so should be redacted too
 
-    // Check identify event
-    const identifyEvent = events.find(
-      (e) => e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-    );
-
-    // Protected identity fields should NOT be redacted
-    expect(identifyEvent?.identifyActorGivenId).toBe("user-with-id-123");
-    expect(identifyEvent?.identifyActorName).toBe("David Smith"); // This should NOT be redacted as it's a protected field
-
-    // The identify event parameters should also be redacted
-    const identifyParams = identifyEvent?.parameters as any;
-    expect(identifyParams.request.params.arguments.text).toBe("[REDACTED-ID]");
-    expect(identifyParams.request.params.arguments.context).toBe(
-      "[REDACTED-ID]",
-    );
+    // Identity is resolved per request and stamped on the tool call event
+    // itself; there is no separate agentcat:identify event any more. The
+    // protected actor fields must still survive redaction there.
+    expect(
+      events.find(
+        (e) =>
+          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+      ),
+    ).toBeUndefined();
+    expect(toolCallEvent?.identifyActorGivenId).toBe("user-with-id-123");
+    expect(toolCallEvent?.identifyActorName).toBe("David Smith"); // Protected field
 
     await eventCapture.stop();
   });
@@ -887,12 +873,13 @@ describe("redactEvent hook integration tests", () => {
     };
 
     try {
+      // tools/call is now the only auto-captured event type, so the control
+      // has to be a second tool call rather than a second event type: the hook
+      // drops one tool by name and must leave the other untouched.
       track(server, "test-project", {
         enableTracing: true,
         redactEvent: (event) => {
-          if (
-            event.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall
-          ) {
+          if (event.resourceName === "add_todo") {
             return null;
           }
           return event;
@@ -900,15 +887,22 @@ describe("redactEvent hook integration tests", () => {
       });
 
       await callAddTodo("Buy milk");
-      await client.request({ method: "tools/list" }, ListToolsResultSchema);
+      await client.request(
+        {
+          method: "tools/call",
+          params: { name: "list_todos", arguments: { context: "Listing" } },
+        },
+        CallToolResultSchema,
+      );
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const toolCallEvents = sentEvents.filter(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
-      );
-
-      expect(toolCallEvents).toHaveLength(0);
-      expect(sentEvents.length).toBeGreaterThan(0); // other event types still arrive
+      expect(
+        sentEvents.filter((e) => e.resourceName === "add_todo"),
+      ).toHaveLength(0);
+      // The control survived: the hook dropped only the targeted event.
+      expect(
+        sentEvents.filter((e) => e.resourceName === "list_todos"),
+      ).toHaveLength(1);
     } finally {
       eq.sendEvent = originalSendEvent;
     }

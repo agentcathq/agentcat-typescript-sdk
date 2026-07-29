@@ -6,6 +6,7 @@ import { setupTestHooks } from "./test-utils.js";
 vi.mock("../modules/logging.js");
 vi.mock("../modules/internal.js");
 vi.mock("../modules/session.js");
+vi.mock("../modules/handles.js");
 vi.mock("../modules/eventQueue.js");
 vi.mock("../modules/constants.js");
 vi.mock("../thirdparty/ksuid/index.js");
@@ -13,7 +14,7 @@ vi.mock("../thirdparty/ksuid/index.js");
 // Import mocked modules
 import { writeToLog } from "../modules/logging.js";
 import { getServerTrackingData } from "../modules/internal.js";
-import { deriveSessionIdFromMCPSession } from "../modules/session.js";
+import { deriveTaskId, newTaskId } from "../modules/handles.js";
 import {
   publishEvent as publishEventToQueue,
   eventQueue,
@@ -49,12 +50,13 @@ describe("publishCustomEvent", () => {
     };
     (eventQueue as any).add = mockEventQueue.add;
 
-    // Mock deriveSessionIdFromMCPSession
-    (deriveSessionIdFromMCPSession as any).mockImplementation(
-      (sessionId: string, projectId: string) => {
-        return `ses_derived_${sessionId}_${projectId}`;
+    // Mock the Task ID primitives
+    (deriveTaskId as any).mockImplementation(
+      (id: string, projectId: string) => {
+        return `ses_derived_${id}_${projectId}`;
       },
     );
+    (newTaskId as any).mockReturnValue("ses_minted123");
 
     // Mock publishEventToQueue
     (publishEventToQueue as any).mockImplementation(() => {});
@@ -74,10 +76,11 @@ describe("publishCustomEvent", () => {
     beforeEach(() => {
       mockServer = {} as any;
 
-      // Mock server tracking data
+      // Mock server tracking data. A tracked server no longer carries an
+      // ambient session id — Task IDs are per request — so a custom event
+      // published against a server mints a standalone one.
       (getServerTrackingData as any).mockReturnValue({
         projectId: "proj_tracked",
-        sessionId: "ses_tracked123",
         options: {},
       });
     });
@@ -95,7 +98,7 @@ describe("publishCustomEvent", () => {
       expect(publishEventToQueue).toHaveBeenCalledWith(
         mockServer,
         expect.objectContaining({
-          sessionId: "ses_tracked123",
+          sessionId: "ses_minted123",
           projectId,
           eventType: "agentcat:custom",
           resourceName: "custom-action",
@@ -156,10 +159,7 @@ describe("publishCustomEvent", () => {
 
       await publishCustomEvent(customSessionId, projectId, eventData);
 
-      expect(deriveSessionIdFromMCPSession).toHaveBeenCalledWith(
-        customSessionId,
-        projectId,
-      );
+      expect(deriveTaskId).toHaveBeenCalledWith(customSessionId, projectId);
       expect(mockEventQueue.add).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: `ses_derived_${customSessionId}_${projectId}`,

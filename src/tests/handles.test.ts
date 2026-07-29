@@ -53,6 +53,19 @@ describe("handle primitives", () => {
     expect(deriveTaskId("cust-1", "proj_a").startsWith("ses_")).toBe(true);
   });
 
+  it("pins the derivation to its exact historical output", () => {
+    // Golden value. deriveTaskId carries over the SHA-256 -> KSUID
+    // construction that derived session ids before handles existed, so every
+    // Task ID ever derived depends on the epoch, the modulo, and the
+    // hash.subarray(4, 20) byte slice staying exactly as they are. Change any
+    // of them and correlation silently breaks for every existing customer:
+    // ids derived after the change no longer match ids derived before it.
+    // Nothing else in the suite pins the construction itself.
+    expect(deriveTaskId("cust-1", "proj_a")).toBe(
+      "ses_2aq8n0MJDIvEzr92MY0DGrm2Ben",
+    );
+  });
+
   it("extracts and trims a supplied handle", () => {
     expect(
       extractHandle({ [TASK_ID_PARAM]: "  ses_abc  " }, TASK_ID_PARAM),

@@ -16,7 +16,12 @@ import {
   resolveEventTags,
   resolveEventProperties,
 } from "./internal.js";
-import { getServerSessionId } from "./session.js";
+import {
+  resolveHandles,
+  cloneRequestWithoutHandles,
+  stampHandlesOnEvent,
+  appendMintBack,
+} from "./handles.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { publishEvent } from "./eventQueue.js";
 import { captureException } from "./exceptions.js";
@@ -134,9 +139,22 @@ export function setupToolCallTracing(server: MCPServerLike): void {
         return await originalCallToolHandler?.(request, extra);
       }
 
-      const sessionId = getServerSessionId(server, extra);
+      // There is no tool registry on this path, so the collision set recorded
+      // during tools/list is the only source of truth — and it can only say
+      // *that* the tool collides, never which parameter.
+      const ownsHandle: boolean = data.handleCollisionTools.has(
+        request.params?.name,
+      );
+      if (ownsHandle) {
+        writeToLog(
+          `WARN: Tool "${request.params?.name}" declares its own 'task_id/agent_id' parameter. AgentCat will not extract, strip, or mint-back handles for this call.`,
+        );
+      }
+
+      const handles = await resolveHandles(data, request, extra, ownsHandle);
+
       let event: UnredactedEvent = {
-        sessionId: sessionId,
+        sessionId: handles.taskId,
         resourceName: request.params?.name || "Unknown Tool Name",
         parameters: {
           request: request,
@@ -165,6 +183,9 @@ export function setupToolCallTracing(server: MCPServerLike): void {
         );
         if (resolvedProperties) event.properties = resolvedProperties;
 
+        // AFTER the customer's tags, so ours always survive validateTags().
+        stampHandlesOnEvent(event, handles);
+
         // Check for missing context if enableToolCallContext is true and it's not report_missing
         if (
           data.options.enableToolCallContext &&
@@ -184,7 +205,11 @@ export function setupToolCallTracing(server: MCPServerLike): void {
           result = await handleReportMissing(request.params.arguments.context);
           event.userIntent = request.params.arguments.context;
         } else if (originalCallToolHandler) {
-          result = await originalCallToolHandler(request, extra);
+          // A tool that owns the parameter keeps its arguments untouched.
+          result = await originalCallToolHandler(
+            ownsHandle ? request : cloneRequestWithoutHandles(request),
+            extra,
+          );
         } else {
           event.isError = true;
           event.error = {
@@ -204,9 +229,13 @@ export function setupToolCallTracing(server: MCPServerLike): void {
           event.error = captureException(result);
         }
 
-        event.response = result;
+        const finalResult = ownsHandle
+          ? result
+          : appendMintBack(result, handles);
+
+        event.response = finalResult;
         publishEvent(server, event);
-        return result;
+        return finalResult;
       } catch (error) {
         event.isError = true;
         event.error = captureException(error);

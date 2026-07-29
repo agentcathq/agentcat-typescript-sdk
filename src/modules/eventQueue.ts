@@ -276,7 +276,7 @@ export function publishEvent(
   const fullEvent: UnredactedEvent = {
     // Core fields (id will be generated later in the queue)
     id: eventInput.id || "",
-    sessionId: eventInput.sessionId || data.sessionId,
+    sessionId: eventInput.sessionId,
     projectId: data.projectId,
 
     // Event metadata
