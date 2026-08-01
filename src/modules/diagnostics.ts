@@ -70,6 +70,49 @@ function loadNodeModule<T>(name: string): T | null {
   }
 }
 
+/**
+ * Reads an installed package's version even when its exports map seals
+ * "./package.json" (the v2 MCP packages do): resolve the entry module,
+ * then walk up the real directory tree to the package manifest.
+ */
+function readInstalledPackageVersion(name: string): string | null {
+  const direct = loadNodeModule<{ version?: string }>(`${name}/package.json`);
+  if (direct?.version) return direct.version;
+  try {
+    const req = createRequire(import.meta.url);
+    const path = loadNodeModule<typeof import("path")>("path");
+    const fs = loadNodeModule<typeof import("fs")>("fs");
+    if (!path || !fs) return null;
+    // Anchor on the package entry; some packages (e.g. v1 SDK >= 1.30) have
+    // no root "." export, but do export "./package.json" (as a dist stub) —
+    // its dirname is an equally valid starting point for the walk-up.
+    let anchor: string;
+    try {
+      anchor = req.resolve(name);
+    } catch {
+      anchor = req.resolve(`${name}/package.json`);
+    }
+    let dir = path.dirname(anchor);
+    for (let i = 0; i < 6; i++) {
+      const candidate = path.join(dir, "package.json");
+      try {
+        if (fs.existsSync(candidate)) {
+          const pkg = JSON.parse(fs.readFileSync(candidate, "utf8"));
+          if (pkg?.name === name) return pkg.version ?? null;
+        }
+      } catch {
+        // malformed or unreadable manifest at this level; keep climbing
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // best-effort
+  }
+  return null;
+}
+
 function computeInstallId(): string | null {
   try {
     const os = loadNodeModule<typeof import("os")>("os");
@@ -96,11 +139,19 @@ function buildStaticAttributes(projectId: string | null): OtlpAttribute[] {
     out.push(...attr("agentcat.sdk.language", "typescript"));
     out.push(...attr("agentcat.sdk.version", packageJson.version));
 
-    // Best-effort: resolved @modelcontextprotocol/sdk (peer dep) version.
-    const mcpPkg = loadNodeModule<{ version?: string }>(
-      "@modelcontextprotocol/sdk/package.json",
+    // Best-effort: resolved MCP SDK versions (both majors are optional peers).
+    out.push(
+      ...attr(
+        "agentcat.mcp_sdk.version",
+        readInstalledPackageVersion("@modelcontextprotocol/sdk"),
+      ),
     );
-    out.push(...attr("agentcat.mcp_sdk.version", mcpPkg?.version));
+    out.push(
+      ...attr(
+        "agentcat.mcp_sdk_v2.version",
+        readInstalledPackageVersion("@modelcontextprotocol/server"),
+      ),
+    );
 
     // Runtime
     const proc = globalThis.process;

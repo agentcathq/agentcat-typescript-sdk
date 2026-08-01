@@ -3,6 +3,7 @@ import {
   isCompatibleServerType,
   getMCPCompatibleErrorMessage,
   logCompatibilityWarning,
+  SUPPORT_MATRIX_SUFFIX,
 } from "../modules/compatibility";
 
 // Mock the logging module
@@ -34,53 +35,98 @@ describe("Compatibility Module", () => {
 
     it("should throw error and log warning for null server", () => {
       expect(() => isCompatibleServerType(null)).toThrowError(
-        /Server must be an object/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
     it("should throw error and log warning for undefined server", () => {
       expect(() => isCompatibleServerType(undefined)).toThrowError(
-        /Server must be an object/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
     it("should throw error and log warning for non-object server", () => {
       expect(() => isCompatibleServerType("not an object")).toThrowError(
-        /Server must be an object/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalledTimes(1);
 
       vi.clearAllMocks();
 
       expect(() => isCompatibleServerType(42)).toThrowError(
-        /Server must be an object/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalledTimes(1);
 
       vi.clearAllMocks();
 
       expect(() => isCompatibleServerType(true)).toThrowError(
-        /Server must be an object/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalledTimes(1);
     });
 
-    it("should throw error and log warning when setRequestHandler is missing", () => {
+    it("unknown-shape error names the full support matrix, never 'upgrade to v1.11'", () => {
+      // The copy rule: an SDK-too-new situation must never read as
+      // "upgrade to v1.11+". Every compat message names the support matrix.
+      let thrown: Error | undefined;
+      try {
+        isCompatibleServerType({ some: "unrecognized shape" });
+      } catch (e) {
+        thrown = e as Error;
+      }
+      expect(thrown).toBeDefined();
+      expect(thrown!.message).toContain(SUPPORT_MATRIX_SUFFIX);
+      expect(thrown!.message).not.toMatch(/v1\.11 or higher/);
+    });
+
+    it("logs a shape-fingerprint beacon when rejecting an unrecognized server shape", () => {
+      // Near-miss shape: high-level shell whose inner server has no signals.
+      // The rejection log must carry the computed shape fingerprint so fleet
+      // change-detection can spot "a new SDK shape appeared".
+      const nearMiss = { server: {}, setRequestHandler() {} };
+
+      expect(() => isCompatibleServerType(nearMiss)).toThrowError(
+        /does not match any supported MCP SDK shape/,
+      );
+
+      const messages = (writeToLog as any).mock.calls.map(
+        ([message]: [string]) => message,
+      );
+      const beacon = messages.find((m: string) =>
+        m.includes("unrecognized server shape | signals"),
+      );
+      expect(beacon).toBeDefined();
+      expect(beacon).toContain("hasServerProp");
+      expect(beacon).toContain(SUPPORT_MATRIX_SUFFIX);
+    });
+
+    it("logs '(none)' as the fingerprint for signal-free non-object rejects", () => {
+      expect(() => isCompatibleServerType(null)).toThrowError(
+        /does not match any supported MCP SDK shape/,
+      );
+      const [[message]] = (writeToLog as any).mock.calls;
+      expect(message).toContain("unrecognized server shape | signals (none)");
+    });
+
+    it("should throw the unknown-shape error when setRequestHandler is missing", () => {
       const server = {
         _requestHandlers: new Map(),
         getClientVersion: vi.fn(),
         _serverInfo: { name: "TestServer" },
       };
 
+      // Detection owns shape discrimination now: a server without
+      // setRequestHandler is not recognized as any SDK shape.
       expect(() => isCompatibleServerType(server)).toThrowError(
-        /setRequestHandler/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
-    it("should throw error and log warning when setRequestHandler is not a function", () => {
+    it("should throw the unknown-shape error when setRequestHandler is not a function", () => {
       const server = {
         setRequestHandler: "not a function",
         _requestHandlers: new Map(),
@@ -89,12 +135,12 @@ describe("Compatibility Module", () => {
       };
 
       expect(() => isCompatibleServerType(server)).toThrowError(
-        /setRequestHandler/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
-    it("should throw error and log warning when _requestHandlers is missing", () => {
+    it("should throw the unknown-shape error when _requestHandlers is missing", () => {
       const server = {
         setRequestHandler: vi.fn(),
         getClientVersion: vi.fn(),
@@ -102,12 +148,12 @@ describe("Compatibility Module", () => {
       };
 
       expect(() => isCompatibleServerType(server)).toThrowError(
-        /_requestHandlers/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
-    it("should throw error and log warning when _requestHandlers is not a Map", () => {
+    it("should throw the unknown-shape error when _requestHandlers is not a Map", () => {
       const server = {
         setRequestHandler: vi.fn(),
         _requestHandlers: {},
@@ -116,12 +162,12 @@ describe("Compatibility Module", () => {
       };
 
       expect(() => isCompatibleServerType(server)).toThrowError(
-        /_requestHandlers/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
 
-    it("should throw error and log warning when _requestHandlers.get is not a function", () => {
+    it("should throw the unknown-shape error when _requestHandlers is a non-Map with a get method", () => {
       const server = {
         setRequestHandler: vi.fn(),
         _requestHandlers: { get: "not a function" },
@@ -130,7 +176,7 @@ describe("Compatibility Module", () => {
       };
 
       expect(() => isCompatibleServerType(server)).toThrowError(
-        /_requestHandlers/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
@@ -144,6 +190,11 @@ describe("Compatibility Module", () => {
 
       expect(() => isCompatibleServerType(server)).toThrowError(
         /getClientVersion/,
+      );
+      // Internals-validation errors carry the full support matrix, not the
+      // old "requires v1.11 or higher" copy.
+      expect(() => isCompatibleServerType(server)).toThrowError(
+        SUPPORT_MATRIX_SUFFIX,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
@@ -308,8 +359,10 @@ describe("Compatibility Module", () => {
         tool: () => {},
       };
 
+      // An underlying server without setRequestHandler is not recognized as
+      // any supported SDK shape by detection.
       expect(() => isCompatibleServerType(mcpServerWrapper)).toThrowError(
-        /setRequestHandler/,
+        /does not match any supported MCP SDK shape/,
       );
       expect(writeToLog).toHaveBeenCalled();
     });
@@ -353,7 +406,8 @@ describe("Compatibility Module", () => {
             getClientVersion: vi.fn(),
             _serverInfo: { name: "TestServer" },
           },
-          expectedPattern: /_requestHandlers/,
+          // Missing handlers map means detection rejects the shape outright.
+          expectedPattern: /does not match any supported MCP SDK shape/,
         },
         {
           name: "missing getClientVersion",
@@ -412,9 +466,8 @@ describe("Compatibility Module", () => {
     beforeEach(async () => {
       try {
         // Try to import McpServer - it's available in v1.3.0+
-        const { McpServer: ImportedMcpServer } = await import(
-          "@modelcontextprotocol/sdk/server/mcp.js"
-        );
+        const { McpServer: ImportedMcpServer } =
+          await import("@modelcontextprotocol/sdk/server/mcp.js");
         McpServer = ImportedMcpServer;
         hasCompatibleVersion = true;
       } catch (error) {

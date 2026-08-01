@@ -62,6 +62,15 @@ describe("Report Missing Tool", () => {
 
       // Verify context is required
       expect(reportMissingTool.inputSchema.required).toContain("context");
+
+      // Verify behavior annotations (read-only, non-destructive, closed-world)
+      expect(reportMissingTool.annotations).toEqual({
+        title: "Get More Tools",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
     });
 
     it("should NOT add get_more_tools when enableReportMissing is false", async () => {
@@ -315,7 +324,7 @@ describe("Report Missing Tool", () => {
   });
 
   describe("4. Integration Tests", () => {
-    it("should maintain session continuity when calling report_missing between other tools", async () => {
+    it("should maintain task continuity when calling report_missing between other tools", async () => {
       const eventCapture = new EventCapture();
       await eventCapture.start();
 
@@ -325,6 +334,10 @@ describe("Report Missing Tool", () => {
         enableTracing: true,
       });
 
+      // Continuity is now the agent's job: it echoes the same task_id on
+      // every call, including get_more_tools, and every event lands on it.
+      const taskId = "ses_report_missing_continuity";
+
       // Call add_todo
       await client.request(
         {
@@ -333,7 +346,8 @@ describe("Report Missing Tool", () => {
             name: "add_todo",
             arguments: {
               text: "First todo",
-              context: "Adding first todo to test session continuity",
+              context: "Adding first todo to test task continuity",
+              task_id: taskId,
             },
           },
         },
@@ -348,6 +362,7 @@ describe("Report Missing Tool", () => {
             name: "get_more_tools",
             arguments: {
               context: "Need a bulk todo import tool",
+              task_id: taskId,
             },
           },
         },
@@ -362,6 +377,7 @@ describe("Report Missing Tool", () => {
             name: "list_todos",
             arguments: {
               context: "Listing todos after reporting missing tool",
+              task_id: taskId,
             },
           },
         },
@@ -380,9 +396,9 @@ describe("Report Missing Tool", () => {
       // Should have 3 events
       expect(toolCallEvents.length).toBe(3);
 
-      // All should have the same session ID
+      // All should be attributed to the supplied task
       const sessionIds = toolCallEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds).size).toBe(1);
+      expect(new Set(sessionIds)).toEqual(new Set([taskId]));
 
       // Verify the order and tool names
       expect(toolCallEvents[0].resourceName).toBe("add_todo");
@@ -412,7 +428,7 @@ describe("Report Missing Tool", () => {
         }),
       });
 
-      // Call report_missing (should trigger identify on first tool call)
+      // Call report_missing (identify runs on every tool call, this one included)
       await client.request(
         {
           method: "tools/call",
@@ -429,25 +445,31 @@ describe("Report Missing Tool", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify identify event was triggered
       const events = eventCapture.getEvents();
-      const identifyEvent = events.find(
+
+      // There is no longer a separate agentcat:identify event — identity is
+      // stamped directly onto the tool call event it was resolved for.
+      expect(
+        events.some(
+          (e) =>
+            e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+        ),
+      ).toBe(false);
+
+      const reportEvent = events.find(
         (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+          e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall &&
+          e.resourceName === "get_more_tools",
       );
+      expect(reportEvent).toBeDefined();
+      expect(reportEvent?.identifyActorGivenId).toBe(testUserId);
+      expect(reportEvent?.identifyActorData).toEqual(testUserData);
 
-      expect(identifyEvent).toBeDefined();
-      expect(identifyEvent?.resourceName).toBe("get_more_tools");
-
-      // Verify user identity was stored
+      // Identity is never cached on the server — the tracking data is config
+      // only, so nothing is stored between calls.
       const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-
-      expect(storedIdentity).toEqual({
-        userId: testUserId,
-        userData: testUserData,
-      });
+      expect(data).toBeDefined();
+      expect(Object.keys(data!).sort()).toEqual(["options", "projectId"]);
 
       await eventCapture.stop();
     });
@@ -602,7 +624,7 @@ describe("Report Missing Tool", () => {
       await eventCapture.stop();
     });
 
-    it("should handle multiple missing tool reports in same session", async () => {
+    it("should handle multiple missing tool reports in the same task", async () => {
       const eventCapture = new EventCapture();
       await eventCapture.start();
 
@@ -612,16 +634,21 @@ describe("Report Missing Tool", () => {
         enableTracing: true,
       });
 
-      // Simulate a user discovering multiple missing tools during their workflow
+      // Simulate a user discovering multiple missing tools during their workflow.
+      // The agent echoes one task_id across the whole workflow.
+      const taskId = "ses_report_missing_workflow";
       const missingTools = [
         {
           context: "Importing data from spreadsheets",
+          task_id: taskId,
         },
         {
           context: "Need to validate imported data",
+          task_id: taskId,
         },
         {
           context: "Process large datasets",
+          task_id: taskId,
         },
       ];
 
@@ -650,10 +677,10 @@ describe("Report Missing Tool", () => {
           e.resourceName === "get_more_tools",
       );
 
-      // All from same session
+      // All attributed to the one task the agent supplied
       expect(reportEvents.length).toBe(3);
       const sessionIds = reportEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds).size).toBe(1);
+      expect(new Set(sessionIds)).toEqual(new Set([taskId]));
 
       // The sequence shows a workflow pattern:
       // Import -> Validate -> Process

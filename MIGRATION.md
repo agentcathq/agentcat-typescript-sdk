@@ -82,3 +82,124 @@ If you use the exporters (Datadog, Sentry, PostHog, OTLP), the `source` value st
 **What about the GitHub repo?** The org is being renamed; old repo URLs will redirect automatically, and stars/issues are preserved.
 
 **Questions?** Open an issue or email [hi@agentcat.com](mailto:hi@agentcat.com).
+
+## 2.0.0 — Explicit handles replace MCP session correlation
+
+MCP protocol 2026-07-28 (SEP-2567) removed protocol-level sessions, so AgentCat
+now correlates work with two explicit, server-minted handles that agents echo
+back as tool parameters:
+
+- **`task_id`** — one goal, start to finish. Subagents share their parent's
+  task_id. It is stored in the existing `sessionId` event field with the same
+  `ses_` prefix, so dashboards, queries, and exporters are unaffected.
+- **`agent_id`** — one per agent; subagents get their own. Rides on events as
+  the `agentcat_agent_id` tag. Off by default — opt in with
+  `enableAgentTracking: true`.
+
+### This changes your tools' public interface
+
+Upgrading takes no configuration, but it does change what your MCP server
+publishes to its callers. These are your schemas and your responses — review them
+before you roll out.
+
+**Every tracked tool's input schema gains `task_id`** — type `string`, optional.
+Agents echo it back on later calls, and AgentCat strips it before your handler
+runs.
+
+```diff
+  {
+    "name": "search_orders",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
++       "task_id": { "type": "string", "description": "REQUIRED on every call after your first…" }
+      }
+    }
+  }
+```
+
+**`additionalProperties: false` is removed** from tracked input schemas. If you
+declared it deliberately to reject unknown parameters, that constraint no longer
+appears in the schema AgentCat publishes.
+
+**With `enableAgentTracking: true`, `agent_id` is added to the schema's `required`
+array.** This is the one addition a strict client will enforce — a schema-validating
+MCP client refuses to send a call that omits it. Server-side enforcement is soft: a
+call without `agent_id` still succeeds, and the event is simply published without
+agent identity. This is why agent tracking is off by default.
+
+**Tools with a plain-object `outputSchema` gain an optional `_mcp_instructions`
+property**, so validating clients accept the handle mirrored into
+`structuredContent`. Schemas built from `oneOf` / `allOf` / `anyOf` have no single
+properties bag to extend and are skipped — mint-back stays content-only there.
+
+**Responses that mint a handle gain a trailing `[MCP INSTRUCTIONS]:` text block.**
+It is wire-only: recorded event responses and error messages contain only your
+tool's own output.
+
+**Tools that already declare `task_id`, `agent_id`, or `context` are left alone.**
+Your parameter reaches your handler untouched and a warning goes to
+`~/agentcat.log`. One caveat: this depends on a `tools/list` having run — a call
+arriving at an instance that never served a listing falls back to stripping all
+three names.
+
+### Most integrations need no code changes
+
+`track()` and its options are **purely additive** in 2.0.0. `enableAgentTracking`
+and `resolveTaskId` were added; nothing was removed. `identify`,
+`redactSensitiveInformation`, `redactEvent`, `exporters`, `enableReportMissing`,
+`enableTracing`, `enableToolCallContext`, and `customContextDescription` all keep
+their existing signatures and behavior.
+
+If your integration is a `track(server, projectId, { ...hooks })` call, upgrading
+is a version bump. Handles are injected and stripped inside the SDK, so your tool
+handlers never see the extra parameters, and task IDs keep landing in the
+`sessionId` field with the `ses_` prefix — your existing dashboards, queries, and
+exporter pipelines keep working untouched.
+
+### Update your code only if…
+
+**You call `publishCustomEvent`.** The tracked-server form now publishes without a
+task unless you set `eventData.taskId`. A session-id string passed as the first
+argument is used verbatim as the task ID, with no derivation.
+
+```diff
+  agentcat.publishCustomEvent(server, "proj_abc", {
+    resourceName: "checkout",
++   taskId: currentTaskId,
+  });
+```
+
+**You import the `AgentCatData` type.** Its session bookkeeping fields are gone —
+`sessionId`, `lastActivity`, `identifiedSessions`, `sessionInfo`,
+`lastMcpSessionId`, and `sessionSource`. It is now just `{ projectId, options }`.
+Most integrations never reference this type.
+
+**You snapshot tool schemas in tests.** The schema additions above will fail exact-
+match assertions. Parameter order is: your params, `task_id`, `agent_id`, `context`.
+
+**You built dashboards on `mcp:initialize`, `mcp:tools/list`, or
+`agentcat:identify` events.** These are no longer published — actor fields ride on
+every event instead, so requery against the events themselves.
+
+### Behavior changes worth knowing
+
+- **`identify` now runs on every tool call**, and its result is stamped directly on
+  that call's event. There is no identity cache. If your hook does a database or
+  API lookup, it is now on the hot path for every call — add your own caching if
+  that matters for your latency budget.
+- MCP `extra.sessionId` is ignored entirely, and inactivity-based session rollover
+  is gone.
+
+### Bringing your own task IDs
+
+If you already track your own task or correlation IDs, plug yours in and AgentCat
+will not prompt the agent about task_id at all:
+
+```typescript
+agentcat.track(server, "proj_abc", {
+  resolveTaskId: async (request, extra) =>
+    extra?.requestInfo?.headers?.["x-correlation-id"] ?? null,
+});
+```

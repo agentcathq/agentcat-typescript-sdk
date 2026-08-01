@@ -1,133 +1,79 @@
 import {
-  AgentCatData,
   MCPServerLike,
   ServerClientInfoLike,
   SessionInfo,
-  CompatibleRequestHandlerExtra,
+  UserIdentity,
 } from "../types.js";
-import { getServerTrackingData, setServerTrackingData } from "./internal.js";
-import KSUID from "../thirdparty/ksuid/index.js";
 import packageJson from "../../package.json" with { type: "json" };
-import { createHash } from "crypto";
 
-import { INACTIVITY_TIMEOUT_IN_MINUTES } from "./constants.js";
+import {
+  META_CLIENT_INFO_KEY,
+  META_PROTOCOL_VERSION_KEY,
+} from "./constants.js";
 
-export function newSessionId(): string {
-  return KSUID.withPrefix("ses").randomSync();
+function narrowClientInfo(value: unknown): ServerClientInfoLike | undefined {
+  if (
+    value &&
+    typeof value === "object" &&
+    (typeof (value as any).name === "string" ||
+      typeof (value as any).version === "string")
+  ) {
+    const v = value as { name?: unknown; version?: unknown };
+    // Narrow per field: a non-string name/version must not reach the payload.
+    return {
+      name: typeof v.name === "string" ? v.name : undefined,
+      version: typeof v.version === "string" ? v.version : undefined,
+    };
+  }
+  return undefined;
 }
 
 /**
- * Creates a deterministic KSUID session ID from an MCP sessionId and optional projectId.
- * The same inputs will always produce the same session ID, enabling correlation across server restarts.
- *
- * @param mcpSessionId - The session ID from the MCP protocol
- * @param projectId - Optional AgentCat project ID to include in the hash
- * @returns A KSUID with "ses" prefix derived deterministically from the inputs
+ * Client identity, resolved per request and never cached by us:
+ * 1. ctx.mcpReq.envelope["io.modelcontextprotocol/clientInfo"] — v2 lifts
+ *    the reserved io.modelcontextprotocol/* keys out of _meta before
+ *    dispatch, verbatim under their fully-qualified names; the envelope is
+ *    the only place they exist on a v2 server.
+ * 2. _meta clientInfo — v1 passes the keys through untouched.
+ * 3. server.getClientVersion() — legacy initialize capture (backfilled from
+ *    the envelope by v2's createMcpHandler; undefined on 2026-pinned stdio).
  */
-export function deriveSessionIdFromMCPSession(
-  mcpSessionId: string,
-  projectId?: string,
-): string {
-  // Create input string for hashing
-  const input = projectId ? `${mcpSessionId}:${projectId}` : mcpSessionId;
+export function getClientInfoForRequest(
+  server: MCPServerLike,
+  request: any,
+  extra?: unknown,
+): ServerClientInfoLike | undefined {
+  const fromEnvelope = narrowClientInfo(
+    (extra as any)?.mcpReq?.envelope?.[META_CLIENT_INFO_KEY],
+  );
+  if (fromEnvelope) return fromEnvelope;
+  const fromMeta = narrowClientInfo(
+    request?.params?._meta?.[META_CLIENT_INFO_KEY],
+  );
+  if (fromMeta) return fromMeta;
+  return server.getClientVersion();
+}
 
-  // Hash the input with SHA-256
-  const hash = createHash("sha256").update(input).digest();
-
-  // Extract timestamp from first 4 bytes of hash (for deterministic but reasonable timestamp)
-  // We'll use a fixed epoch (2024-01-01) plus the hash value to get a deterministic but valid timestamp
-  const EPOCH_2024 = new Date("2024-01-01T00:00:00Z").getTime();
-  const timestampOffset = hash.readUInt32BE(0) % (365 * 24 * 60 * 60 * 1000); // Max 1 year offset
-  const timestamp = EPOCH_2024 + timestampOffset;
-
-  // Use the remaining 16 bytes of hash as the KSUID payload
-  const payload = hash.subarray(4, 20);
-
-  // Create deterministic KSUID with prefix
-  return KSUID.withPrefix("ses").fromParts(timestamp, payload);
+export function getProtocolVersion(
+  request: any,
+  extra?: unknown,
+): string | undefined {
+  const env = (extra as any)?.mcpReq?.envelope?.[META_PROTOCOL_VERSION_KEY];
+  if (typeof env === "string" && env.length > 0) return env;
+  const value = request?.params?._meta?.[META_PROTOCOL_VERSION_KEY];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /**
- * Gets or generates a session ID for the server.
- * Prioritizes MCP protocol sessionId over AgentCat-generated sessionId.
- *
- * @param server - The MCP server instance
- * @param extra - Optional extra data containing MCP sessionId
- * @returns The session ID to use for events
+ * Builds the session metadata stamped onto one event, from values resolved
+ * for THIS request. Pure: reads the server, writes nothing.
  */
-export function getServerSessionId(
+export function buildSessionInfo(
   server: MCPServerLike,
-  extra?: CompatibleRequestHandlerExtra,
-): string {
-  const data = getServerTrackingData(server);
-
-  if (!data) {
-    throw new Error("Server tracking data not found");
-  }
-
-  const mcpSessionId = extra?.sessionId;
-
-  // If MCP sessionId is provided
-  if (mcpSessionId) {
-    // Derive deterministic KSUID from MCP sessionId
-    data.sessionId = deriveSessionIdFromMCPSession(
-      mcpSessionId,
-      data.projectId || undefined,
-    );
-    data.lastMcpSessionId = mcpSessionId;
-    data.sessionSource = "mcp";
-    setServerTrackingData(server, data);
-    // If MCP sessionId hasn't changed, continue using the existing derived KSUID
-    setLastActivity(server);
-    return data.sessionId;
-  }
-
-  // No MCP sessionId provided - handle AgentCat-generated sessions
-  // If we had an MCP sessionId before but it disappeared, keep using the last derived ID
-  if (data.sessionSource === "mcp" && data.lastMcpSessionId) {
-    setLastActivity(server);
-    return data.sessionId;
-  }
-
-  // For AgentCat-generated sessions, apply timeout logic
-  const now = Date.now();
-  const timeoutMs = INACTIVITY_TIMEOUT_IN_MINUTES * 60 * 1000;
-  // If last activity timed out
-  if (now - data.lastActivity.getTime() > timeoutMs) {
-    data.sessionId = newSessionId();
-    data.sessionSource = "agentcat";
-    setServerTrackingData(server, data);
-  }
-  setLastActivity(server);
-
-  return data.sessionId;
-}
-
-export function setLastActivity(server: MCPServerLike): void {
-  const data = getServerTrackingData(server);
-
-  if (!data) {
-    throw new Error("Server tracking data not found");
-  }
-
-  data.lastActivity = new Date();
-  setServerTrackingData(server, data);
-}
-
-export function getSessionInfo(
-  server: MCPServerLike,
-  data: AgentCatData | undefined,
+  identity: UserIdentity | null | undefined,
+  clientInfo: ServerClientInfoLike | undefined,
 ): SessionInfo {
-  let clientInfo: ServerClientInfoLike | undefined = {
-    name: undefined,
-    version: undefined,
-  };
-  if (!data?.sessionInfo.clientName) {
-    clientInfo = server.getClientVersion();
-  }
-  const actorInfo = data?.identifiedSessions.get(data.sessionId);
-
-  const sessionInfo: SessionInfo = {
+  return {
     ipAddress: undefined, // grab from django
     sdkLanguage: "TypeScript", // hardcoded for now
     agentcatVersion: packageJson.version,
@@ -135,16 +81,8 @@ export function getSessionInfo(
     serverVersion: server._serverInfo?.version,
     clientName: clientInfo?.name,
     clientVersion: clientInfo?.version,
-    identifyActorGivenId: actorInfo?.userId,
-    identifyActorName: actorInfo?.userName,
-    identifyActorData: actorInfo?.userData || {},
+    identifyActorGivenId: identity?.userId,
+    identifyActorName: identity?.userName,
+    identifyActorData: identity?.userData || {},
   };
-
-  if (!data) {
-    return sessionInfo;
-  }
-
-  data.sessionInfo = sessionInfo;
-  setServerTrackingData(server, data);
-  return data.sessionInfo;
 }

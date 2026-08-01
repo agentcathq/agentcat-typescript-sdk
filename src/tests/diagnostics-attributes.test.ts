@@ -49,4 +49,20 @@ describe("diagnostics static attributes", () => {
     expect(m["os.type"]).toBeTruthy();
     expect(m["process.runtime.name"]).toBeTruthy();
   });
+
+  it("reports the installed v1 SDK version despite the exports stub", () => {
+    _resetDiagnosticsForTest();
+    initDiagnostics({ projectId: "proj_test", disabled: false });
+    const attrs = _getStaticAttributesForTest();
+    const v1 = attrs.find((a) => a.key === "agentcat.mcp_sdk.version");
+    expect(v1?.value.stringValue).toMatch(/^1\./); // devDep is ~1.30.0
+  });
+
+  it("reports the installed v2 SDK version despite sealed exports", () => {
+    _resetDiagnosticsForTest();
+    initDiagnostics({ projectId: "proj_test", disabled: false });
+    const attrs = _getStaticAttributesForTest();
+    const v2 = attrs.find((a) => a.key === "agentcat.mcp_sdk_v2.version");
+    expect(v2?.value.stringValue).toMatch(/^2\./); // devDep is ^2
+  });
 });

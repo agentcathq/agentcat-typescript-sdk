@@ -39,7 +39,8 @@ jobs:
         run: pnpm run lint
 
       - name: Run test suite
-        run: pnpm run test
+        # v2 SDK requires Node >= 20 — the 18.x lane runs the v1 project only.
+        run: ${{ matrix.node-version == '18.x' && 'pnpm run test:v1' || 'pnpm run test' }}
 
       - name: Build TypeScript project
         run: pnpm run build

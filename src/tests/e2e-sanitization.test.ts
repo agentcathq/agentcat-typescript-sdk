@@ -43,7 +43,17 @@ describe("E2E Sanitization - real MCP tool calls", () => {
       await client.request(
         {
           method: "tools/call",
-          params: { name: "get_attachment", arguments: { id: "att_1" } },
+          params: {
+            name: "get_attachment",
+            // Supplying both handles means nothing is minted, so no mint-back
+            // block is appended and the response content stays exactly as the
+            // tool returned it.
+            arguments: {
+              id: "att_1",
+              task_id: "ses_e2e",
+              agent_id: "agt_e2e",
+            },
+          },
         },
         CallToolResultSchema,
       );

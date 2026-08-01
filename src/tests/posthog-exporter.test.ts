@@ -133,6 +133,35 @@ describe("PostHogExporter", () => {
     expect(body.batch[0].distinct_id).toBe("ses_session456");
   });
 
+  it("should omit $session_id entirely for sessionless events (empty sessionId)", async () => {
+    const exporter = new PostHogExporter({
+      type: "posthog",
+      apiKey: "phc_test_key",
+      enableAITracing: true,
+    });
+
+    await exporter.export(
+      makeEvent({
+        sessionId: "",
+        isError: true,
+        error: { message: "boom" },
+      }),
+    );
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    // regular + $exception + $ai_span
+    expect(body.batch).toHaveLength(3);
+    for (const entry of body.batch) {
+      expect(entry.properties).not.toHaveProperty("$session_id");
+    }
+
+    const span = body.batch.find((e: any) => e.event === "$ai_span");
+    expect(span.properties).not.toHaveProperty("$ai_session_id");
+    // Sessionless spans still get a deterministic per-event trace id.
+    expect(span.properties.$ai_trace_id).toBeDefined();
+    expectUUIDv7(span.properties.$ai_trace_id);
+  });
+
   it("should send $exception event alongside regular event when isError is true", async () => {
     const exporter = new PostHogExporter({
       type: "posthog",

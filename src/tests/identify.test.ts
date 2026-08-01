@@ -33,7 +33,7 @@ describe("Identify Feature", () => {
   });
 
   describe("Basic Identification Test", () => {
-    it("should call identify function on first tool invocation and store user identity", async () => {
+    it("should call identify on the tool call and stamp the identity onto that event", async () => {
       const eventCapture = new EventCapture();
       await eventCapture.start();
 
@@ -79,31 +79,34 @@ describe("Identify Feature", () => {
       // Wait for events to be processed
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify that an identify event was published
+      // No separate identify event exists any more — the resolved identity is
+      // stamped directly onto the tool call event it belongs to.
       const events = eventCapture.getEvents();
-      const identifyEvent = events.find(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+      expect(
+        events.some(
+          (e) =>
+            e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+        ),
+      ).toBe(false);
+
+      const toolCallEvent = events.find(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.resourceName).toBe("add_todo");
+      expect(toolCallEvent?.identifyActorGivenId).toBe(testUserId);
+      expect(toolCallEvent?.identifyActorData).toEqual(testUserData);
 
-      expect(identifyEvent).toBeDefined();
-      expect(identifyEvent?.resourceName).toBe("add_todo");
-
-      // Verify user identity is stored in session
+      // Nothing is cached on the server: the tracking data is config only —
+      // no session id, no identity map, no session info.
       const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      expect(sessionId).toBeDefined();
-
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-      expect(storedIdentity).toEqual({
-        userId: testUserId,
-        userData: testUserData,
-      });
+      expect(data).toBeDefined();
+      expect(Object.keys(data!).sort()).toEqual(["options", "projectId"]);
 
       await eventCapture.stop();
     });
 
-    it("should call identify function on each tool call but only publish event when identity changes", async () => {
+    it("should call identify on every tool call and stamp every event, with no dedup", async () => {
       let identifyCallCount = 0;
       const userId = `user-${randomUUID()}`;
       const userName = `Another User ${randomUUID()}`;
@@ -123,7 +126,7 @@ describe("Identify Feature", () => {
         },
       });
 
-      // First tool call - should trigger identify and publish event
+      // First tool call - identify runs and stamps this call's event
       await client.request(
         {
           method: "tools/call",
@@ -139,14 +142,8 @@ describe("Identify Feature", () => {
       );
 
       expect(identifyCallCount).toBe(1);
-      const events1 = await eventCapture.getEvents();
-      const identifyEvents1 = events1.filter(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-      );
-      expect(identifyEvents1.length).toBe(1); // First identify event published
 
-      // Second tool call - should call identify but NOT publish event (identity unchanged)
+      // Second tool call - identify runs AGAIN; there is no dedup cache
       await client.request(
         {
           method: "tools/call",
@@ -161,14 +158,8 @@ describe("Identify Feature", () => {
       );
 
       expect(identifyCallCount).toBe(2); // Called again
-      const events2 = await eventCapture.getEvents();
-      const identifyEvents2 = events2.filter(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-      );
-      expect(identifyEvents2.length).toBe(1); // Still only 1 event (no new event published)
 
-      // Third tool call - should call identify but still NOT publish event
+      // Third tool call - identify runs a third time
       await client.request(
         {
           method: "tools/call",
@@ -184,12 +175,27 @@ describe("Identify Feature", () => {
       );
 
       expect(identifyCallCount).toBe(3); // Called again
-      const events3 = await eventCapture.getEvents();
-      const identifyEvents3 = events3.filter(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const events = eventCapture.getEvents();
+
+      // Zero identify events — the event type is gone entirely.
+      expect(
+        events.filter(
+          (e) =>
+            e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+        ),
+      ).toHaveLength(0);
+
+      // Instead, EVERY tool call event carries the resolved identity.
+      const toolCallEvents = events.filter(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
-      expect(identifyEvents3.length).toBe(1); // Still only 1 event
+      expect(toolCallEvents).toHaveLength(3);
+      for (const event of toolCallEvents) {
+        expect(event.identifyActorGivenId).toBe(userId);
+        expect(event.identifyActorData).toEqual({ name: userName });
+      }
 
       await eventCapture.stop();
     });
@@ -263,17 +269,17 @@ describe("Identify Feature", () => {
       // Wait for events to be processed
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify that an identify event was published
       const events = eventCapture.getEvents();
-      const identifyEvent = events.find(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-      );
 
-      expect(identifyEvent).toBeDefined();
-      expect(identifyEvent?.resourceName).toBe("post_track_tool");
+      // No identify event; the identity lands on the tool call event instead.
+      expect(
+        events.some(
+          (e) =>
+            e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
+        ),
+      ).toBe(false);
 
-      // Verify tool call event was tracked with user intent
+      // Verify tool call event was tracked with user intent AND the identity
       const toolCallEvent = events.find(
         (e) =>
           e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall &&
@@ -284,17 +290,8 @@ describe("Identify Feature", () => {
       expect(toolCallEvent?.userIntent).toBe(
         "Verifying identification works for dynamically added tools",
       );
-
-      // Verify user identity is stored in session
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      expect(sessionId).toBeDefined();
-
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-      expect(storedIdentity).toEqual({
-        userId: testUserId,
-        userData: testUserData,
-      });
+      expect(toolCallEvent?.identifyActorGivenId).toBe(testUserId);
+      expect(toolCallEvent?.identifyActorData).toEqual(testUserData);
 
       await eventCapture.stop();
     });
@@ -321,6 +318,10 @@ describe("Identify Feature", () => {
         }),
       });
 
+      // The agent echoes one task_id across the whole workflow — that, not any
+      // server-side cache, is what keeps these calls on the same task now.
+      const taskId = "ses_identify_persistence";
+
       // Make multiple tool calls
       await client.request(
         {
@@ -330,6 +331,7 @@ describe("Identify Feature", () => {
             arguments: {
               text: "Todo 1",
               context: "Adding a todo item for reset task",
+              task_id: taskId,
             },
           },
         },
@@ -344,6 +346,7 @@ describe("Identify Feature", () => {
             arguments: {
               text: "Todo 2",
               context: "Adding a todo item for reset task",
+              task_id: taskId,
             },
           },
         },
@@ -355,7 +358,10 @@ describe("Identify Feature", () => {
           method: "tools/call",
           params: {
             name: "list_todos",
-            arguments: { context: "Listing todos for reset task" },
+            arguments: {
+              context: "Listing todos for reset task",
+              task_id: taskId,
+            },
           },
         },
         CallToolResultSchema,
@@ -370,20 +376,16 @@ describe("Identify Feature", () => {
         (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
       );
 
-      // Verify all events have the same session ID
+      // Verify all events landed on the supplied task
       expect(toolCallEvents.length).toBe(3);
       const sessionIds = toolCallEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds).size).toBe(1); // All should have same session ID
+      expect(new Set(sessionIds)).toEqual(new Set([taskId]));
 
-      // Verify user identity persists
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-
-      expect(storedIdentity).toEqual({
-        userId: testUserId,
-        userData: testUserData,
-      });
+      // Verify the identity is re-resolved and stamped on every one of them
+      for (const event of toolCallEvents) {
+        expect(event.identifyActorGivenId).toBe(testUserId);
+        expect(event.identifyActorData).toEqual(testUserData);
+      }
 
       await eventCapture.stop();
     });
@@ -420,7 +422,6 @@ describe("Identify Feature", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify no identify event was published (since it returned null)
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
         (e) =>
@@ -429,12 +430,14 @@ describe("Identify Feature", () => {
 
       expect(identifyEvent).toBeUndefined();
 
-      // Verify no user identity is stored
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-
-      expect(storedIdentity).toBeUndefined();
+      // The tool call event still publishes, just anonymously.
+      const toolCallEvent = events.find(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+      );
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBeUndefined();
+      expect(toolCallEvent?.identifyActorName).toBeUndefined();
+      expect(toolCallEvent?.identifyActorData).toEqual({});
 
       await eventCapture.stop();
     });
@@ -501,8 +504,11 @@ describe("Identify Feature", () => {
     });
   });
 
-  describe("Identity Data in Session Info", () => {
-    it("should populate actorGivenId, actorName, and actorData in session info", async () => {
+  describe("Identity Data on Published Events", () => {
+    it("should populate actorGivenId, actorName, and actorData on the event", async () => {
+      const eventCapture = new EventCapture();
+      await eventCapture.start();
+
       const testUserId = `session-user-${randomUUID()}`;
       const testUserName = `Session User ${randomUUID()}`;
       const testUserData = {
@@ -536,68 +542,77 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      // Get session info from server data
-      const data = getServerTrackingData(server.server);
-      const sessionInfo = data?.sessionInfo;
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(sessionInfo).toBeDefined();
-      expect(sessionInfo?.identifyActorGivenId).toBe(testUserId);
-      expect(sessionInfo?.identifyActorName).toBe(testUserName);
-      expect(sessionInfo?.identifyActorData).toEqual(testUserData);
+      // Session info is built per event now — the server holds config only,
+      // so there is nothing cached to read it from.
+      const data = getServerTrackingData(server.server);
+      expect(data).toBeDefined();
+      expect(Object.keys(data!).sort()).toEqual(["options", "projectId"]);
+
+      const toolCallEvent = eventCapture
+        .getEvents()
+        .find(
+          (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+        );
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBe(testUserId);
+      expect(toolCallEvent?.identifyActorName).toBe(testUserName);
+      expect(toolCallEvent?.identifyActorData).toEqual(testUserData);
+
+      await eventCapture.stop();
     });
 
-    it("should include identity data in tracked events", async () => {
+    it("should re-resolve identity per request so a changed identity lands on the next event", async () => {
       const eventCapture = new EventCapture();
       await eventCapture.start();
 
-      const testUserId = `event-user-${randomUUID()}`;
-      const testUserName = `Event User ${randomUUID()}`;
-      const testUserData = {
-        name: `Event Test User ${randomUUID()}`,
-        subscription: "premium",
-      };
+      const firstUserId = `event-user-a-${randomUUID()}`;
+      const secondUserId = `event-user-b-${randomUUID()}`;
+      const identities = [
+        { userId: firstUserId, userName: "First", userData: { seat: "a" } },
+        { userId: secondUserId, userName: "Second", userData: { seat: "b" } },
+      ];
+      let call = 0;
 
-      // Enable tracking with identify function
+      // The old dedup cache would have suppressed the second identity entirely.
       track(server, "test-project", {
         enableTracing: true,
-        identify: async () => ({
-          userId: testUserId,
-          userName: testUserName,
-          userData: testUserData,
-        }),
+        identify: async () => identities[call++],
       });
 
-      // Call a tool
-      await client.request(
-        {
-          method: "tools/call",
-          params: {
-            name: "add_todo",
-            arguments: {
-              text: "Test event data",
-              context: "Adding a todo item for event data test",
+      for (const text of ["First call", "Second call"]) {
+        await client.request(
+          {
+            method: "tools/call",
+            params: {
+              name: "add_todo",
+              arguments: {
+                text,
+                context: "Adding a todo item for event data test",
+              },
             },
           },
-        },
-        CallToolResultSchema,
-      );
+          CallToolResultSchema,
+        );
+      }
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Check that events include session info with actor data
-      const events = eventCapture.getEvents();
-      const toolCallEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
-      );
+      const toolCallEvents = eventCapture
+        .getEvents()
+        .filter(
+          (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+        );
 
-      expect(toolCallEvent).toBeDefined();
-      // The event should have access to session info through the server's session data
-
-      const data = getServerTrackingData(server.server);
-      expect(data?.sessionInfo.identifyActorGivenId).toBe(testUserId);
-      expect(data?.sessionInfo.identifyActorName).toBe(testUserName);
-      expect(data?.sessionInfo.identifyActorData).toEqual(testUserData);
+      expect(toolCallEvents).toHaveLength(2);
+      expect(toolCallEvents[0].identifyActorGivenId).toBe(firstUserId);
+      expect(toolCallEvents[0].identifyActorName).toBe("First");
+      expect(toolCallEvents[0].identifyActorData).toEqual({ seat: "a" });
+      expect(toolCallEvents[1].identifyActorGivenId).toBe(secondUserId);
+      expect(toolCallEvents[1].identifyActorName).toBe("Second");
+      expect(toolCallEvents[1].identifyActorData).toEqual({ seat: "b" });
 
       await eventCapture.stop();
     });
@@ -609,21 +624,19 @@ describe("Identify Feature", () => {
       await eventCapture.start();
 
       let asyncOperationCompleted = false;
+      const asyncUserId = `async-user-${randomUUID()}`;
 
       // Enable tracking with async identify function
       track(server, "test-project", {
         enableTracing: true,
-        identify: async (request, extra) => {
+        identify: async () => {
           // Simulate async operation (e.g., database lookup, API call)
           await new Promise((resolve) => setTimeout(resolve, 100));
           asyncOperationCompleted = true;
 
           return {
-            userId: `async-user-${randomUUID()}`,
-            userData: {
-              name: `Async User ${randomUUID()}`,
-              source: "async-lookup",
-            },
+            userId: asyncUserId,
+            userData: { source: "async-lookup" },
           };
         },
       });
@@ -649,15 +662,21 @@ describe("Identify Feature", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify identify event was published with duration
-      const events = eventCapture.getEvents();
-      const identifyEvent = events.find(
-        (e) =>
-          e.eventType === PublishEventRequestEventTypeEnum.agentcatIdentify,
-      );
+      // The awaited identity lands on the tool call event, and the call is
+      // held open for it — so the event's duration covers the async lookup.
+      const toolCallEvent = eventCapture
+        .getEvents()
+        .find(
+          (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+        );
 
-      expect(identifyEvent).toBeDefined();
-      expect(identifyEvent?.duration).toBeGreaterThan(0); // Should have measurable duration
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBe(asyncUserId);
+      expect(toolCallEvent?.identifyActorData).toEqual({
+        source: "async-lookup",
+      });
+      // 95, not 100: setTimeout can fire ~1ms early and Date truncates to ms.
+      expect(toolCallEvent?.duration).toBeGreaterThanOrEqual(95);
 
       await eventCapture.stop();
     });
@@ -696,7 +715,8 @@ describe("Identify Feature", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Verify NO identify event was published (errors in identify function should not publish events)
+      // A throwing identify degrades to anonymous: the tool call event still
+      // publishes, just with no actor fields.
       const events = eventCapture.getEvents();
       const identifyEvent = events.find(
         (e) =>
@@ -705,12 +725,13 @@ describe("Identify Feature", () => {
 
       expect(identifyEvent).toBeUndefined();
 
-      // Verify no user identity was stored
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
-
-      expect(storedIdentity).toBeUndefined();
+      const toolCallEvent = events.find(
+        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+      );
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBeUndefined();
+      expect(toolCallEvent?.identifyActorName).toBeUndefined();
+      expect(toolCallEvent?.identifyActorData).toEqual({});
 
       await eventCapture.stop();
     });
@@ -748,21 +769,25 @@ describe("Identify Feature", () => {
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // The system should handle this gracefully
-      const data = getServerTrackingData(server.server);
-      const sessionId = data?.sessionId;
-      const storedIdentity = data?.identifiedSessions.get(sessionId!);
+      // The system should handle this gracefully: the event publishes, and the
+      // fields the invalid identity did not supply simply come out empty.
+      const toolCallEvent = eventCapture
+        .getEvents()
+        .find(
+          (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsCall,
+        );
 
-      // It will store whatever was returned, even if invalid
-      expect(storedIdentity).toBeDefined();
-      expect((storedIdentity as any).invalidField).toBe("invalid");
+      expect(toolCallEvent).toBeDefined();
+      expect(toolCallEvent?.identifyActorGivenId).toBeUndefined();
+      expect(toolCallEvent?.identifyActorName).toBeUndefined();
+      expect(toolCallEvent?.identifyActorData).toEqual({});
 
       await eventCapture.stop();
     });
   });
 
-  describe("Identify Fields on tools/list Events", () => {
-    it("should populate identify fields on mcp:tools/list event when tools/list is the first request after track()", async () => {
+  describe("tools/list no longer identifies or publishes", () => {
+    it("should not run identify or publish an event for a tools/list request", async () => {
       const eventCapture = new EventCapture();
       await eventCapture.start();
 
@@ -786,9 +811,9 @@ describe("Identify Feature", () => {
         },
       });
 
-      // tools/list is the FIRST request after track() — no prior tools/call
-      // has had a chance to prime the identifiedSessions cache. The tools/list
-      // event should still publish with identify fields populated.
+      // tools/list is now schema injection only: no event is published, so
+      // there is no identity to resolve and the customer's identify callback
+      // is never invoked for it.
       await client.request(
         {
           method: "tools/list",
@@ -799,17 +824,8 @@ describe("Identify Feature", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(identifyCalled).toBe(true);
-
-      const events = eventCapture.getEvents();
-      const listToolsEvent = events.find(
-        (e) => e.eventType === PublishEventRequestEventTypeEnum.mcpToolsList,
-      );
-
-      expect(listToolsEvent).toBeDefined();
-      expect(listToolsEvent?.identifyActorGivenId).toBe(testUserId);
-      expect(listToolsEvent?.identifyActorName).toBe(testUserName);
-      expect(listToolsEvent?.identifyActorData).toEqual(testUserData);
+      expect(identifyCalled).toBe(false);
+      expect(eventCapture.getEvents()).toHaveLength(0);
 
       await eventCapture.stop();
     });

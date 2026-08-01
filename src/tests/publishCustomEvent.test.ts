@@ -13,7 +13,6 @@ vi.mock("../thirdparty/ksuid/index.js");
 // Import mocked modules
 import { writeToLog } from "../modules/logging.js";
 import { getServerTrackingData } from "../modules/internal.js";
-import { deriveSessionIdFromMCPSession } from "../modules/session.js";
 import {
   publishEvent as publishEventToQueue,
   eventQueue,
@@ -49,13 +48,6 @@ describe("publishCustomEvent", () => {
     };
     (eventQueue as any).add = mockEventQueue.add;
 
-    // Mock deriveSessionIdFromMCPSession
-    (deriveSessionIdFromMCPSession as any).mockImplementation(
-      (sessionId: string, projectId: string) => {
-        return `ses_derived_${sessionId}_${projectId}`;
-      },
-    );
-
     // Mock publishEventToQueue
     (publishEventToQueue as any).mockImplementation(() => {});
 
@@ -84,6 +76,7 @@ describe("publishCustomEvent", () => {
 
     it("should publish custom event with tracked server", async () => {
       const eventData: CustomEventData = {
+        taskId: "ses_srv",
         resourceName: "custom-action",
         parameters: { action: "test" },
         message: "Testing custom event",
@@ -95,7 +88,7 @@ describe("publishCustomEvent", () => {
       expect(publishEventToQueue).toHaveBeenCalledWith(
         mockServer,
         expect.objectContaining({
-          sessionId: "ses_tracked123",
+          sessionId: "ses_srv",
           projectId,
           eventType: "agentcat:custom",
           resourceName: "custom-action",
@@ -105,6 +98,33 @@ describe("publishCustomEvent", () => {
       );
       expect(writeToLog).toHaveBeenCalledWith(
         expect.stringContaining("Published custom event"),
+      );
+    });
+
+    it("should use eventData.taskId as the session id, not any ambient server session", async () => {
+      await publishCustomEvent(mockServer, projectId, { taskId: "ses_srv" });
+
+      expect(publishEventToQueue).toHaveBeenCalledWith(
+        mockServer,
+        expect.objectContaining({ sessionId: "ses_srv" }),
+      );
+    });
+
+    it("should publish with an empty session id and warn when no taskId is provided", async () => {
+      await publishCustomEvent(mockServer, projectId, {
+        resourceName: "custom-action",
+      });
+
+      expect(publishEventToQueue).toHaveBeenCalledWith(
+        mockServer,
+        expect.objectContaining({
+          sessionId: "",
+          projectId,
+          resourceName: "custom-action",
+        }),
+      );
+      expect(writeToLog).toHaveBeenCalledWith(
+        expect.stringContaining("no taskId provided"),
       );
     });
 
@@ -144,11 +164,11 @@ describe("publishCustomEvent", () => {
     });
   });
 
-  describe("with custom session ID", () => {
+  describe("with task ID string", () => {
     const customSessionId = "user-session-12345";
     const projectId = "proj_test123";
 
-    it("should publish custom event with derived session ID", async () => {
+    it("should use the task ID string verbatim as the session ID", async () => {
       const eventData: CustomEventData = {
         resourceName: "custom-action",
         parameters: { action: "test" },
@@ -156,17 +176,26 @@ describe("publishCustomEvent", () => {
 
       await publishCustomEvent(customSessionId, projectId, eventData);
 
-      expect(deriveSessionIdFromMCPSession).toHaveBeenCalledWith(
-        customSessionId,
-        projectId,
-      );
       expect(mockEventQueue.add).toHaveBeenCalledWith(
         expect.objectContaining({
-          sessionId: `ses_derived_${customSessionId}_${projectId}`,
+          sessionId: customSessionId,
           projectId,
           eventType: "agentcat:custom",
           resourceName: "custom-action",
           parameters: { action: "test" },
+        }),
+      );
+    });
+
+    it("should let eventData.taskId take precedence over the string", async () => {
+      await publishCustomEvent("ignored-string", "proj", {
+        taskId: "ses_wins",
+      });
+
+      expect(mockEventQueue.add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "ses_wins",
+          projectId: "proj",
         }),
       );
     });
@@ -215,17 +244,17 @@ describe("publishCustomEvent", () => {
 
     it("should throw error if first parameter is invalid", async () => {
       await expect(publishCustomEvent(123 as any, "proj_123")).rejects.toThrow(
-        "First parameter must be either an MCP server object or a session ID string",
+        "First parameter must be either an MCP server object or a task ID string",
       );
 
       await expect(publishCustomEvent(null as any, "proj_123")).rejects.toThrow(
-        "First parameter must be either an MCP server object or a session ID string",
+        "First parameter must be either an MCP server object or a task ID string",
       );
 
       await expect(
         publishCustomEvent(undefined as any, "proj_123"),
       ).rejects.toThrow(
-        "First parameter must be either an MCP server object or a session ID string",
+        "First parameter must be either an MCP server object or a task ID string",
       );
     });
   });

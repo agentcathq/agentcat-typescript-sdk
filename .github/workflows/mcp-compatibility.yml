@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-mcp-sdk-versions:
+  test-v1-sdk-versions:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -28,14 +28,15 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.11.0
 
       - name: Fetch all available MCP SDK versions (≥1.11)
         id: get-versions
         run: |
           # Get all versions >= 1.11, filter to get latest patch for each minor version
+          # v1 leg: >=1.11 <2 — v2 is covered by test-v2-sdk-versions
           VERSIONS=$(pnpm view @modelcontextprotocol/sdk versions --json | jq -c '
             map(select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))) |
             map(select(
@@ -60,12 +61,12 @@ jobs:
           # Parse JSON array
           for version in $(echo "$VERSIONS" | jq -r '.[]'); do
             echo "Testing @modelcontextprotocol/sdk@$version"
-            
+
             # Install specific version
             pnpm add -D @modelcontextprotocol/sdk@$version
-            
+
             # Run all tests
-            if pnpm test; then
+            if pnpm run test:v1; then
               echo "✅ Compatible with @modelcontextprotocol/sdk@$version on Node ${{ matrix.node }}"
             else
               echo "❌ Not compatible with @modelcontextprotocol/sdk@$version on Node ${{ matrix.node }}"
@@ -73,8 +74,109 @@ jobs:
             fi
           done
 
+  test-v2-sdk-versions:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"] # v2 requires Node >= 20; Node 18 stays v1-only
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Fetch all available v2 SDK versions (>=2.0.0)
+        id: get-versions
+        run: |
+          # v2 packages share one version number; enumerating server covers all.
+          VERSIONS=$(pnpm view @modelcontextprotocol/server versions --json | jq -c '
+            map(select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))) |
+            map(select((split(".")[0] | tonumber) >= 2)) |
+            group_by(split(".")[0:2] | join(".")) |
+            map(max_by(split(".") | map(tonumber))) |
+            sort_by(split(".") | map(tonumber))
+          ')
+          echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
+          echo "Found versions: $VERSIONS"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run both suites against each v2 SDK version
+        run: |
+          VERSIONS='${{ steps.get-versions.outputs.versions }}'
+          for version in $(echo "$VERSIONS" | jq -r '.[]'); do
+            echo "Testing @modelcontextprotocol/server@$version + client@$version"
+            # server + client pinned together — mixed versions are not a
+            # customer topology. The v1 devDep stays installed, so every
+            # iteration also exercises v1+v2 coexistence.
+            pnpm add -D "@modelcontextprotocol/server@$version" "@modelcontextprotocol/client@$version"
+            if pnpm test; then
+              echo "✅ Compatible with v2 $version on Node ${{ matrix.node }}"
+            else
+              echo "❌ Not compatible with v2 $version on Node ${{ matrix.node }}"
+              exit 1
+            fi
+          done
+
+  e2e-http:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run real-HTTP e2e matrix
+        run: pnpm run test:e2e:http
+
+  packaging-probes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Install-topology import probes
+        run: node scripts/packaging-probe.mjs
+
   compatibility-summary:
-    needs: test-mcp-sdk-versions
+    needs:
+      [test-v1-sdk-versions, test-v2-sdk-versions, e2e-http, packaging-probes]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -83,6 +185,9 @@ jobs:
           echo "# MCP SDK Compatibility Report"
           echo ""
           echo "Tested on: $(date)"
-          echo "Node versions tested: 18, 20, 22"
+          echo "v1 leg (@modelcontextprotocol/sdk >=1.11 <2): Node 18, 20, 22"
+          echo "v2 leg (@modelcontextprotocol/server + client >=2.0.0): Node 20, 22"
+          echo "Real-HTTP e2e matrix: Node 20, 22"
+          echo "Packaging probes: install-topology import checks on Node 20"
           echo ""
           echo "See individual job results for detailed compatibility information."
