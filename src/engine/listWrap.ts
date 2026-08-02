@@ -11,6 +11,7 @@ import {
   InjectedParamsRegistry,
   OutputInjectionRegistry,
   getEngineState,
+  getReportedConflicts,
   setInjectedParamsRegistry,
   setOutputInjectionRegistry,
 } from "./registry.js";
@@ -56,6 +57,7 @@ export function buildInjectedList(
       injectSessionId: tracingEnabled && !data.options.resolveSessionId,
       injectAgentId:
         tracingEnabled && data.options.enableAgentTracking === true,
+      reportedConflicts: getReportedConflicts(data),
     },
     registry,
     outputRegistry,

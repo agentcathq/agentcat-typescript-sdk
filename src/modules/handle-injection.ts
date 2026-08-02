@@ -41,6 +41,8 @@ function recordInjected(
 export interface HandleInjectionOptions {
   injectSessionId: boolean; // false in hook mode
   injectAgentId: boolean; // false when enableAgentTracking is false
+  /** Tools already reported for a session_id collision; prevents log spam. */
+  reportedConflicts?: Set<string>;
 }
 
 /**
@@ -94,9 +96,16 @@ function addHandleParametersToTool(
 
   if (opts.injectSessionId) {
     if (properties[SESSION_ID_PARAM]) {
-      writeToLog(
-        `WARN: Tool "${toolName}" already has '${SESSION_ID_PARAM}' parameter. Skipping session_id injection.`,
-      );
+      if (!opts.reportedConflicts?.has(toolName)) {
+        opts.reportedConflicts?.add(toolName);
+        writeToLog(
+          `ERROR: Tool "${toolName}" already declares a '${SESSION_ID_PARAM}' parameter. ` +
+            `AgentCat will not inject its own, and calls to this tool are published without a session, ` +
+            `so they cannot be correlated. Your parameter is untouched and still reaches your handler. ` +
+            `If you already manage sessions, pass a resolveSessionId hook to track() — AgentCat will ` +
+            `derive its session from your identifier and stop injecting ${SESSION_ID_PARAM} entirely.`,
+        );
+      }
     } else {
       properties[SESSION_ID_PARAM] = {
         type: "string",

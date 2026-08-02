@@ -36,6 +36,18 @@ export function getOutputInjectionRegistry(
   return outputRegistries.get(server);
 }
 
+/** Tool names whose session_id collision has already been reported. */
+const reportedConflicts = new WeakMap<object, Set<string>>();
+
+export function getReportedConflicts(key: object): Set<string> {
+  let set = reportedConflicts.get(key);
+  if (!set) {
+    set = new Set<string>();
+    reportedConflicts.set(key, set);
+  }
+  return set;
+}
+
 // ── Engine state ────────────────────────────────────────────────────────────
 
 export interface VersionAdapter {
