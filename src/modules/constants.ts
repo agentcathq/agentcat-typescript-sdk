@@ -33,7 +33,7 @@ export const MINT_BACK_HEADER_INVALID =
 export const MINT_BACK_CLOSER =
   "Without session_id, this server does not function as intended.";
 export const MINT_BACK_INVALID_LINE =
-  "  The session_id you sent was not issued by this server. Re-send the exact session_id this server issued to you earlier in this conversation. Never invent a value.";
+  "  The session_id you sent was not issued by this server. Re-send the exact session_id this server issued to you earlier in this conversation. Never invent a value. If this server has not issued you a session_id yet, omit the parameter and one will be issued.";
 
 export const mintBackSessionLine = (sessionId: string): string =>
   `  session_id=${sessionId} — required on every subsequent tool call`;

@@ -650,6 +650,17 @@ describe("invalid and foreign mint-back", () => {
     expect(text).not.toMatch(/ses_[0-9A-Za-z]{27}/);
   });
 
+  it("invalid: offers an escape to an agent that was never issued one", () => {
+    // Without this, an agent that hallucinated a session_id on its first call
+    // — or a client that auto-filled a param named session_id — is deadlocked:
+    // it is told to re-send a value it never received, and this branch never
+    // mints. Omitting the parameter is the only way back to a real session.
+    const text = buildMintBackText(invalidRes)!;
+    expect(text).toContain(
+      "If this server has not issued you a session_id yet, omit the parameter and one will be issued.",
+    );
+  });
+
   it("invalid: structured mirror carries instructions but no session_id", () => {
     const mint = buildStructuredMintBack(invalidRes)!;
     expect(mint.instructions).toContain("not recognized");
