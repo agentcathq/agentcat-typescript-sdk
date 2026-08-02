@@ -89,18 +89,16 @@ describe("e2e-http v2 SSE smoke: long-lived lane, streaming POST responses", () 
     try {
       await client.connect(clientTransport);
 
-      // Listing: agentcat injected context + conversation_id and added get_more_tools.
+      // Listing: agentcat injected context + session_id and added get_more_tools.
       const { tools } = await client.listTools();
       const names = tools.map((t: any) => t.name);
       expect(names).toContain("echo");
       expect(names).toContain("get_more_tools");
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect((echo.inputSchema as any).properties.context).toBeDefined();
-      expect(
-        (echo.inputSchema as any).properties.conversation_id,
-      ).toBeDefined();
+      expect((echo.inputSchema as any).properties.session_id).toBeDefined();
 
-      // Call with context but no conversation_id → SDK mints and announces the handle
+      // Call with context but no session_id → SDK mints and announces the handle
       // inside the SSE-framed result.
       const result: any = await client.callTool({
         name: "echo",
@@ -108,7 +106,7 @@ describe("e2e-http v2 SSE smoke: long-lived lane, streaming POST responses", () 
       });
       const mintBack = mintBackOf(result);
       expect(mintBack).toBeDefined();
-      expect(handleFrom(mintBack!, "conversation_id")).toMatch(/^ses_/);
+      expect(handleFrom(mintBack!, "session_id")).toMatch(/^ses_/);
 
       // Event: minted ses_ session + captured intent.
       await waitForEvents(capture, 1);
@@ -121,7 +119,7 @@ describe("e2e-http v2 SSE smoke: long-lived lane, streaming POST responses", () 
       const seen = sink.filter((entry) => entry.tool === "echo");
       expect(seen).toHaveLength(1);
       expect(seen[0].args.msg).toBe("hi");
-      expect(seen[0].args.conversation_id).toBeUndefined();
+      expect(seen[0].args.session_id).toBeUndefined();
       expect(seen[0].args.context).toBeUndefined();
 
       // Streaming proof: the POST round-trips above (initialize, tools/list,

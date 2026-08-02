@@ -25,8 +25,8 @@ import {
 import { scenarioConfig } from "./scenario-types.js";
 import { buildV1Toolkit, type ToolSink } from "./toolkit.js";
 import {
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
-  MINT_BACK_HEADER_CONVERSATION,
+  AGENTCAT_TAG_SESSION_SOURCE,
+  MINT_BACK_HEADER_SESSION,
 } from "../../modules/constants.js";
 
 interface SseInstance {
@@ -125,33 +125,33 @@ describe("e2e-http v1 SSE smoke (stateful, enableJsonResponse: false)", () => {
       expect(names).toContain("get_more_tools");
       const echo: any = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties.context).toBeDefined();
-      expect(echo.inputSchema.properties.conversation_id).toBeDefined();
+      expect(echo.inputSchema.properties.session_id).toBeDefined();
 
-      // Call with context but no conversation_id → mint-back rides the SSE stream.
+      // Call with context but no session_id → mint-back rides the SSE stream.
       const result: any = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "sse smoke intent" },
       });
       const mintBack = mintBackOf(result);
       expect(mintBack).toBeDefined();
-      expect(mintBack).toContain(MINT_BACK_HEADER_CONVERSATION);
-      const conversationId = handleFrom(mintBack!, "conversation_id");
-      expect(conversationId).toMatch(/^ses_/);
+      expect(mintBack).toContain(MINT_BACK_HEADER_SESSION);
+      const sessionId = handleFrom(mintBack!, "session_id");
+      expect(sessionId).toMatch(/^ses_/);
 
       const events = await waitForEvents(capture, 1);
       expect(events).toHaveLength(1);
       const [event] = capture.findEventsByResourceName("echo");
-      expect(event.sessionId).toBe(conversationId);
+      expect(event.sessionId).toBe(sessionId);
       expect(event.userIntent).toBe("sse smoke intent");
       expect(event.tags).toMatchObject({
-        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
+        [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
       });
 
       // Strip-proof unchanged in SSE mode.
       const seen = sink.filter((entry) => entry.tool === "echo");
       expect(seen).toHaveLength(1);
       expect(seen[0].args.msg).toBe("hi");
-      expect(seen[0].args.conversation_id).toBeUndefined();
+      expect(seen[0].args.session_id).toBeUndefined();
       expect(seen[0].args.context).toBeUndefined();
     } finally {
       await instance.close();

@@ -76,7 +76,7 @@ describe("publishCustomEvent", () => {
 
     it("should publish custom event with tracked server", async () => {
       const eventData: CustomEventData = {
-        conversationId: "ses_srv",
+        sessionId: "ses_srv",
         resourceName: "custom-action",
         parameters: { action: "test" },
         message: "Testing custom event",
@@ -101,9 +101,9 @@ describe("publishCustomEvent", () => {
       );
     });
 
-    it("should use eventData.conversationId as the session id, not any ambient server session", async () => {
+    it("should use eventData.sessionId as the session id, not any ambient server session", async () => {
       await publishCustomEvent(mockServer, projectId, {
-        conversationId: "ses_srv",
+        sessionId: "ses_srv",
       });
 
       expect(publishEventToQueue).toHaveBeenCalledWith(
@@ -112,7 +112,7 @@ describe("publishCustomEvent", () => {
       );
     });
 
-    it("should publish with an empty session id and warn when no conversationId is provided", async () => {
+    it("should publish with an empty session id and warn when no sessionId is provided", async () => {
       await publishCustomEvent(mockServer, projectId, {
         resourceName: "custom-action",
       });
@@ -126,7 +126,7 @@ describe("publishCustomEvent", () => {
         }),
       );
       expect(writeToLog).toHaveBeenCalledWith(
-        expect.stringContaining("no conversationId provided"),
+        expect.stringContaining("no sessionId provided"),
       );
     });
 
@@ -166,11 +166,11 @@ describe("publishCustomEvent", () => {
     });
   });
 
-  describe("with conversation ID string", () => {
+  describe("with session ID string", () => {
     const customSessionId = "user-session-12345";
     const projectId = "proj_test123";
 
-    it("should use the conversation ID string verbatim as the session ID", async () => {
+    it("should use the session ID string verbatim as the session ID", async () => {
       const eventData: CustomEventData = {
         resourceName: "custom-action",
         parameters: { action: "test" },
@@ -189,9 +189,9 @@ describe("publishCustomEvent", () => {
       );
     });
 
-    it("should let eventData.conversationId take precedence over the string", async () => {
+    it("should let eventData.sessionId take precedence over the string", async () => {
       await publishCustomEvent("ignored-string", "proj", {
-        conversationId: "ses_wins",
+        sessionId: "ses_wins",
       });
 
       expect(mockEventQueue.add).toHaveBeenCalledWith(
@@ -246,17 +246,17 @@ describe("publishCustomEvent", () => {
 
     it("should throw error if first parameter is invalid", async () => {
       await expect(publishCustomEvent(123 as any, "proj_123")).rejects.toThrow(
-        "First parameter must be either an MCP server object or a conversation ID string",
+        "First parameter must be either an MCP server object or a session ID string",
       );
 
       await expect(publishCustomEvent(null as any, "proj_123")).rejects.toThrow(
-        "First parameter must be either an MCP server object or a conversation ID string",
+        "First parameter must be either an MCP server object or a session ID string",
       );
 
       await expect(
         publishCustomEvent(undefined as any, "proj_123"),
       ).rejects.toThrow(
-        "First parameter must be either an MCP server object or a conversation ID string",
+        "First parameter must be either an MCP server object or a session ID string",
       );
     });
   });

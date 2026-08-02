@@ -4,7 +4,7 @@
 // (v1-matrix.test.ts / v2-matrix.test.ts) — they look configs up by name via
 // scenarioConfig() and branch per lane where the plan calls for it.
 import type { AgentCatOptions } from "../../types.js";
-import { AGENTCAT_TAG_CONVERSATION_SOURCE } from "../../modules/constants.js";
+import { AGENTCAT_TAG_SESSION_SOURCE } from "../../modules/constants.js";
 import type { EventCapture } from "../test-utils.js";
 import type { Lane, LaneId, LaneInstance, ScenarioClient } from "./lanes.js";
 import type { ToolSink } from "./toolkit.js";
@@ -29,8 +29,8 @@ export interface Scenario {
 export type ScenarioConfig = Omit<Scenario, "script">;
 
 // Shared fixture values scripts assert against (single source of truth).
-export const CONVERSATION_HOOK_VALUE = "corr-7";
-export const AGENT_CONVERSATION_HOOK_VALUE = "corr-agent-7";
+export const SESSION_HOOK_VALUE = "corr-7";
+export const AGENT_SESSION_HOOK_VALUE = "corr-agent-7";
 export const CUSTOM_CONTEXT_DESCRIPTION = "why?";
 export const REDACTION_SECRET = "SECRET_TOKEN";
 export const REDACTION_REPLACEMENT = "[REDACTED]";
@@ -75,14 +75,14 @@ export const SCENARIO_CONFIGS: readonly ScenarioConfig[] = [
     name: "agent-tracking-x-hook",
     options: {
       enableAgentTracking: true,
-      resolveConversationId: () => AGENT_CONVERSATION_HOOK_VALUE,
+      resolveSessionId: () => AGENT_SESSION_HOOK_VALUE,
     },
   },
   {
     name: "task-hook-deterministic",
-    options: { resolveConversationId: () => CONVERSATION_HOOK_VALUE },
+    options: { resolveSessionId: () => SESSION_HOOK_VALUE },
   },
-  { name: "task-hook-null", options: { resolveConversationId: () => null } },
+  { name: "task-hook-null", options: { resolveSessionId: () => null } },
   { name: "task-supplied-continuity", options: {} },
   { name: "mint-back-structured-mirror", options: {} },
   { name: "strict-schema-injection", options: {} },
@@ -98,7 +98,7 @@ export const SCENARIO_CONFIGS: readonly ScenarioConfig[] = [
       }),
       eventTags: () => ({
         // Collision on an SDK-owned tag: the SDK's value must win.
-        [AGENTCAT_TAG_CONVERSATION_SOURCE]: COLLIDING_TAG_VALUE,
+        [AGENTCAT_TAG_SESSION_SOURCE]: COLLIDING_TAG_VALUE,
         [CUSTOMER_TAG_KEY]: CUSTOMER_TAG_VALUE,
       }),
       eventProperties: () => ({ [CUSTOMER_PROP_KEY]: CUSTOMER_PROP_VALUE }),

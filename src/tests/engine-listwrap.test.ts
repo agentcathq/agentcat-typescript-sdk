@@ -39,22 +39,18 @@ const echoTool = () => ({
 });
 
 describe("buildInjectedList", () => {
-  it("appends get_more_tools and injects conversation_id + context", () => {
+  it("appends get_more_tools and injects session_id + context", () => {
     const { tools, registry, outputRegistry } = buildInjectedList(data(), [
       echoTool(),
     ]);
     const names = tools.map((t: any) => t.name);
     expect(names).toEqual(["echo", "get_more_tools"]);
     const echo = tools[0] as any;
-    expect(echo.inputSchema.properties.conversation_id).toBeDefined();
+    expect(echo.inputSchema.properties.session_id).toBeDefined();
     expect(echo.inputSchema.properties.context).toBeDefined();
-    expect(registry.get("echo")).toEqual(
-      new Set(["conversation_id", "context"]),
-    );
+    expect(registry.get("echo")).toEqual(new Set(["session_id", "context"]));
     // get_more_tools gets handles but keeps its bespoke context param
-    expect(registry.get("get_more_tools")).toEqual(
-      new Set(["conversation_id"]),
-    );
+    expect(registry.get("get_more_tools")).toEqual(new Set(["session_id"]));
     expect(outputRegistry.size).toBe(0); // no outputSchema declared
   });
 
@@ -70,16 +66,14 @@ describe("buildInjectedList", () => {
       data({ enableTracing: false, enableToolCallContext: false }),
       [echoTool()],
     );
-    expect(
-      (tools[0] as any).inputSchema.properties.conversation_id,
-    ).toBeUndefined();
+    expect((tools[0] as any).inputSchema.properties.session_id).toBeUndefined();
     expect(registry.get("echo")).toEqual(new Set());
   });
 
   it("does not mutate the input tool objects", () => {
     const input = echoTool();
     buildInjectedList(data(), [input]);
-    expect(input.inputSchema.properties).not.toHaveProperty("conversation_id");
+    expect(input.inputSchema.properties).not.toHaveProperty("session_id");
   });
 });
 

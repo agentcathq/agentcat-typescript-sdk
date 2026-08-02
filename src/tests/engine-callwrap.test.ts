@@ -67,7 +67,7 @@ function trackFake(server: any) {
   initEngineState(server, { adapter: v2Adapter });
   setInjectedParamsRegistry(
     server,
-    new Map([["echo", new Set(["conversation_id", "context"])]]),
+    new Map([["echo", new Set(["session_id", "context"])]]),
   );
   setOutputInjectionRegistry(server, new Set());
   installCallWrap(server);
@@ -99,7 +99,7 @@ describe("installCallWrap (synthetic seam)", () => {
           name: "echo",
           arguments: {
             msg: "hi",
-            conversation_id: "ses_supplied",
+            session_id: "ses_supplied",
             context: "why",
           },
         },
@@ -112,7 +112,7 @@ describe("installCallWrap (synthetic seam)", () => {
     expect(events).toHaveLength(1);
     expect(events[0].sessionId).toBe("ses_supplied");
     expect(
-      (events[0].parameters as any).request.params.arguments.conversation_id,
+      (events[0].parameters as any).request.params.arguments.session_id,
     ).toBe("ses_supplied");
     expect(result.content.length).toBeGreaterThanOrEqual(1);
   });
@@ -201,7 +201,7 @@ describe("installCallWrap (synthetic seam)", () => {
         method: "tools/call",
         params: {
           name: "echo",
-          arguments: { msg: "hi", conversation_id: "ses_x", context: "why" },
+          arguments: { msg: "hi", session_id: "ses_x", context: "why" },
         },
       },
       {},
@@ -209,7 +209,7 @@ describe("installCallWrap (synthetic seam)", () => {
     // Degraded: no stripping, no mint-back, no event — just the tool.
     expect(seenArgs).toEqual({
       msg: "hi",
-      conversation_id: "ses_x",
+      session_id: "ses_x",
       context: "why",
     });
     expect(result.content).toEqual([{ type: "text", text: "ok" }]);

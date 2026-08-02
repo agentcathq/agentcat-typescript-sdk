@@ -12,7 +12,7 @@ import {
 } from "../modules/handle-injection.js";
 import { addContextParameterToTools } from "../modules/context-parameters.js";
 import {
-  CONVERSATION_ID_PARAM_DESCRIPTION,
+  SESSION_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
   MCP_INSTRUCTIONS_KEY,
@@ -33,26 +33,26 @@ const customerSchema = () => ({
 });
 
 describe("addHandleParametersToTools", () => {
-  it("injects optional conversation_id and required agent_id after customer params", () => {
+  it("injects optional session_id and required agent_id after customer params", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     const keys = Object.keys(tool.inputSchema.properties);
-    expect(keys).toEqual(["text", "conversation_id", "agent_id"]);
-    // conversation_id is never required — omission is the minting signal. agent_id is
+    expect(keys).toEqual(["text", "session_id", "agent_id"]);
+    // session_id is never required — omission is the minting signal. agent_id is
     // self-chosen and required when injected.
     expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
-    expect(tool.inputSchema.properties.conversation_id.description).toBe(
-      CONVERSATION_ID_PARAM_DESCRIPTION,
+    expect(tool.inputSchema.properties.session_id.description).toBe(
+      SESSION_ID_PARAM_DESCRIPTION,
     );
     expect(tool.inputSchema.properties.agent_id.description).toBe(
       AGENT_ID_PARAM_DESCRIPTION,
     );
     expect(registry.get("add_todo")).toEqual(
-      new Set(["conversation_id", "agent_id"]),
+      new Set(["session_id", "agent_id"]),
     );
   });
 
@@ -64,7 +64,7 @@ describe("addHandleParametersToTools", () => {
     const registry = new Map();
     const [out]: any[] = addHandleParametersToTools(
       [tool],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     expect(out.inputSchema.required).toEqual(["agent_id"]);
@@ -84,7 +84,7 @@ describe("addHandleParametersToTools", () => {
     const registry = new Map();
     const [out]: any[] = addHandleParametersToTools(
       [tool],
-      { injectConversationId: false, injectAgentId: true },
+      { injectSessionId: false, injectAgentId: true },
       registry,
     );
     expect(out.inputSchema.required).toEqual(["agent_id"]);
@@ -102,40 +102,40 @@ describe("addHandleParametersToTools", () => {
     const registry = new Map();
     const [out]: any[] = addHandleParametersToTools(
       [tool],
-      { injectConversationId: false, injectAgentId: true },
+      { injectSessionId: false, injectAgentId: true },
       registry,
     );
     expect(out.inputSchema.required).toEqual([]);
     expect(out.inputSchema.properties.agent_id.description).toBe("mine");
   });
 
-  it("full order with context injector: customer, conversation_id, agent_id, context", () => {
+  it("full order with context injector: customer, session_id, agent_id, context", () => {
     const registry: InjectedParamsRegistry = new Map();
     let tools = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     tools = addContextParameterToTools(tools, undefined, registry);
     expect(Object.keys(tools[0].inputSchema.properties)).toEqual([
       "text",
-      "conversation_id",
+      "session_id",
       "agent_id",
       "context",
     ]);
     expect(registry.get("add_todo")).toEqual(
-      new Set(["conversation_id", "agent_id", "context"]),
+      new Set(["session_id", "agent_id", "context"]),
     );
   });
 
-  it("hook mode: no conversation_id, agent_id uses the standalone description", () => {
+  it("hook mode: no session_id, agent_id uses the standalone description", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
-      { injectConversationId: false, injectAgentId: true },
+      { injectSessionId: false, injectAgentId: true },
       registry,
     );
-    expect(tool.inputSchema.properties.conversation_id).toBeUndefined();
+    expect(tool.inputSchema.properties.session_id).toBeUndefined();
     expect(tool.inputSchema.properties.agent_id.description).toBe(
       AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
     );
@@ -145,17 +145,17 @@ describe("addHandleParametersToTools", () => {
 
   it("skips a param the tool already defines, and does not record it", () => {
     const schema = customerSchema();
-    schema.properties.conversation_id = {
+    schema.properties.session_id = {
       type: "string",
       description: "customer's own",
     };
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("deploy", schema)],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
-    expect(tool.inputSchema.properties.conversation_id.description).toBe(
+    expect(tool.inputSchema.properties.session_id.description).toBe(
       "customer's own",
     );
     expect(registry.get("deploy")).toEqual(new Set(["agent_id"]));
@@ -165,7 +165,7 @@ describe("addHandleParametersToTools", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("odd", { oneOf: [{ type: "object" }] })],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     expect(tool.inputSchema.properties).toBeUndefined();
@@ -177,12 +177,12 @@ describe("addHandleParametersToTools", () => {
     const strict = { ...customerSchema(), additionalProperties: false };
     const tools = addHandleParametersToTools(
       [makeTool("strict", strict), makeTool("bare")],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     expect(tools[0].inputSchema.additionalProperties).toBeUndefined();
     expect(Object.keys(tools[1].inputSchema.properties)).toEqual([
-      "conversation_id",
+      "session_id",
       "agent_id",
     ]);
   });
@@ -196,18 +196,18 @@ describe("addHandleParametersToTools", () => {
     });
     let tools = addHandleParametersToTools(
       [gmt],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       registry,
     );
     tools = addContextParameterToTools(tools, undefined, registry);
     expect(Object.keys(tools[0].inputSchema.properties)).toEqual([
       "context",
-      "conversation_id",
+      "session_id",
       "agent_id",
     ]);
     expect(tools[0].inputSchema.properties.context.description).toBe("bespoke");
     expect(registry.get("get_more_tools")).toEqual(
-      new Set(["conversation_id", "agent_id"]),
+      new Set(["session_id", "agent_id"]),
     );
   });
 
@@ -233,8 +233,8 @@ describe("addHandleParametersToTools", () => {
 
 describe("stripInjectedArguments", () => {
   const registry: InjectedParamsRegistry = new Map([
-    ["add_todo", new Set(["conversation_id", "agent_id", "context"])],
-    ["deploy", new Set(["agent_id", "context"])], // tool owns conversation_id
+    ["add_todo", new Set(["session_id", "agent_id", "context"])],
+    ["deploy", new Set(["agent_id", "context"])], // tool owns session_id
   ]);
 
   it("strips exactly what was injected", () => {
@@ -242,7 +242,7 @@ describe("stripInjectedArguments", () => {
       stripInjectedArguments(
         {
           text: "x",
-          conversation_id: "ses_1",
+          session_id: "ses_1",
           agent_id: "agt_1",
           context: "why",
         },
@@ -252,37 +252,33 @@ describe("stripInjectedArguments", () => {
     ).toEqual({ text: "x" });
   });
 
-  it("preserves the customer's own conversation_id param", () => {
+  it("preserves the customer's own session_id param", () => {
     expect(
       stripInjectedArguments(
-        { conversation_id: "prod-42", agent_id: "agt_1", context: "why" },
+        { session_id: "prod-42", agent_id: "agt_1", context: "why" },
         "deploy",
         registry,
       ),
-    ).toEqual({ conversation_id: "prod-42" });
+    ).toEqual({ session_id: "prod-42" });
   });
 
   it("falls back to stripping all three when no registry entry exists", () => {
     expect(
       stripInjectedArguments(
-        { text: "x", conversation_id: "a", agent_id: "b", context: "c" },
+        { text: "x", session_id: "a", agent_id: "b", context: "c" },
         "unlisted_tool",
         registry,
       ),
     ).toEqual({ text: "x" });
     expect(
-      stripInjectedArguments(
-        { text: "x", conversation_id: "a" },
-        "any",
-        undefined,
-      ),
+      stripInjectedArguments({ text: "x", session_id: "a" }, "any", undefined),
     ).toEqual({ text: "x" });
   });
 
   it("fallback never strips get_more_tools' own context", () => {
     expect(
       stripInjectedArguments(
-        { context: "need a tool", conversation_id: "a", agent_id: "b" },
+        { context: "need a tool", session_id: "a", agent_id: "b" },
         "get_more_tools",
         undefined,
       ),
@@ -300,7 +296,7 @@ describe("registry storage + request cloning", () => {
   it("stores per server object", () => {
     const server = {};
     const registry: InjectedParamsRegistry = new Map([
-      ["t", new Set(["conversation_id"])],
+      ["t", new Set(["session_id"])],
     ]);
     setInjectedParamsRegistry(server, registry);
     expect(getInjectedParamsRegistry(server)).toBe(registry);
@@ -309,17 +305,17 @@ describe("registry storage + request cloning", () => {
 
   it("clones the request with stripped arguments, leaving the original intact", () => {
     const registry: InjectedParamsRegistry = new Map([
-      ["add_todo", new Set(["conversation_id", "agent_id", "context"])],
+      ["add_todo", new Set(["session_id", "agent_id", "context"])],
     ]);
     const request = {
       params: {
         name: "add_todo",
-        arguments: { text: "x", conversation_id: "ses_1", context: "why" },
+        arguments: { text: "x", session_id: "ses_1", context: "why" },
       },
     };
     const cloned = cloneRequestWithStrippedArguments(request, registry);
     expect(cloned.params.arguments).toEqual({ text: "x" });
-    expect(request.params.arguments.conversation_id).toBe("ses_1"); // untouched (event keeps raw)
+    expect(request.params.arguments.session_id).toBe("ses_1"); // untouched (event keeps raw)
   });
 });
 
@@ -343,7 +339,7 @@ describe("outputSchema injection", () => {
     const output: OutputInjectionRegistry = new Set();
     const [tool] = addHandleParametersToTools(
       [structuredTool("get_stats", objectOutputSchema())],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       output,
     );
@@ -351,7 +347,7 @@ describe("outputSchema injection", () => {
     expect(prop.type).toBe("object");
     expect(prop.description).toBe(MCP_INSTRUCTIONS_FIELD_DESCRIPTION);
     expect(Object.keys(prop.properties)).toEqual([
-      "conversation_id",
+      "session_id",
       "agent_id",
       "instructions",
     ]);
@@ -363,11 +359,11 @@ describe("outputSchema injection", () => {
     expect(output.has("get_stats")).toBe(true);
   });
 
-  it("sub-properties track modes: hook mode drops conversation_id, tracking off drops agent_id", () => {
+  it("sub-properties track modes: hook mode drops session_id, tracking off drops agent_id", () => {
     const o1: OutputInjectionRegistry = new Set();
     const [hookTool] = addHandleParametersToTools(
       [structuredTool("t", objectOutputSchema())],
-      { injectConversationId: false, injectAgentId: true }, // hook mode
+      { injectSessionId: false, injectAgentId: true }, // hook mode
       new Map(),
       o1,
     );
@@ -378,25 +374,25 @@ describe("outputSchema injection", () => {
     ).toEqual(["agent_id", "instructions"]);
 
     const o2: OutputInjectionRegistry = new Set();
-    const [conversationOnlyTool] = addHandleParametersToTools(
+    const [sessionOnlyTool] = addHandleParametersToTools(
       [structuredTool("t", objectOutputSchema())],
-      { injectConversationId: true, injectAgentId: false }, // agent tracking off
+      { injectSessionId: true, injectAgentId: false }, // agent tracking off
       new Map(),
       o2,
     );
     expect(
       Object.keys(
-        conversationOnlyTool.outputSchema.properties[MCP_INSTRUCTIONS_KEY]
+        sessionOnlyTool.outputSchema.properties[MCP_INSTRUCTIONS_KEY]
           .properties,
       ),
-    ).toEqual(["conversation_id", "instructions"]);
+    ).toEqual(["session_id", "instructions"]);
   });
 
   it("does not mutate the customer's outputSchema object", () => {
     const schema = objectOutputSchema();
     addHandleParametersToTools(
       [structuredTool("t", schema)],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       new Set(),
     );
@@ -410,14 +406,14 @@ describe("outputSchema injection", () => {
     };
     const [tool] = addHandleParametersToTools(
       [structuredTool("poly", complex)],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       output,
     );
     expect(tool.outputSchema).toEqual(complex);
     expect(output.size).toBe(0);
     // input side still injected — content footer still needs echo params
-    expect(tool.inputSchema.properties).toHaveProperty("conversation_id");
+    expect(tool.inputSchema.properties).toHaveProperty("session_id");
   });
 
   it("composed inputSchema: early-return skips output injection too, nothing registered", () => {
@@ -428,7 +424,7 @@ describe("outputSchema injection", () => {
     };
     const [result] = addHandleParametersToTools(
       [tool],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       output,
     );
@@ -447,7 +443,7 @@ describe("outputSchema injection", () => {
     };
     const [tool] = addHandleParametersToTools(
       [structuredTool("t", schema)],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       output,
     );
@@ -461,7 +457,7 @@ describe("outputSchema injection", () => {
     const output: OutputInjectionRegistry = new Set();
     const [plain] = addHandleParametersToTools(
       [makeTool("t", customerSchema())],
-      { injectConversationId: true, injectAgentId: true },
+      { injectSessionId: true, injectAgentId: true },
       new Map(),
       output,
     );
@@ -473,7 +469,7 @@ describe("outputSchema injection", () => {
     const output: OutputInjectionRegistry = new Set();
     const [tool] = addHandleParametersToTools(
       [structuredTool("t", objectOutputSchema())],
-      { injectConversationId: false, injectAgentId: false },
+      { injectSessionId: false, injectAgentId: false },
       new Map(),
       output,
     );

@@ -149,7 +149,7 @@ export function installCallWrap(server: MCPServerLike): void {
         const clientInfo = getClientInfoForRequest(server, request, extra);
 
         const event: UnredactedEvent = {
-          sessionId: resolution.conversationId,
+          sessionId: resolution.sessionId,
           resourceName: request?.params?.name || "Unknown Tool",
           // Raw request on purpose: the event records exactly what the agent
           // sent, handles included. Stripping applies only to the handler copy.

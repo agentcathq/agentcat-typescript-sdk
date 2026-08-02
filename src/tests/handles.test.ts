@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  newConversationId,
-  deriveConversationId,
+  newSessionId,
+  deriveSessionId,
   extractHandle,
-  CONVERSATION_ID_PARAM,
+  SESSION_ID_PARAM,
   AGENT_ID_PARAM,
   buildMintBackText,
   appendMintBack,
@@ -17,91 +17,76 @@ import {
 import { MCP_INSTRUCTIONS_KEY } from "../modules/constants.js";
 
 describe("handle primitives", () => {
-  it("mints conversation ids with the ses_ prefix", () => {
-    const id = newConversationId();
+  it("mints session ids with the ses_ prefix", () => {
+    const id = newSessionId();
     expect(id).toMatch(/^ses_[0-9A-Za-z]{27}$/);
-    expect(newConversationId()).not.toBe(id);
+    expect(newSessionId()).not.toBe(id);
   });
 
-  it("derives deterministic conversation ids from id+project", () => {
-    const a = deriveConversationId("customer-abc", "proj_1");
-    const b = deriveConversationId("customer-abc", "proj_1");
+  it("derives deterministic session ids from id+project", () => {
+    const a = deriveSessionId("customer-abc", "proj_1");
+    const b = deriveSessionId("customer-abc", "proj_1");
     expect(a).toBe(b);
     expect(a).toMatch(/^ses_/);
   });
 
   it("different project yields a different derived id", () => {
-    expect(deriveConversationId("customer-abc", "proj_1")).not.toBe(
-      deriveConversationId("customer-abc", "proj_2"),
+    expect(deriveSessionId("customer-abc", "proj_1")).not.toBe(
+      deriveSessionId("customer-abc", "proj_2"),
     );
   });
 
   it("derives without a project id", () => {
-    expect(deriveConversationId("customer-abc")).toBe(
-      deriveConversationId("customer-abc"),
+    expect(deriveSessionId("customer-abc")).toBe(
+      deriveSessionId("customer-abc"),
     );
-    expect(deriveConversationId("customer-abc")).not.toBe(
-      deriveConversationId("customer-abc", "proj_1"),
+    expect(deriveSessionId("customer-abc")).not.toBe(
+      deriveSessionId("customer-abc", "proj_1"),
     );
   });
 
-  // Golden vectors. deriveConversationId's construction (sha256 of `id:projectId`, a
+  // Golden vectors. deriveSessionId's construction (sha256 of `id:projectId`, a
   // 2024 epoch plus a hash-derived offset, bytes 4..20 as the KSUID payload) is
   // now the only derivation in the SDK — the legacy MCP-session derivation
   // twin that used to pin it is gone. These
   // literals were produced by the implementation and are frozen: changing them
-  // means every previously-derived conversation id changes on the wire, splitting
+  // means every previously-derived session id changes on the wire, splitting
   // customer sessions across an SDK upgrade.
-  it("pins derived conversation ids to their golden values", () => {
-    expect(deriveConversationId("customer-abc", "proj_1")).toBe(
+  it("pins derived session ids to their golden values", () => {
+    expect(deriveSessionId("customer-abc", "proj_1")).toBe(
       "ses_2cOHEO0LYGADMzRvWTXXVbbgxgm",
     );
-    expect(deriveConversationId("customer-abc")).toBe(
+    expect(deriveSessionId("customer-abc")).toBe(
       "ses_2cZY3tvyI25O2AmL2CGVo2B1IIj",
     );
   });
 
-  // deriveConversationId hashes its input verbatim — it does NOT trim. Trimming is the
-  // caller's job (resolveHandles trims the resolveConversationId hook's return before
+  // deriveSessionId hashes its input verbatim — it does NOT trim. Trimming is the
+  // caller's job (resolveHandles trims the resolveSessionId hook's return before
   // deriving), so a stray space must produce a different id here.
   it("does not trim its input", () => {
-    expect(deriveConversationId(" x ", "p")).not.toBe(
-      deriveConversationId("x", "p"),
-    );
-    expect(deriveConversationId(" x ", "p")).toBe(
-      "ses_2c3yR5mYKQdLaXsJNgZH6erbfQK",
-    );
-    expect(deriveConversationId("x", "p")).toBe(
-      "ses_2bw285VY9apdgUgTPXKFnT6P4G0",
-    );
+    expect(deriveSessionId(" x ", "p")).not.toBe(deriveSessionId("x", "p"));
+    expect(deriveSessionId(" x ", "p")).toBe("ses_2c3yR5mYKQdLaXsJNgZH6erbfQK");
+    expect(deriveSessionId("x", "p")).toBe("ses_2bw285VY9apdgUgTPXKFnT6P4G0");
   });
 
   it("extractHandle returns trimmed non-empty strings only", () => {
+    expect(extractHandle({ session_id: " ses_x " }, SESSION_ID_PARAM)).toBe(
+      "ses_x",
+    );
+    expect(extractHandle({ session_id: "" }, SESSION_ID_PARAM)).toBeUndefined();
     expect(
-      extractHandle({ conversation_id: " ses_x " }, CONVERSATION_ID_PARAM),
-    ).toBe("ses_x");
-    expect(
-      extractHandle({ conversation_id: "" }, CONVERSATION_ID_PARAM),
+      extractHandle({ session_id: "   " }, SESSION_ID_PARAM),
     ).toBeUndefined();
-    expect(
-      extractHandle({ conversation_id: "   " }, CONVERSATION_ID_PARAM),
-    ).toBeUndefined();
-    expect(
-      extractHandle({ conversation_id: 42 }, CONVERSATION_ID_PARAM),
-    ).toBeUndefined();
-    expect(extractHandle(undefined, CONVERSATION_ID_PARAM)).toBeUndefined();
+    expect(extractHandle({ session_id: 42 }, SESSION_ID_PARAM)).toBeUndefined();
+    expect(extractHandle(undefined, SESSION_ID_PARAM)).toBeUndefined();
     expect(extractHandle(null, AGENT_ID_PARAM)).toBeUndefined();
-    expect(
-      extractHandle("not-an-object", CONVERSATION_ID_PARAM),
-    ).toBeUndefined();
+    expect(extractHandle("not-an-object", SESSION_ID_PARAM)).toBeUndefined();
   });
 
   it("accepts arbitrary supplied strings verbatim (trust model)", () => {
     expect(
-      extractHandle(
-        { conversation_id: "my-own-correlation-id" },
-        CONVERSATION_ID_PARAM,
-      ),
+      extractHandle({ session_id: "my-own-correlation-id" }, SESSION_ID_PARAM),
     ).toBe("my-own-correlation-id");
   });
 });
@@ -112,36 +97,36 @@ const A = "opus-4.80-1m|claude-code|k3n9x";
 describe("buildMintBackText", () => {
   it("task minted: task-only block, no agent mention even when agent supplied", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "minted",
+      sessionId: T,
+      sessionSource: "minted",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
     };
     expect(buildMintBackText(res)).toBe(
-      "[MCP INSTRUCTIONS]: conversation_id issued.\n" +
-        `  conversation_id=${T} — required on every subsequent tool call\n` +
-        "Without conversation_id, this server does not function as intended.",
+      "[MCP INSTRUCTIONS]: session_id issued.\n" +
+        `  session_id=${T} — required on every subsequent tool call\n` +
+        "Without session_id, this server does not function as intended.",
     );
   });
 
   it("task minted without agent tracking: same task-only block", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "minted",
+      sessionId: T,
+      sessionSource: "minted",
       hookMode: false,
     };
     expect(buildMintBackText(res)).toBe(
-      "[MCP INSTRUCTIONS]: conversation_id issued.\n" +
-        `  conversation_id=${T} — required on every subsequent tool call\n` +
-        "Without conversation_id, this server does not function as intended.",
+      "[MCP INSTRUCTIONS]: session_id issued.\n" +
+        `  session_id=${T} — required on every subsequent tool call\n` +
+        "Without session_id, this server does not function as intended.",
     );
   });
 
   it("task supplied -> null (nothing to announce, agent never mints)", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
@@ -151,8 +136,8 @@ describe("buildMintBackText", () => {
 
   it("hook mode never emits task instructions, even when hook-null minted", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "minted",
+      sessionId: T,
+      sessionSource: "minted",
       hookMode: true,
       agentId: A,
       agentSource: "supplied",
@@ -195,14 +180,14 @@ describe("appendMintBack", () => {
 describe("buildHandleTags", () => {
   it("stamps sources, agent id, and protocol version", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
     };
     expect(buildHandleTags(res, "2026-07-28")).toEqual({
-      agentcat_conversation_id_source: "supplied",
+      agentcat_session_id_source: "supplied",
       agentcat_agent_id: A,
       agentcat_agent_id_source: "supplied",
       agentcat_protocol_version: "2026-07-28",
@@ -211,20 +196,20 @@ describe("buildHandleTags", () => {
 
   it("omits agent and protocol keys when absent", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "hook",
+      sessionId: T,
+      sessionSource: "hook",
       hookMode: true,
     };
     expect(buildHandleTags(res)).toEqual({
-      agentcat_conversation_id_source: "hook",
+      agentcat_session_id_source: "hook",
     });
   });
 
   it("clamps a >200-char agent_id to exactly 200 chars in the tag only", () => {
     const longId = "a".repeat(500);
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: longId,
       agentSource: "supplied",
@@ -238,8 +223,8 @@ describe("buildHandleTags", () => {
 
   it("strips newlines from the agent_id tag", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: "line1\nline2\r\nline3",
       agentSource: "supplied",
@@ -253,8 +238,8 @@ describe("buildHandleTags", () => {
 
   it("passes a normal agent_id through unchanged", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
@@ -275,8 +260,8 @@ describe("resolveHandles — prompted mode", () => {
       req({}),
     );
     expect(res.hookMode).toBe(false);
-    expect(res.conversationSource).toBe("minted");
-    expect(res.conversationId).toMatch(/^ses_/);
+    expect(res.sessionSource).toBe("minted");
+    expect(res.sessionId).toMatch(/^ses_/);
     expect(res.agentId).toBeUndefined();
     expect(res.agentSource).toBeUndefined();
   });
@@ -285,10 +270,10 @@ describe("resolveHandles — prompted mode", () => {
     const res = await resolveHandles(
       { enableAgentTracking: true },
       "proj_1",
-      req({ conversation_id: "ses_parent" }),
+      req({ session_id: "ses_parent" }),
     );
-    expect(res.conversationSource).toBe("supplied");
-    expect(res.conversationId).toBe("ses_parent");
+    expect(res.sessionSource).toBe("supplied");
+    expect(res.sessionId).toBe("ses_parent");
     expect(res.agentId).toBeUndefined();
     expect(res.agentSource).toBeUndefined();
   });
@@ -298,12 +283,12 @@ describe("resolveHandles — prompted mode", () => {
       { enableAgentTracking: true },
       "proj_1",
       req({
-        conversation_id: "anything-goes",
+        session_id: "anything-goes",
         agent_id: " opus-4.80-1m|claude-code|k3n9x ",
       }),
     );
-    expect(res.conversationSource).toBe("supplied");
-    expect(res.conversationId).toBe("anything-goes");
+    expect(res.sessionSource).toBe("supplied");
+    expect(res.sessionId).toBe("anything-goes");
     expect(res.agentSource).toBe("supplied");
     expect(res.agentId).toBe("opus-4.80-1m|claude-code|k3n9x");
   });
@@ -324,7 +309,7 @@ describe("resolveHandles — prompted mode", () => {
       "proj_1",
       req({ agent_id: "agt_ignored" }),
     );
-    expect(res.conversationSource).toBe("minted");
+    expect(res.sessionSource).toBe("minted");
     expect(res.agentId).toBeUndefined();
     expect(res.agentSource).toBeUndefined();
   });
@@ -332,73 +317,73 @@ describe("resolveHandles — prompted mode", () => {
 
 describe("resolveHandles — hook mode", () => {
   it("derives deterministically from the hook value + project", async () => {
-    const opts = { resolveConversationId: async () => "customer-42" };
+    const opts = { resolveSessionId: async () => "customer-42" };
     const a = await resolveHandles(opts, "proj_1", req({}));
     const b = await resolveHandles(opts, "proj_1", req({}));
     expect(a.hookMode).toBe(true);
-    expect(a.conversationSource).toBe("hook");
-    expect(a.conversationId).toBe(b.conversationId);
-    expect(a.conversationId).toMatch(/^ses_/);
+    expect(a.sessionSource).toBe("hook");
+    expect(a.sessionId).toBe(b.sessionId);
+    expect(a.sessionId).toMatch(/^ses_/);
   });
 
-  it("ignores agent-supplied conversation_id — the hook wins", async () => {
-    const opts = { resolveConversationId: () => "customer-42" };
+  it("ignores agent-supplied session_id — the hook wins", async () => {
+    const opts = { resolveSessionId: () => "customer-42" };
     const res = await resolveHandles(
       opts,
       "proj_1",
-      req({ conversation_id: "ses_agent_sent" }),
+      req({ session_id: "ses_agent_sent" }),
     );
-    expect(res.conversationSource).toBe("hook");
-    expect(res.conversationId).not.toBe("ses_agent_sent");
+    expect(res.sessionSource).toBe("hook");
+    expect(res.sessionId).not.toBe("ses_agent_sent");
   });
 
   it("hook returning null mints silently", async () => {
     const res = await resolveHandles(
-      { resolveConversationId: () => null },
+      { resolveSessionId: () => null },
       "proj_1",
       req({}),
     );
     expect(res.hookMode).toBe(true);
-    expect(res.conversationSource).toBe("minted");
-    expect(res.conversationId).toMatch(/^ses_/);
+    expect(res.sessionSource).toBe("minted");
+    expect(res.sessionId).toMatch(/^ses_/);
   });
 
-  it("never reports 'supplied' when the hook falls back with a conversation_id present", async () => {
-    // Guards the buildMintBackText ack line: it fires on conversationSource ===
+  it("never reports 'supplied' when the hook falls back with a session_id present", async () => {
+    // Guards the buildMintBackText ack line: it fires on sessionSource ===
     // "supplied", which must be unreachable in hook mode. A hook that returns
-    // null while the agent happens to send conversation_id is the danger case.
-    for (const resolveConversationId of [
+    // null while the agent happens to send session_id is the danger case.
+    for (const resolveSessionId of [
       () => null,
       () => {
         throw new Error("db down");
       },
     ]) {
       const res = await resolveHandles(
-        { resolveConversationId },
+        { resolveSessionId },
         "proj_1",
-        req({ conversation_id: "ses_agent_sent" }),
+        req({ session_id: "ses_agent_sent" }),
       );
-      expect(res.conversationSource).toBe("minted");
-      expect(res.conversationId).not.toBe("ses_agent_sent");
+      expect(res.sessionSource).toBe("minted");
+      expect(res.sessionId).not.toBe("ses_agent_sent");
     }
   });
 
   it("hook throwing mints silently", async () => {
     const res = await resolveHandles(
       {
-        resolveConversationId: () => {
+        resolveSessionId: () => {
           throw new Error("db down");
         },
       },
       "proj_1",
       req({}),
     );
-    expect(res.conversationSource).toBe("minted");
+    expect(res.sessionSource).toBe("minted");
   });
 
   it("hook mode: supplied agent_id resolves, omitted stays unresolved", async () => {
     const supplied = await resolveHandles(
-      { resolveConversationId: () => "c", enableAgentTracking: true },
+      { resolveSessionId: () => "c", enableAgentTracking: true },
       "proj_1",
       req({ agent_id: "opus-4.80-1m|claude-code|k3n9x" }),
     );
@@ -406,7 +391,7 @@ describe("resolveHandles — hook mode", () => {
     expect(supplied.agentId).toBe("opus-4.80-1m|claude-code|k3n9x");
 
     const omitted = await resolveHandles(
-      { resolveConversationId: () => "c", enableAgentTracking: true },
+      { resolveSessionId: () => "c", enableAgentTracking: true },
       "proj_1",
       req({}),
     );
@@ -416,19 +401,19 @@ describe("resolveHandles — hook mode", () => {
 
   it("forwards the request and extra objects to the hook", async () => {
     // The flagship documented use reads off extra:
-    //   resolveConversationId: (request, extra) =>
+    //   resolveSessionId: (request, extra) =>
     //     extra?.requestInfo?.headers?.["x-correlation-id"]
     // Identity assertions (toBe) pin that the whole request is passed — not
     // request.params.arguments — and that extra is forwarded, not dropped.
     const calls: Array<[any, any]> = [];
-    const request = req({ conversation_id: "ses_agent_sent" });
+    const request = req({ session_id: "ses_agent_sent" });
     const extra = {
       requestInfo: { headers: { "x-correlation-id": "corr-1" } },
     };
 
     const res = await resolveHandles(
       {
-        resolveConversationId: (r, e) => {
+        resolveSessionId: (r, e) => {
           calls.push([r, e]);
           return e?.requestInfo?.headers?.["x-correlation-id"] ?? null;
         },
@@ -442,75 +427,73 @@ describe("resolveHandles — hook mode", () => {
     expect(calls[0][0]).toBe(request);
     expect(calls[0][1]).toBe(extra);
     // The header actually drove the derivation, so forwarding is observable.
-    expect(res.conversationSource).toBe("hook");
-    expect(res.conversationId).toBe(deriveConversationId("corr-1", "proj_1"));
+    expect(res.sessionSource).toBe("hook");
+    expect(res.sessionId).toBe(deriveSessionId("corr-1", "proj_1"));
   });
 });
 
 describe("buildStructuredMintBack", () => {
   it("task minted + agent supplied: both ids, task-issued instructions", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "minted",
+      sessionId: T,
+      sessionSource: "minted",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
     };
     const mint = buildStructuredMintBack(res)!;
-    expect(mint.conversation_id).toBe(T);
+    expect(mint.session_id).toBe(T);
     expect(mint.agent_id).toBe(A);
-    expect(mint.instructions).toContain("conversation_id issued");
+    expect(mint.instructions).toContain("session_id issued");
     expect(mint.instructions).not.toContain("agent_id issued");
   });
 
   it("steady state (both supplied): ids plus confirmed copy", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
       agentId: A,
       agentSource: "supplied",
     };
     const mint = buildStructuredMintBack(res)!;
-    expect(mint.conversation_id).toBe(T);
+    expect(mint.session_id).toBe(T);
     expect(mint.agent_id).toBe(A);
-    expect(mint.instructions).toContain(
-      "conversation_id and agent_id confirmed",
-    );
+    expect(mint.instructions).toContain("session_id and agent_id confirmed");
     expect(mint.instructions).toContain("these exact values");
   });
 
   it("agent tracking off: task only, singular confirmed copy", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "supplied",
+      sessionId: T,
+      sessionSource: "supplied",
       hookMode: false,
     };
     const mint = buildStructuredMintBack(res)!;
-    expect(mint.conversation_id).toBe(T);
+    expect(mint.session_id).toBe(T);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("conversation_id confirmed");
+    expect(mint.instructions).toContain("session_id confirmed");
     expect(mint.instructions).toContain("this exact value");
   });
 
-  it("hook mode never exposes conversation_id; supplied agent is confirmed", () => {
+  it("hook mode never exposes session_id; supplied agent is confirmed", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "minted",
+      sessionId: T,
+      sessionSource: "minted",
       hookMode: true,
       agentId: A,
       agentSource: "supplied",
     };
     const mint = buildStructuredMintBack(res)!;
-    expect(mint).not.toHaveProperty("conversation_id");
+    expect(mint).not.toHaveProperty("session_id");
     expect(mint.agent_id).toBe(A);
     expect(mint.instructions).toContain("agent_id confirmed");
   });
 
   it("hook mode with agent tracking off: nothing echoable -> null", () => {
     const res: HandleResolution = {
-      conversationId: T,
-      conversationSource: "hook",
+      sessionId: T,
+      sessionSource: "hook",
       hookMode: true,
     };
     expect(buildStructuredMintBack(res)).toBeNull();
@@ -518,7 +501,7 @@ describe("buildStructuredMintBack", () => {
 });
 
 describe("mirrorStructuredMintBack", () => {
-  const mint: StructuredMintBack = { conversation_id: T, instructions: "TEXT" };
+  const mint: StructuredMintBack = { session_id: T, instructions: "TEXT" };
 
   it("adds the field to plain-object structuredContent without mutating", () => {
     const original = { content: [], structuredContent: { a: 1 } };

@@ -50,7 +50,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
             // tool returned it.
             arguments: {
               id: "att_1",
-              conversation_id: "ses_e2e",
+              session_id: "ses_e2e",
               agent_id: "agt_e2e",
             },
           },

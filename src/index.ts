@@ -39,13 +39,13 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * @param options - Optional configuration to customize tracking behavior.
  * @param options.enableReportMissing - Adds a "get_more_tools" tool that allows LLMs to automatically report missing functionality.
  * @param options.enableTracing - Enables tracking of tool calls and usage patterns.
- * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent. The context parameter is appended after the injected `conversation_id`/`agent_id` parameters.
+ * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent. The context parameter is appended after the injected `session_id`/`agent_id` parameters.
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
  * @param options.enableAgentTracking - Injects an optional `agent_id` parameter so each agent (including every spawned subagent) is individually identifiable. Agent IDs are minted by the server on an agent's first call and echoed back on subsequent calls. Defaults to false (opt-in). The agent ID rides on events as the `agentcat_agent_id` tag.
- * @param options.resolveConversationId - Hook mode: supply your own conversation identifier per request (e.g. from your auth or workflow state) and AgentCat steps back — no `conversation_id` parameter is injected and no task instructions are prompted to the agent. The returned string is combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same task. Return null to mint silently (avoid: the agent can never learn a silently minted ID). Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.resolveSessionId - Hook mode: supply your own session identifier per request (e.g. from your auth or workflow state) and AgentCat steps back — no `session_id` parameter is injected and no task instructions are prompted to the agent. The returned string is combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same task. Return null to mint silently (avoid: the agent can never learn a silently minted ID). Receives the same `(request, extra)` arguments as `identify`.
  * @param options.identify - Async function to identify the actor behind a tool call. Runs on every tool call; the result is stamped directly onto that call's event.
  * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
- * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId` (the conversation ID), `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
+ * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
  * @param options.eventTags - Callback invoked on every auto-captured tool call to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.eventProperties - Callback invoked on every auto-captured tool call to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.apiBaseUrl - Custom API base URL for sending events. Falls back to the `AGENTCAT_API_URL` environment variable if not set (then legacy `MCPCAT_API_URL`), then to the default `https://api.agentcat.com`.
@@ -273,7 +273,7 @@ function track(
         enableToolCallContext: options.enableToolCallContext ?? true,
         customContextDescription: options.customContextDescription,
         enableAgentTracking: options.enableAgentTracking ?? false,
-        resolveConversationId: options.resolveConversationId,
+        resolveSessionId: options.resolveSessionId,
         identify: options.identify,
         redactSensitiveInformation: options.redactSensitiveInformation,
         redactEvent: options.redactEvent,
@@ -305,12 +305,12 @@ function track(
 /**
  * Publishes a custom event to AgentCat with flexible session management.
  *
- * @param serverOrSessionId - Either a tracked MCP server instance or a conversation ID string.
- *   A conversation ID string is used verbatim as the event's session — it is never derived or hashed.
+ * @param serverOrSessionId - Either a tracked MCP server instance or a session ID string.
+ *   A session ID string is used verbatim as the event's session — it is never derived or hashed.
  * @param projectId - Your AgentCat project ID (required)
- * @param eventData - Optional event data to include with the custom event. Set `eventData.conversationId`
- *   to attribute the event to a task; it takes precedence over a conversation ID string passed as the
- *   first argument. When a tracked server is passed without `eventData.conversationId`, the event is
+ * @param eventData - Optional event data to include with the custom event. Set `eventData.sessionId`
+ *   to attribute the event to a task; it takes precedence over a session ID string passed as the
+ *   first argument. When a tracked server is passed without `eventData.sessionId`, the event is
  *   published without a session (the server assigns one).
  *
  * @returns Promise that resolves when the event is queued for publishing
@@ -318,7 +318,7 @@ function track(
  * @remarks
  * When a tracked server is passed, the `redactEvent` hook configured via `track()`
  * is applied to the custom event before it is published. Events published with a
- * bare conversation ID string bypass redaction, since no tracked configuration exists.
+ * bare session ID string bypass redaction, since no tracked configuration exists.
  *
  * @example
  * ```typescript
@@ -327,7 +327,7 @@ function track(
  *   server,
  *   "proj_abc123xyz",
  *   {
- *     conversationId: "ses_abc123",
+ *     sessionId: "ses_abc123",
  *     resourceName: "custom-action",
  *     parameters: { action: "user-feedback", rating: 5 },
  *     message: "User provided feedback"
@@ -337,7 +337,7 @@ function track(
  *
  * @example
  * ```typescript
- * // With a conversation ID string
+ * // With a session ID string
  * await agentcat.publishCustomEvent(
  *   "ses_abc123",
  *   "proj_abc123xyz",
@@ -350,7 +350,7 @@ function track(
  *
  * @example
  * ```typescript
- * // With a tracked server and no conversation ID: published without a session
+ * // With a tracked server and no session ID: published without a session
  * await agentcat.publishCustomEvent(
  *   server,
  *   "proj_abc123xyz",
@@ -372,7 +372,7 @@ export async function publishCustomEvent(
 
   let sessionId: string;
 
-  // Determine if the first parameter is a tracked server or a conversation ID string
+  // Determine if the first parameter is a tracked server or a session ID string
   const isServer =
     typeof serverOrSessionId === "object" && serverOrSessionId !== null;
   let lowLevelServer: MCPServerLike | null = null;
@@ -384,24 +384,24 @@ export async function publishCustomEvent(
     const trackingData = getServerTrackingData(lowLevelServer as MCPServerLike);
     if (!trackingData) {
       throw new Error(
-        "Server is not tracked. Please call agentcat.track() first or provide a conversation ID string.",
+        "Server is not tracked. Please call agentcat.track() first or provide a session ID string.",
       );
     }
-    if (eventData?.conversationId) {
-      sessionId = eventData.conversationId;
+    if (eventData?.sessionId) {
+      sessionId = eventData.sessionId;
     } else {
-      // Handles are per-request now; a tracked server has no ambient conversation ID.
+      // Handles are per-request now; a tracked server has no ambient session ID.
       sessionId = ""; // wire: null ("stateless mode - server assigns session")
       writeToLog(
-        "publishCustomEvent: no conversationId provided; event will be published without a session. Pass eventData.conversationId to attribute it to a task.",
+        "publishCustomEvent: no sessionId provided; event will be published without a session. Pass eventData.sessionId to attribute it to a task.",
       );
     }
   } else if (typeof serverOrSessionId === "string") {
-    // The string IS the conversation id — verbatim, no derivation.
-    sessionId = eventData?.conversationId || serverOrSessionId;
+    // The string IS the session id — verbatim, no derivation.
+    sessionId = eventData?.sessionId || serverOrSessionId;
   } else {
     throw new Error(
-      "First parameter must be either an MCP server object or a conversation ID string",
+      "First parameter must be either an MCP server object or a session ID string",
     );
   }
 

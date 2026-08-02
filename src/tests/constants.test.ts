@@ -3,7 +3,7 @@ import {
   AGENTCAT_CUSTOM_EVENT_TYPE,
   AGENTCAT_SOURCE,
   DIAGNOSTICS_SCOPE_NAME,
-  CONVERSATION_ID_PARAM_DESCRIPTION,
+  SESSION_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
   MCP_INSTRUCTIONS_KEY,
@@ -24,9 +24,9 @@ describe("brand constants (wire literals)", () => {
 });
 
 describe("handle param descriptions name the delivery channel", () => {
-  it("conversation_id describes server-issued delivery via _mcp_instructions", () => {
-    expect(CONVERSATION_ID_PARAM_DESCRIPTION).toContain(MCP_INSTRUCTIONS_KEY);
-    expect(CONVERSATION_ID_PARAM_DESCRIPTION).toContain("[MCP INSTRUCTIONS]");
+  it("session_id describes server-issued delivery via _mcp_instructions", () => {
+    expect(SESSION_ID_PARAM_DESCRIPTION).toContain(MCP_INSTRUCTIONS_KEY);
+    expect(SESSION_ID_PARAM_DESCRIPTION).toContain("[MCP INSTRUCTIONS]");
   });
 
   it("agent_id describes self-chosen generation, not server delivery", () => {

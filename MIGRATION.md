@@ -2,14 +2,14 @@
 
 MCP protocol 2026-07-28 (SEP-2567) removed protocol-level sessions, so AgentCat now correlates work with two explicit, server-minted handles that agents echo back as tool parameters:
 
-- `conversation_id` — one goal, start to finish. Subagents share their parent's conversation_id. It is stored in the existing `sessionId` event field with the same `ses`_ prefix, so dashboards, queries, and exporters are unaffected.
+- `session_id` — one goal, start to finish. Subagents share their parent's session_id. It is stored in the existing `sessionId` event field with the same `ses`_ prefix, so dashboards, queries, and exporters are unaffected.
 - `agent_id` — one per agent; subagents get their own. Rides on events as the `agentcat_agent_id` tag. Off by default — opt in with `enableAgentTracking: true`.
 
 ### This changes your tools' public interface
 
 Upgrading takes no configuration, but it does change what your MCP server publishes to its callers. These are your schemas and your responses — review them before you roll out.
 
-**Every tracked tool's input schema gains** `conversation_id` — type `string`, optional. Agents echo it back on later calls, and AgentCat strips it before your handler runs.
+**Every tracked tool's input schema gains** `session_id` — type `string`, optional. Agents echo it back on later calls, and AgentCat strips it before your handler runs.
 
 ```diff
   {
@@ -18,7 +18,7 @@ Upgrading takes no configuration, but it does change what your MCP server publis
       "type": "object",
       "properties": {
         "query": { "type": "string" },
-+       "conversation_id": { "type": "string", "description": "REQUIRED on every call after your first…" }
++       "session_id": { "type": "string", "description": "REQUIRED on every call after your first…" }
       }
     }
   }
@@ -32,28 +32,28 @@ Upgrading takes no configuration, but it does change what your MCP server publis
 
 **Responses that mint a handle gain a trailing** `[MCP INSTRUCTIONS]:` **text block.** It is wire-only: recorded event responses and error messages contain only your tool's own output.
 
-**Tools that already declare** `conversation_id`**,** `agent_id`**, or** `context` **are left alone.** Your parameter reaches your handler untouched and a warning goes to `~/agentcat.log`. One caveat: this depends on a `tools/list` having run — a call arriving at an instance that never served a listing falls back to stripping all three names.
+**Tools that already declare** `session_id`**,** `agent_id`**, or** `context` **are left alone.** Your parameter reaches your handler untouched and a warning goes to `~/agentcat.log`. One caveat: this depends on a `tools/list` having run — a call arriving at an instance that never served a listing falls back to stripping all three names.
 
 ### Most integrations need no code changes
 
-`track()` and its options are **purely additive** in 2.0.0. `enableAgentTracking` and `resolveConversationId` were added; nothing was removed. `identify`, `redactSensitiveInformation`, `redactEvent`, `exporters`, `enableReportMissing`, `enableTracing`, `enableToolCallContext`, and `customContextDescription` all keep their existing signatures and behavior.
+`track()` and its options are **purely additive** in 2.0.0. `enableAgentTracking` and `resolveSessionId` were added; nothing was removed. `identify`, `redactSensitiveInformation`, `redactEvent`, `exporters`, `enableReportMissing`, `enableTracing`, `enableToolCallContext`, and `customContextDescription` all keep their existing signatures and behavior.
 
-If your integration is a `track(server, projectId, { ...hooks })` call, upgrading is a version bump. Handles are injected and stripped inside the SDK, so your tool handlers never see the extra parameters, and conversation IDs keep landing in the `sessionId` field with the `ses_` prefix — your existing dashboards, queries, and exporter pipelines keep working untouched.
+If your integration is a `track(server, projectId, { ...hooks })` call, upgrading is a version bump. Handles are injected and stripped inside the SDK, so your tool handlers never see the extra parameters, and session IDs keep landing in the `sessionId` field with the `ses_` prefix — your existing dashboards, queries, and exporter pipelines keep working untouched.
 
 ### Update your code only if…
 
-**You call** `publishCustomEvent`**.** The tracked-server form now publishes without a task unless you set `eventData.conversationId`. A session-id string passed as the first argument is used verbatim as the conversation ID, with no derivation.
+**You call** `publishCustomEvent`**.** The tracked-server form now publishes without a task unless you set `eventData.sessionId`. A session-id string passed as the first argument is used verbatim as the session ID, with no derivation.
 
 ```diff
   agentcat.publishCustomEvent(server, "proj_abc", {
     resourceName: "checkout",
-+   conversationId: currentConversationId,
++   sessionId: currentSessionId,
   });
 ```
 
 **You import the** `AgentCatData` **type.** Its session bookkeeping fields are gone — `sessionId`, `lastActivity`, `identifiedSessions`, `sessionInfo`, `lastMcpSessionId`, and `sessionSource`. It is now just `{ projectId, options }`. Most integrations never reference this type.
 
-**You snapshot tool schemas in tests.** The schema additions above will fail exact- match assertions. Parameter order is: your params, `conversation_id`, `agent_id`, `context`.
+**You snapshot tool schemas in tests.** The schema additions above will fail exact- match assertions. Parameter order is: your params, `session_id`, `agent_id`, `context`.
 
 **You built dashboards on** `mcp:initialize`**,** `mcp:tools/list`**, or** `agentcat:identify` **events.** These are no longer published — actor fields ride on every event instead, so requery against the events themselves.
 
@@ -62,13 +62,13 @@ If your integration is a `track(server, projectId, { ...hooks })` call, upgradin
 - `identify` **now runs on every tool call**, and its result is stamped directly on that call's event. There is no identity cache. If your hook does a database or API lookup, it is now on the hot path for every call — add your own caching if that matters for your latency budget.
 - MCP `extra.sessionId` is ignored entirely, and inactivity-based session rollover is gone.
 
-### Bringing your own conversation IDs
+### Bringing your own session IDs
 
-If you already track your own task or correlation IDs, plug yours in and AgentCat will not prompt the agent about conversation_id at all:
+If you already track your own task or correlation IDs, plug yours in and AgentCat will not prompt the agent about session_id at all:
 
 ```typescript
 agentcat.track(server, "proj_abc", {
-  resolveConversationId: async (request, extra) =>
+  resolveSessionId: async (request, extra) =>
     extra?.requestInfo?.headers?.["x-correlation-id"] ?? null,
 });
 ```

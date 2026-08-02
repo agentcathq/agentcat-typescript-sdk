@@ -318,9 +318,9 @@ describe("Identify Feature", () => {
         }),
       });
 
-      // The agent echoes one conversation_id across the whole workflow — that, not any
+      // The agent echoes one session_id across the whole workflow — that, not any
       // server-side cache, is what keeps these calls on the same task now.
-      const conversationId = "ses_identify_persistence";
+      const sessionId = "ses_identify_persistence";
 
       // Make multiple tool calls
       await client.request(
@@ -331,7 +331,7 @@ describe("Identify Feature", () => {
             arguments: {
               text: "Todo 1",
               context: "Adding a todo item for reset task",
-              conversation_id: conversationId,
+              session_id: sessionId,
             },
           },
         },
@@ -346,7 +346,7 @@ describe("Identify Feature", () => {
             arguments: {
               text: "Todo 2",
               context: "Adding a todo item for reset task",
-              conversation_id: conversationId,
+              session_id: sessionId,
             },
           },
         },
@@ -360,7 +360,7 @@ describe("Identify Feature", () => {
             name: "list_todos",
             arguments: {
               context: "Listing todos for reset task",
-              conversation_id: conversationId,
+              session_id: sessionId,
             },
           },
         },
@@ -379,7 +379,7 @@ describe("Identify Feature", () => {
       // Verify all events landed on the supplied task
       expect(toolCallEvents.length).toBe(3);
       const sessionIds = toolCallEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds)).toEqual(new Set([conversationId]));
+      expect(new Set(sessionIds)).toEqual(new Set([sessionId]));
 
       // Verify the identity is re-resolved and stamped on every one of them
       for (const event of toolCallEvents) {

@@ -8,12 +8,12 @@ import { AgentCatOptions } from "../../types.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
+  AGENTCAT_TAG_SESSION_SOURCE,
 } from "../../modules/constants.js";
 
 async function setupHighLevel(trackOptions: AgentCatOptions = {}) {
   const mcp = new McpServer(
-    { name: "v2-conversation-modes", version: "1.0.0" },
+    { name: "v2-session-modes", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
   mcp.registerTool(
@@ -29,7 +29,7 @@ async function setupHighLevel(trackOptions: AgentCatOptions = {}) {
   return { mcp, client };
 }
 
-describe("v2 conversation modes: resolveConversationId hook", () => {
+describe("v2 session modes: resolveSessionId hook", () => {
   let capture: EventCapture;
   beforeEach(async () => {
     capture = new EventCapture();
@@ -39,22 +39,22 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
     await capture.stop();
   });
 
-  it("advertises no conversation_id param; agent_id stays available", async () => {
+  it("advertises no session_id param; agent_id stays available", async () => {
     const { client } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-7",
+      resolveSessionId: () => "customer-correlation-7",
       enableAgentTracking: true,
     });
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
     expect((echo.inputSchema as any).properties).not.toHaveProperty(
-      "conversation_id",
+      "session_id",
     );
     expect((echo.inputSchema as any).properties).toHaveProperty("agent_id");
     expect((echo.inputSchema as any).required).toContain("agent_id");
     // get_more_tools follows the same policy — it publishes events too.
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
     expect((gmt.inputSchema as any).properties).not.toHaveProperty(
-      "conversation_id",
+      "session_id",
     );
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
     await client.close();
@@ -62,7 +62,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
 
   it("derives a deterministic ses_ id: same hook value + project → same id across calls and instances", async () => {
     const { client } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-7",
+      resolveSessionId: () => "customer-correlation-7",
     });
     await client.callTool({
       name: "echo",
@@ -76,14 +76,14 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
     expect(first.sessionId).toMatch(/^ses_/);
     expect(first.sessionId).toBe(second.sessionId);
     expect(first.tags).toMatchObject({
-      [AGENTCAT_TAG_CONVERSATION_SOURCE]: "hook",
+      [AGENTCAT_TAG_SESSION_SOURCE]: "hook",
     });
     await client.close();
 
     // A completely fresh server instance with the same hook value and project
-    // resolves the SAME conversation id — the derivation is stateless and stable.
+    // resolves the SAME session id — the derivation is stateless and stable.
     const { client: client2 } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-7",
+      resolveSessionId: () => "customer-correlation-7",
     });
     await client2.callTool({
       name: "echo",
@@ -95,7 +95,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
 
     // A different hook value maps to a different task.
     const { client: client3 } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-8",
+      resolveSessionId: () => "customer-correlation-8",
     });
     await client3.callTool({
       name: "echo",
@@ -109,7 +109,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
 
   it("emits no mint-back in hook mode; a supplied agent_id is tagged as supplied", async () => {
     const { client } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-7",
+      resolveSessionId: () => "customer-correlation-7",
       enableAgentTracking: true,
     });
     const result: any = await client.callTool({
@@ -131,7 +131,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
 
   it("hook mode + tracking on + omitted agent_id: no mint-back at all, no agent tags", async () => {
     const { client } = await setupHighLevel({
-      resolveConversationId: () => "customer-correlation-7",
+      resolveSessionId: () => "customer-correlation-7",
       enableAgentTracking: true,
     });
     const result: any = await client.callTool({
@@ -148,7 +148,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
 
   it("mints silently on hook null: fresh ses_ per call, minted source, no mint-back", async () => {
     const { client } = await setupHighLevel({
-      resolveConversationId: () => null,
+      resolveSessionId: () => null,
     });
     const first: any = await client.callTool({
       name: "echo",
@@ -167,7 +167,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
     for (const event of events) {
       expect(event.sessionId).toMatch(/^ses_/);
       expect(event.tags).toMatchObject({
-        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
+        [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
       });
     }
     // One single-event task per null return — never a shared session.
@@ -176,7 +176,7 @@ describe("v2 conversation modes: resolveConversationId hook", () => {
   });
 });
 
-describe("v2 conversation modes: supplied vs minted (no hook)", () => {
+describe("v2 session modes: supplied vs minted (no hook)", () => {
   let capture: EventCapture;
   beforeEach(async () => {
     capture = new EventCapture();
@@ -186,21 +186,21 @@ describe("v2 conversation modes: supplied vs minted (no hook)", () => {
     await capture.stop();
   });
 
-  it("tags a supplied conversation_id as supplied and reuses it verbatim, no mint-back", async () => {
+  it("tags a supplied session_id as supplied and reuses it verbatim, no mint-back", async () => {
     const { client } = await setupHighLevel();
     const result: any = await client.callTool({
       name: "echo",
       arguments: {
         msg: "hi",
         context: "supplied task",
-        conversation_id: "ses_fixed",
+        session_id: "ses_fixed",
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const [event] = capture.getEvents();
     expect(event.sessionId).toBe("ses_fixed");
     expect(event.tags).toMatchObject({
-      [AGENTCAT_TAG_CONVERSATION_SOURCE]: "supplied",
+      [AGENTCAT_TAG_SESSION_SOURCE]: "supplied",
     });
     await client.close();
   });
@@ -212,12 +212,12 @@ describe("v2 conversation modes: supplied vs minted (no hook)", () => {
       arguments: { msg: "hi", context: "minted task" },
     });
     const block = mintBackOf(result)!;
-    const conversationId = handleFrom(block, "conversation_id");
-    expect(conversationId).toMatch(/^ses_/);
+    const sessionId = handleFrom(block, "session_id");
+    expect(sessionId).toMatch(/^ses_/);
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe(conversationId);
+    expect(event.sessionId).toBe(sessionId);
     expect(event.tags).toMatchObject({
-      [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
+      [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
     });
     await client.close();
   });

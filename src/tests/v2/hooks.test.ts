@@ -12,13 +12,13 @@ import {
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
+  AGENTCAT_TAG_SESSION_SOURCE,
 } from "../../modules/constants.js";
 
 // Same split as the v1 twin (event-tags-properties.test.ts): keep customer-tag
 // assertions exact by separating the SDK-owned handle tags.
 const SDK_TAG_KEYS = [
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
+  AGENTCAT_TAG_SESSION_SOURCE,
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
@@ -315,9 +315,7 @@ describe("v2 hooks: eventTags", () => {
       env: "test",
       trace_id: "abc-123",
     });
-    expect(toolCallEvent.tags![AGENTCAT_TAG_CONVERSATION_SOURCE]).toBe(
-      "minted",
-    );
+    expect(toolCallEvent.tags![AGENTCAT_TAG_SESSION_SOURCE]).toBe("minted");
     expect(toolCallEvent.tags![AGENTCAT_TAG_AGENT_SOURCE]).toBe("supplied");
     expect(toolCallEvent.tags![AGENTCAT_TAG_AGENT_ID]).toBe(
       "opus-4.80-1m|claude-code|k3n9x",
@@ -328,7 +326,7 @@ describe("v2 hooks: eventTags", () => {
   it("SDK tag wins when a customer tag collides with an SDK tag name", async () => {
     const { client } = await setupHighLevel({
       eventTags: async () => ({
-        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "customer-value",
+        [AGENTCAT_TAG_SESSION_SOURCE]: "customer-value",
         env: "test",
       }),
     });
@@ -338,15 +336,13 @@ describe("v2 hooks: eventTags", () => {
       arguments: {
         text: "collision",
         context: "tag test",
-        conversation_id: "ses_supplied",
+        session_id: "ses_supplied",
       },
     });
 
     const [toolCallEvent] = toolCallEventsOf(capture);
     // SDK tags are merged last, so ours wins the collision.
-    expect(toolCallEvent.tags![AGENTCAT_TAG_CONVERSATION_SOURCE]).toBe(
-      "supplied",
-    );
+    expect(toolCallEvent.tags![AGENTCAT_TAG_SESSION_SOURCE]).toBe("supplied");
     expect(customerTags(toolCallEvent.tags)).toEqual({ env: "test" });
     await client.close();
   });
@@ -367,7 +363,7 @@ describe("v2 hooks: eventTags", () => {
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({});
     expect(sdkTags(toolCallEvent.tags)).toHaveProperty(
-      AGENTCAT_TAG_CONVERSATION_SOURCE,
+      AGENTCAT_TAG_SESSION_SOURCE,
     );
     await client.close();
   });
@@ -383,7 +379,7 @@ describe("v2 hooks: eventTags", () => {
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({});
     expect(sdkTags(toolCallEvent.tags)).toHaveProperty(
-      AGENTCAT_TAG_CONVERSATION_SOURCE,
+      AGENTCAT_TAG_SESSION_SOURCE,
     );
     await client.close();
   });
@@ -495,7 +491,7 @@ describe("v2 hooks: eventProperties", () => {
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({});
     expect(sdkTags(toolCallEvent.tags)).toHaveProperty(
-      AGENTCAT_TAG_CONVERSATION_SOURCE,
+      AGENTCAT_TAG_SESSION_SOURCE,
     );
     expect(toolCallEvent.properties).toBeUndefined();
     await client.close();

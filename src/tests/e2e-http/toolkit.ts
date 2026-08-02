@@ -9,7 +9,7 @@
 //
 // EVERY handler pushes { tool, args } into the provided sink — the sink is the
 // strip-proof channel: it shows exactly what the customer handler received
-// after agentcat's inner tap ran (conversation_id/context/agent_id must NOT appear).
+// after agentcat's inner tap ran (session_id/context/agent_id must NOT appear).
 import { McpServer as V1McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpServer as V2McpServer } from "@modelcontextprotocol/server";
 import { z as z3 } from "zod";

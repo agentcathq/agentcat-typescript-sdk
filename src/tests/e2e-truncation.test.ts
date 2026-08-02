@@ -244,7 +244,7 @@ describe("E2E Truncation - real MCP tool calls", () => {
             // response shape stays exactly what the tool returned.
             arguments: {
               page: "dashboard",
-              conversation_id: "ses_e2e",
+              session_id: "ses_e2e",
               agent_id: "agt_e2e",
             },
           },

@@ -1,12 +1,12 @@
 import { RegisteredTool } from "../types.js";
-import { CONVERSATION_ID_PARAM, AGENT_ID_PARAM } from "./handles.js";
+import { SESSION_ID_PARAM, AGENT_ID_PARAM } from "./handles.js";
 import {
-  CONVERSATION_ID_PARAM_DESCRIPTION,
+  SESSION_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION,
   AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
   MCP_INSTRUCTIONS_KEY,
   MCP_INSTRUCTIONS_FIELD_DESCRIPTION,
-  MCP_INSTRUCTIONS_CONVERSATION_ID_DESCRIPTION,
+  MCP_INSTRUCTIONS_SESSION_ID_DESCRIPTION,
   MCP_INSTRUCTIONS_AGENT_ID_DESCRIPTION,
 } from "./constants.js";
 import { GET_MORE_TOOLS_NAME } from "./tools.js";
@@ -26,7 +26,7 @@ import type {
 } from "../engine/registry.js";
 
 const CONTEXT_PARAM = "context";
-const ALL_INJECTABLE = [CONVERSATION_ID_PARAM, AGENT_ID_PARAM, CONTEXT_PARAM];
+const ALL_INJECTABLE = [SESSION_ID_PARAM, AGENT_ID_PARAM, CONTEXT_PARAM];
 
 function recordInjected(
   registry: InjectedParamsRegistry,
@@ -39,13 +39,13 @@ function recordInjected(
 }
 
 export interface HandleInjectionOptions {
-  injectConversationId: boolean; // false in hook mode
+  injectSessionId: boolean; // false in hook mode
   injectAgentId: boolean; // false when enableAgentTracking is false
 }
 
 /**
- * Injects optional conversation_id/agent_id into each tool's JSON Schema (post-Zod).
- * Order: customer params, conversation_id, agent_id — context is appended afterwards
+ * Injects optional session_id/agent_id into each tool's JSON Schema (post-Zod).
+ * Order: customer params, session_id, agent_id — context is appended afterwards
  * by addContextParameterToTools, so this MUST run first. Unlike the context
  * injector, get_more_tools is NOT exempt: its calls publish events, so it
  * must be able to carry handles.
@@ -56,7 +56,7 @@ export function addHandleParametersToTools(
   registry: InjectedParamsRegistry,
   outputRegistry?: OutputInjectionRegistry,
 ): RegisteredTool[] {
-  if (!opts.injectConversationId && !opts.injectAgentId) return tools;
+  if (!opts.injectSessionId && !opts.injectAgentId) return tools;
   return tools.map((tool) =>
     addHandleParametersToTool(tool, opts, registry, outputRegistry),
   );
@@ -92,17 +92,17 @@ function addHandleParametersToTool(
   }
   const properties = modifiedTool.inputSchema.properties;
 
-  if (opts.injectConversationId) {
-    if (properties[CONVERSATION_ID_PARAM]) {
+  if (opts.injectSessionId) {
+    if (properties[SESSION_ID_PARAM]) {
       writeToLog(
-        `WARN: Tool "${toolName}" already has '${CONVERSATION_ID_PARAM}' parameter. Skipping conversation_id injection.`,
+        `WARN: Tool "${toolName}" already has '${SESSION_ID_PARAM}' parameter. Skipping session_id injection.`,
       );
     } else {
-      properties[CONVERSATION_ID_PARAM] = {
+      properties[SESSION_ID_PARAM] = {
         type: "string",
-        description: CONVERSATION_ID_PARAM_DESCRIPTION,
+        description: SESSION_ID_PARAM_DESCRIPTION,
       };
-      recordInjected(registry, toolName, CONVERSATION_ID_PARAM);
+      recordInjected(registry, toolName, SESSION_ID_PARAM);
     }
   }
 
@@ -114,9 +114,9 @@ function addHandleParametersToTool(
     } else {
       properties[AGENT_ID_PARAM] = {
         type: "string",
-        // Hook mode has no conversation_id param anywhere; never reference one the
+        // Hook mode has no session_id param anywhere; never reference one the
         // agent cannot see.
-        description: opts.injectConversationId
+        description: opts.injectSessionId
           ? AGENT_ID_PARAM_DESCRIPTION
           : AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
       };
@@ -133,7 +133,7 @@ function addHandleParametersToTool(
     }
   }
 
-  // conversation_id is never required — omission is the minting signal. agent_id
+  // session_id is never required — omission is the minting signal. agent_id
   // (self-chosen, injected above) is the exception.
   if (outputRegistry) {
     addInstructionsToOutputSchema(modifiedTool, opts, outputRegistry, toolName);
@@ -149,7 +149,7 @@ function addHandleParametersToTool(
  * an undeclared key would fail the whole result, so declaration is what makes
  * mirroring safe. Composed schemas (oneOf/allOf/anyOf) have no single
  * properties bag to extend and are skipped, same policy as the input side.
- * Sub-properties mirror the modes: no conversation_id in hook mode, no agent_id when
+ * Sub-properties mirror the modes: no session_id in hook mode, no agent_id when
  * tracking is off — copy never references a parameter the agent cannot see.
  */
 function addInstructionsToOutputSchema(
@@ -175,10 +175,10 @@ function addInstructionsToOutputSchema(
     return;
   }
   const subProperties: Record<string, any> = {};
-  if (opts.injectConversationId) {
-    subProperties[CONVERSATION_ID_PARAM] = {
+  if (opts.injectSessionId) {
+    subProperties[SESSION_ID_PARAM] = {
       type: "string",
-      description: MCP_INSTRUCTIONS_CONVERSATION_ID_DESCRIPTION,
+      description: MCP_INSTRUCTIONS_SESSION_ID_DESCRIPTION,
     };
   }
   if (opts.injectAgentId) {
@@ -215,7 +215,7 @@ export function stripInjectedArguments(
   } else {
     names =
       toolName === GET_MORE_TOOLS_NAME
-        ? [CONVERSATION_ID_PARAM, AGENT_ID_PARAM]
+        ? [SESSION_ID_PARAM, AGENT_ID_PARAM]
         : ALL_INJECTABLE;
   }
   const cleaned = { ...(args as Record<string, unknown>) };

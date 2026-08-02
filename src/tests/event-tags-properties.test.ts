@@ -12,14 +12,14 @@ import {
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
+  AGENTCAT_TAG_SESSION_SOURCE,
 } from "../modules/constants.js";
 
 // Tool-call events now always carry SDK-owned handle tags, merged AFTER the
 // customer's tags. These helpers split the two halves so the customer-tag
 // assertions stay exact rather than being loosened to toMatchObject.
 const SDK_TAG_KEYS = [
-  AGENTCAT_TAG_CONVERSATION_SOURCE,
+  AGENTCAT_TAG_SESSION_SOURCE,
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
@@ -99,9 +99,7 @@ describe("Event Tags & Properties", () => {
         trace_id: "abc-123",
       });
       // SDK handle tags ride alongside the customer's, never replacing them.
-      expect(toolCallEvent!.tags![AGENTCAT_TAG_CONVERSATION_SOURCE]).toBe(
-        "minted",
-      );
+      expect(toolCallEvent!.tags![AGENTCAT_TAG_SESSION_SOURCE]).toBe("minted");
       expect(toolCallEvent!.tags![AGENTCAT_TAG_AGENT_SOURCE]).toBe("supplied");
       expect(toolCallEvent!.tags![AGENTCAT_TAG_AGENT_ID]).toBe(
         "opus-4.80-1m|claude-code|k3n9x",
@@ -111,7 +109,7 @@ describe("Event Tags & Properties", () => {
     it("should overwrite a customer tag that collides with an SDK tag name", async () => {
       track(server, "test-project", {
         eventTags: async () => ({
-          [AGENTCAT_TAG_CONVERSATION_SOURCE]: "customer-value",
+          [AGENTCAT_TAG_SESSION_SOURCE]: "customer-value",
           env: "test",
         }),
       });
@@ -121,7 +119,7 @@ describe("Event Tags & Properties", () => {
           method: "tools/call",
           params: {
             name: "add_todo",
-            arguments: { text: "Test todo", conversation_id: "ses_supplied" },
+            arguments: { text: "Test todo", session_id: "ses_supplied" },
           },
         },
         CallToolResultSchema,
@@ -134,7 +132,7 @@ describe("Event Tags & Properties", () => {
       );
       expect(toolCallEvent).toBeDefined();
       // SDK tags are merged last, so ours wins the collision.
-      expect(toolCallEvent!.tags![AGENTCAT_TAG_CONVERSATION_SOURCE]).toBe(
+      expect(toolCallEvent!.tags![AGENTCAT_TAG_SESSION_SOURCE]).toBe(
         "supplied",
       );
       // Non-colliding customer tags survive untouched.
@@ -171,7 +169,7 @@ describe("Event Tags & Properties", () => {
       // tags land on the event — only the SDK's own handle tags remain.
       expect(customerTags(toolCallEvent!.tags)).toEqual({});
       expect(sdkTags(toolCallEvent!.tags)).toHaveProperty(
-        AGENTCAT_TAG_CONVERSATION_SOURCE,
+        AGENTCAT_TAG_SESSION_SOURCE,
       );
     });
 
@@ -199,7 +197,7 @@ describe("Event Tags & Properties", () => {
       expect(toolCallEvent).toBeDefined();
       expect(customerTags(toolCallEvent!.tags)).toEqual({});
       expect(sdkTags(toolCallEvent!.tags)).toHaveProperty(
-        AGENTCAT_TAG_CONVERSATION_SOURCE,
+        AGENTCAT_TAG_SESSION_SOURCE,
       );
     });
 
@@ -421,7 +419,7 @@ describe("Event Tags & Properties", () => {
       // unconditional and always present.
       expect(customerTags(toolCallEvent!.tags)).toEqual({});
       expect(sdkTags(toolCallEvent!.tags)).toHaveProperty(
-        AGENTCAT_TAG_CONVERSATION_SOURCE,
+        AGENTCAT_TAG_SESSION_SOURCE,
       );
       expect(toolCallEvent!.properties).toBeUndefined();
     });

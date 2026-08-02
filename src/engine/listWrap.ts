@@ -45,7 +45,7 @@ export function buildInjectedList(
   }
 
   // Order matters: handles first, then context ->
-  // { ...customerParams, conversation_id, agent_id, context }
+  // { ...customerParams, session_id, agent_id, context }
   // enableTracing:false skips handle injection wholesale (spec guard).
   const tracingEnabled = data.options.enableTracing !== false;
   const registry: InjectedParamsRegistry = new Map();
@@ -53,8 +53,7 @@ export function buildInjectedList(
   result = addHandleParametersToTools(
     result,
     {
-      injectConversationId:
-        tracingEnabled && !data.options.resolveConversationId,
+      injectSessionId: tracingEnabled && !data.options.resolveSessionId,
       injectAgentId:
         tracingEnabled && data.options.enableAgentTracking === true,
     },

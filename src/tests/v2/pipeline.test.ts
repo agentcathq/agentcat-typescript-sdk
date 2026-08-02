@@ -50,7 +50,7 @@ describe("v2 pipeline: redactSensitiveInformation on captured events", () => {
       arguments: {
         query: "find the secret-sauce",
         context: "pipeline redaction test",
-        conversation_id: "ses_redact",
+        session_id: "ses_redact",
       },
     });
     await settle();
@@ -136,11 +136,11 @@ describe("v2 pipeline: publishCustomEvent", () => {
     return mcp;
   }
 
-  it("queues a custom event on a v2-tracked server with conversationId attribution", async () => {
+  it("queues a custom event on a v2-tracked server with sessionId attribution", async () => {
     const mcp = await trackedServer();
 
     await agentcat.publishCustomEvent(mcp, "proj_test", {
-      conversationId: "ses_custom",
+      sessionId: "ses_custom",
       resourceName: "custom-action",
       parameters: { action: "test" },
       message: "Testing custom event",
@@ -160,7 +160,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     const mcp = await trackedServer();
 
     await agentcat.publishCustomEvent(mcp, "proj_test", {
-      conversationId: "ses_custom",
+      sessionId: "ses_custom",
       resourceName: "custom-action",
       tags: { valid: "value", "bad!key": "value" },
       properties: {},
@@ -171,7 +171,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     expect(event.properties).toBeUndefined();
   });
 
-  it("publishes without a session when a tracked server gets no conversationId", async () => {
+  it("publishes without a session when a tracked server gets no sessionId", async () => {
     const mcp = await trackedServer();
 
     await agentcat.publishCustomEvent(mcp, "proj_test", {
@@ -183,7 +183,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     expect(event.sessionId).toBe(""); // wire: stateless — server assigns
   });
 
-  it("uses a conversation ID string verbatim as the session, carrying full event data", async () => {
+  it("uses a session ID string verbatim as the session, carrying full event data", async () => {
     await agentcat.publishCustomEvent("user-session-12345", "proj_test", {
       resourceName: "full-test",
       parameters: { key: "value" },
@@ -209,9 +209,9 @@ describe("v2 pipeline: publishCustomEvent", () => {
     });
   });
 
-  it("lets eventData.conversationId take precedence over the conversation ID string", async () => {
+  it("lets eventData.sessionId take precedence over the session ID string", async () => {
     await agentcat.publishCustomEvent("ignored-string", "proj_test", {
-      conversationId: "ses_wins",
+      sessionId: "ses_wins",
     });
 
     const [event] = capture.getEvents();
@@ -239,12 +239,12 @@ describe("v2 pipeline: publishCustomEvent", () => {
     await expect(
       agentcat.publishCustomEvent(123 as any, "proj_test"),
     ).rejects.toThrow(
-      "First parameter must be either an MCP server object or a conversation ID string",
+      "First parameter must be either an MCP server object or a session ID string",
     );
     await expect(
       agentcat.publishCustomEvent(null as any, "proj_test"),
     ).rejects.toThrow(
-      "First parameter must be either an MCP server object or a conversation ID string",
+      "First parameter must be either an MCP server object or a session ID string",
     );
     expect(capture.getEvents()).toHaveLength(0);
   });

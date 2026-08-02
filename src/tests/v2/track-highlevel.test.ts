@@ -44,7 +44,7 @@ describe("track() on v2 McpServer", () => {
     expect(names).toContain("echo");
     expect(names).toContain("get_more_tools");
     const echo = tools.find((t) => t.name === "echo")!;
-    expect((echo.inputSchema as any).properties.conversation_id).toBeDefined();
+    expect((echo.inputSchema as any).properties.session_id).toBeDefined();
     expect((echo.inputSchema as any).properties.context).toBeDefined();
     expect(
       (echo.outputSchema as any).properties._mcp_instructions,
@@ -78,21 +78,21 @@ describe("track() on v2 McpServer", () => {
 
     const result = (await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", context: "test intent" }, // no conversation_id → mint
+      arguments: { msg: "hi", context: "test intent" }, // no session_id → mint
     })) as any;
 
     // Inner tap stripped what the loose schema passed through:
     expect(lastSeenArgs).toBeDefined();
-    expect(lastSeenArgs!.conversation_id).toBeUndefined();
+    expect(lastSeenArgs!.session_id).toBeUndefined();
     expect(lastSeenArgs!.context).toBeUndefined();
     expect(lastSeenArgs!.msg).toBe("hi");
 
-    // Mint-back: trailing text block announces the minted conversation_id, and the
+    // Mint-back: trailing text block announces the minted session_id, and the
     // structured mirror rides structuredContent (validates against the
     // injected outputSchema — the client checked it).
     const lastBlock = result.content[result.content.length - 1];
     expect(lastBlock.text).toContain("[MCP INSTRUCTIONS]");
-    expect(result.structuredContent._mcp_instructions.conversation_id).toMatch(
+    expect(result.structuredContent._mcp_instructions.session_id).toMatch(
       /^ses_/,
     );
 
@@ -105,7 +105,7 @@ describe("track() on v2 McpServer", () => {
     await client.close();
   });
 
-  it("echoes a supplied conversation_id and captures error stacks via the executor tap", async () => {
+  it("echoes a supplied session_id and captures error stacks via the executor tap", async () => {
     const mcp = new McpServer(
       { name: "v2-high", version: "1.0.0" },
       { capabilities: { tools: {} } },
@@ -124,7 +124,7 @@ describe("track() on v2 McpServer", () => {
 
     const result = (await client.callTool({
       name: "explode",
-      arguments: { conversation_id: "ses_fixed123" },
+      arguments: { session_id: "ses_fixed123" },
     })) as any;
     expect(result.isError).toBe(true); // v2 McpServer converts throws
 
@@ -163,10 +163,10 @@ describe("track() on v2 McpServer", () => {
 
     await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", context: "why", conversation_id: "ses_x" },
+      arguments: { msg: "hi", context: "why", session_id: "ses_x" },
     });
     expect(seen!.msg).toBe("hi");
-    expect(seen!.conversation_id).toBeUndefined(); // tap active on the NEW executor
+    expect(seen!.session_id).toBeUndefined(); // tap active on the NEW executor
     await client.close();
   });
 });

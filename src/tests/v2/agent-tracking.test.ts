@@ -48,14 +48,12 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
     expect((echo.inputSchema as any).properties).toHaveProperty("agent_id");
-    expect((echo.inputSchema as any).properties).toHaveProperty(
-      "conversation_id",
-    );
-    // agent_id is self-chosen and required; conversation_id stays optional (omission
+    expect((echo.inputSchema as any).properties).toHaveProperty("session_id");
+    // agent_id is self-chosen and required; session_id stays optional (omission
     // is the minting signal).
     expect((echo.inputSchema as any).required).toContain("agent_id");
     expect((echo.inputSchema as any).required ?? []).not.toContain(
-      "conversation_id",
+      "session_id",
     );
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
@@ -70,11 +68,11 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
       arguments: { msg: "hi", context: "agent omission" },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
+    expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
     expect(block).not.toContain("agent_id");
 
     const mirror = result.structuredContent._mcp_instructions;
-    expect(mirror.conversation_id).toBe(handleFrom(block, "conversation_id"));
+    expect(mirror.session_id).toBe(handleFrom(block, "session_id"));
     expect(mirror).not.toHaveProperty("agent_id");
 
     const [event] = capture.getEvents();
@@ -90,13 +88,13 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
       arguments: {
         msg: "hi",
         context: "agent echo",
-        conversation_id: "ses_fixed",
+        session_id: "ses_fixed",
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const mirror = result.structuredContent._mcp_instructions;
-    expect(mirror.conversation_id).toBe("ses_fixed");
+    expect(mirror.session_id).toBe("ses_fixed");
     expect(mirror.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
     expect(mirror.instructions).toContain("confirmed");
 
@@ -116,7 +114,7 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
       arguments: {
         msg: "hi",
         context: "subagent flow",
-        conversation_id: "ses_parent",
+        session_id: "ses_parent",
         agent_id: "haiku-4.5|claude-code|q7w2e",
       },
     });
@@ -152,7 +150,7 @@ describe("v2 agent tracking: OFF by default", () => {
       arguments: { msg: "hi", context: "defaults" },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
+    expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
     expect(block).not.toContain("agent_id");
     const [event] = capture.getEvents();
     expect(event.tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_ID);
