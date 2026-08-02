@@ -99,7 +99,9 @@ describe("session_id collision report", () => {
     expect(logsFor("tool_b")).toHaveLength(1);
   });
 
-  it("does not report when reportedConflicts is not provided", () => {
+  // Defensive-only path: listWrap always supplies a set, so this documents
+  // what the `?.` guard does rather than any production behavior.
+  it("logs the error even without a dedupe set — once per pass, no dedupe", () => {
     const tool = {
       name: "own_session",
       inputSchema: {
@@ -115,13 +117,16 @@ describe("session_id collision report", () => {
     expect(() =>
       addHandleParametersToTools([tool], opts, new Map()),
     ).not.toThrow();
+    addHandleParametersToTools([tool], opts, new Map());
 
     const collisionLogs = (writeToLog as any).mock.calls
       .map((c: any[]) => String(c[0]))
       .filter((m: string) => m.includes("own_session"));
 
-    expect(collisionLogs).toHaveLength(1);
+    // Two passes, two logs: nothing remembers the first report.
+    expect(collisionLogs).toHaveLength(2);
     expect(collisionLogs[0]).toContain("ERROR:");
+    expect(collisionLogs[1]).toContain("ERROR:");
   });
 
   it("getReportedConflicts returns a stable set per key, and independent sets for different keys", () => {
