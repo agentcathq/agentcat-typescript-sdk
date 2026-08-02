@@ -31,7 +31,7 @@ Use AgentCat for:
 
 AgentCat works as a lightweight middleware inside your MCP server. When you call `track()`, it seamlessly modifies your registered tool schemas in place, following the MCP core team's [explicit handles (SEP-2567)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2567) guidelines. Concretely, AgentCat adds the following to your server:
 
-- **`session_id`** — a parameter injected into each tool's input schema. Agents echo it back on every call, letting AgentCat group related tool calls into one task even over stateless transports.
+- **`session_id`** — a parameter injected into each tool's input schema. Agents echo it back on every call, letting AgentCat group related tool calls into one task even over stateless transports. Values are validated: anything AgentCat did not issue is rejected rather than adopted, and the agent is told to re-send the ID it was given.
 - **`agent_id`** _(beta, off by default)_ — enabled with `enableAgentTracking: true`. Each agent self-generates its own ID, keeping parallel agents working the same task individually attributable.
 - **`context`** — a parameter asking the agent to explain, in one sentence, why it is making this call. This is where intent data comes from.
 - **`get_more_tools`** — an additional tool, prompt-engineered so that agents readily report the features and tools they looked for but couldn't find — surfacing your missing functionality directly from real usage.

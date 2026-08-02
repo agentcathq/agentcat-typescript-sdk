@@ -227,6 +227,28 @@ describe("v2 low-level server: explicit handles", () => {
     await client.close();
   });
 
+  it("an invalid session_id publishes sessionless and tells the agent to re-send", async () => {
+    const { client } = await setupLowLevel();
+    await client.listTools();
+    const result: any = await client.callTool({
+      name: "echo",
+      arguments: {
+        text: "hi",
+        context: "testing intent",
+        session_id: "not-a-real-id",
+      },
+    });
+
+    expect(mintBackOf(result)).toContain("session_id not recognized");
+
+    const event = capture.findEventByType("mcp:tools/call")!;
+    expect(event.sessionId).toBe("");
+    expect(event.tags).toMatchObject({
+      [AGENTCAT_TAG_SESSION_SOURCE]: "invalid",
+    });
+    await client.close();
+  });
+
   it("stamps _meta clientInfo and protocol version when present", async () => {
     const { server, client } = await setupLowLevel();
     await client.listTools();

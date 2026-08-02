@@ -32,7 +32,7 @@ Upgrading takes no configuration, but it does change what your MCP server publis
 
 **Responses that mint a handle gain a trailing** `[MCP INSTRUCTIONS]:` **text block.** It is wire-only: recorded event responses and error messages contain only your tool's own output.
 
-**Tools that already declare** `session_id`**,** `agent_id`**, or** `context` **are left alone.** Your parameter reaches your handler untouched and a warning goes to `~/agentcat.log`. One caveat: this depends on a `tools/list` having run — a call arriving at an instance that never served a listing falls back to stripping all three names.
+**Tools that already declare** `session_id`**,** `agent_id`**, or** `context` **are left alone.** Your parameter reaches your handler untouched and an error goes to `~/agentcat.log`. For `session_id` specifically, AgentCat will not adopt your value: calls to that tool are published **without a session** and cannot be correlated. If you already manage sessions, pass a `resolveSessionId` hook to `track()` — AgentCat derives its session from your identifier and stops injecting `session_id` entirely.
 
 ### Most integrations need no code changes
 
