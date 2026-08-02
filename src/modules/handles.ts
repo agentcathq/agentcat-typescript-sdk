@@ -63,7 +63,17 @@ export function extractHandle(args: unknown, name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export type SessionSource = "hook" | "supplied" | "minted";
+/**
+ * True only for a session ID this SDK issued. Both issuing paths —
+ * newSessionId() and deriveSessionId() — satisfy this by construction, so a
+ * value that fails was invented by the agent or belongs to someone else.
+ */
+export function isValidSessionId(value: string): boolean {
+  return /^ses_[0-9A-Za-z]{27}$/.test(value);
+}
+
+export type SessionSource =
+  "hook" | "supplied" | "minted" | "invalid" | "foreign";
 export type AgentSource = "supplied";
 
 export interface HandleResolution {

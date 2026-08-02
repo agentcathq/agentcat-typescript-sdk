@@ -13,8 +13,10 @@ import {
   buildStructuredMintBack,
   mirrorStructuredMintBack,
   StructuredMintBack,
+  isValidSessionId,
 } from "../modules/handles.js";
 import { MCP_INSTRUCTIONS_KEY } from "../modules/constants.js";
+import { sid } from "./test-utils.js";
 
 describe("handle primitives", () => {
   it("mints session ids with the ses_ prefix", () => {
@@ -534,5 +536,30 @@ describe("mirrorStructuredMintBack", () => {
     const r = { isError: true, structuredContent: { msg: "boom" } };
     const out = mirrorStructuredMintBack(r, mint);
     expect(out.structuredContent[MCP_INSTRUCTIONS_KEY]).toEqual(mint);
+  });
+});
+
+describe("isValidSessionId", () => {
+  it("accepts an ID this SDK actually mints", () => {
+    expect(isValidSessionId(newSessionId())).toBe(true);
+    expect(isValidSessionId(deriveSessionId("anything", "proj_1"))).toBe(true);
+  });
+
+  it("accepts the test helper's IDs", () => {
+    expect(isValidSessionId(sid("parent"))).toBe(true);
+  });
+
+  it.each([
+    ["wrong prefix", "task_2xF9kQm3rTvB8nLpYw7ZcHd4Ke"],
+    ["no prefix", "2xF9kQm3rTvB8nLpYw7ZcHd4Ke1"],
+    ["too short", "ses_abc"],
+    ["too long", "ses_" + "a".repeat(28)],
+    ["empty", ""],
+    ["prefix only", "ses_"],
+    ["customer value", "my-app-session-42"],
+    ["non-base62 body", "ses_" + "-".repeat(27)],
+    ["inner whitespace", "ses_ " + "a".repeat(26)],
+  ])("rejects %s", (_label, value) => {
+    expect(isValidSessionId(value)).toBe(false);
   });
 });

@@ -4,6 +4,18 @@ import { Event } from "../types.js";
 
 export const LOG_FILE = "agentcat.log";
 
+/**
+ * A valid 27-char session ID that still reads as its label in failures.
+ * Real KSUIDs are opaque; test fixtures should not be.
+ */
+export function sid(label: string): string {
+  const body = (label.replace(/[^0-9A-Za-z]/g, "") + "0".repeat(27)).slice(
+    0,
+    27,
+  );
+  return `ses_${body}`;
+}
+
 export function cleanupLogFile() {
   if (existsSync(LOG_FILE)) {
     unlinkSync(LOG_FILE);
