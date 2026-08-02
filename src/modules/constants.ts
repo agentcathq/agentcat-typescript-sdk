@@ -28,8 +28,12 @@ export const AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE =
 
 export const MINT_BACK_HEADER_SESSION =
   "[MCP INSTRUCTIONS]: session_id issued.";
+export const MINT_BACK_HEADER_INVALID =
+  "[MCP INSTRUCTIONS]: session_id not recognized.";
 export const MINT_BACK_CLOSER =
   "Without session_id, this server does not function as intended.";
+export const MINT_BACK_INVALID_LINE =
+  "  The session_id you sent was not issued by this server. Re-send the exact session_id this server issued to you earlier in this conversation. Never invent a value.";
 
 export const mintBackSessionLine = (sessionId: string): string =>
   `  session_id=${sessionId} — required on every subsequent tool call`;

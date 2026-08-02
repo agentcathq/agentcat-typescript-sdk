@@ -2,7 +2,9 @@ import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
 import {
   MINT_BACK_HEADER_SESSION,
+  MINT_BACK_HEADER_INVALID,
   MINT_BACK_CLOSER,
+  MINT_BACK_INVALID_LINE,
   mintBackSessionLine,
   MCP_INSTRUCTIONS_KEY,
   mintBackConfirmed,
@@ -86,21 +88,32 @@ export interface HandleResolution {
 }
 
 /**
- * Builds the [MCP INSTRUCTIONS] block for a task minted on this call. Returns
- * null when nothing needs announcing. Task instructions never appear in hook
- * mode — even when a hook-null forced a silent mint. agent_id is self-chosen
- * by the agent and never announced here.
+ * Builds the [MCP INSTRUCTIONS] block for a task minted on this call, or the
+ * correction block when the agent sent a session_id this server never
+ * issued. Returns null when nothing needs announcing. Task instructions
+ * never appear in hook mode — even when a hook-null forced a silent mint.
+ * agent_id is self-chosen by the agent and never announced here.
  *
  * @param res - The resolved handles for this call
- * @returns The instruction block, or null when no task was minted
+ * @returns The instruction block, or null when nothing needs saying
  */
 export function buildMintBackText(res: HandleResolution): string | null {
-  if (res.hookMode || res.sessionSource !== "minted") return null;
-  return [
-    MINT_BACK_HEADER_SESSION,
-    mintBackSessionLine(res.sessionId),
-    MINT_BACK_CLOSER,
-  ].join("\n");
+  if (res.hookMode) return null;
+  if (res.sessionSource === "minted") {
+    return [
+      MINT_BACK_HEADER_SESSION,
+      mintBackSessionLine(res.sessionId),
+      MINT_BACK_CLOSER,
+    ].join("\n");
+  }
+  if (res.sessionSource === "invalid") {
+    return [
+      MINT_BACK_HEADER_INVALID,
+      MINT_BACK_INVALID_LINE,
+      MINT_BACK_CLOSER,
+    ].join("\n");
+  }
+  return null;
 }
 
 /**
@@ -130,8 +143,11 @@ export interface StructuredMintBack {
  * buildMintBackText (task-mint announcements only), this is persistent handle
  * state, present on EVERY response — supplied handles are re-confirmed, so an
  * agent can re-read its own session_id/agent_id mid-conversation. Handles the
- * agent cannot echo are never named: no session_id in hook mode, no agent_id
- * when the agent didn't supply one. Returns null when nothing is echoable.
+ * agent cannot echo are never named: no session_id in hook mode, none at all
+ * for "invalid" (correcting, not confirming — no replacement is issued), and
+ * no agent_id when the agent didn't supply one. Returns null for "foreign"
+ * outright — that parameter is not ours to speak about — and otherwise when
+ * nothing is echoable.
  *
  * @param res - The resolved handles for this call
  * @returns The structured mint-back payload, or null
@@ -139,14 +155,21 @@ export interface StructuredMintBack {
 export function buildStructuredMintBack(
   res: HandleResolution,
 ): StructuredMintBack | null {
+  // Never speak about a parameter that is not ours.
+  if (res.sessionSource === "foreign") return null;
+
+  const sessionEchoable = !res.hookMode && res.sessionSource !== "invalid";
   const names: string[] = [];
-  if (!res.hookMode) names.push(SESSION_ID_PARAM);
+  if (sessionEchoable) names.push(SESSION_ID_PARAM);
   if (res.agentId) names.push(AGENT_ID_PARAM);
-  if (names.length === 0) return null;
+
+  const text = buildMintBackText(res);
+  if (names.length === 0 && !text) return null;
+
   return {
-    ...(res.hookMode ? {} : { [SESSION_ID_PARAM]: res.sessionId }),
+    ...(sessionEchoable ? { [SESSION_ID_PARAM]: res.sessionId } : {}),
     ...(res.agentId ? { [AGENT_ID_PARAM]: res.agentId } : {}),
-    instructions: buildMintBackText(res) ?? mintBackConfirmed(names),
+    instructions: text ?? mintBackConfirmed(names),
   };
 }
 

@@ -629,3 +629,44 @@ describe("isValidSessionId", () => {
     expect(isValidSessionId(value)).toBe(false);
   });
 });
+
+describe("invalid and foreign mint-back", () => {
+  const invalidRes = {
+    sessionId: "",
+    sessionSource: "invalid" as const,
+    hookMode: false,
+  };
+  const foreignRes = {
+    sessionId: "",
+    sessionSource: "foreign" as const,
+    hookMode: false,
+  };
+
+  it("invalid: corrects the agent without issuing a replacement", () => {
+    const text = buildMintBackText(invalidRes)!;
+    expect(text).toContain("[MCP INSTRUCTIONS]: session_id not recognized.");
+    expect(text).toContain("Re-send the exact session_id");
+    // No value handed out: nothing that looks like an ID appears.
+    expect(text).not.toMatch(/ses_[0-9A-Za-z]{27}/);
+  });
+
+  it("invalid: structured mirror carries instructions but no session_id", () => {
+    const mint = buildStructuredMintBack(invalidRes)!;
+    expect(mint.instructions).toContain("not recognized");
+    expect(mint.session_id).toBeUndefined();
+  });
+
+  it("foreign: says nothing to the agent at all", () => {
+    expect(buildMintBackText(foreignRes)).toBeNull();
+    expect(buildStructuredMintBack(foreignRes)).toBeNull();
+  });
+
+  it("foreign: never confirms a value AgentCat did not issue", () => {
+    const mint = buildStructuredMintBack({
+      ...foreignRes,
+      agentId: "opus|cc|k3n9x",
+      agentSource: "supplied" as const,
+    });
+    expect(mint).toBeNull();
+  });
+});
