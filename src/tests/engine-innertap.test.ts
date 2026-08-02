@@ -23,7 +23,7 @@ describe("wrapToolEntry", () => {
     const server = {};
     setInjectedParamsRegistry(
       server,
-      new Map([["echo", new Set(["task_id", "context"])]]),
+      new Map([["echo", new Set(["conversation_id", "context"])]]),
     );
     let seen: any;
     const tool = {
@@ -34,7 +34,7 @@ describe("wrapToolEntry", () => {
     };
     wrapToolEntry(tool, "echo", server as any, v2Adapter);
     await tool.executor(
-      { msg: "hi", task_id: "ses_x", context: "why" },
+      { msg: "hi", conversation_id: "ses_x", context: "why" },
       { sessionId: undefined },
     );
     expect(seen).toEqual({ msg: "hi" });

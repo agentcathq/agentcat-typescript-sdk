@@ -1,28 +1,28 @@
 import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
 import {
-  MINT_BACK_HEADER_TASK,
+  MINT_BACK_HEADER_CONVERSATION,
   MINT_BACK_CLOSER,
-  mintBackTaskLine,
+  mintBackConversationLine,
   MCP_INSTRUCTIONS_KEY,
   mintBackConfirmed,
   AGENTCAT_TAG_AGENT_ID,
-  AGENTCAT_TAG_TASK_SOURCE,
+  AGENTCAT_TAG_CONVERSATION_SOURCE,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
 } from "./constants.js";
 import { AgentCatOptions, CompatibleRequestHandlerExtra } from "../types.js";
 import { writeToLog } from "./logging.js";
 
-export const TASK_ID_PARAM = "task_id";
+export const CONVERSATION_ID_PARAM = "conversation_id";
 export const AGENT_ID_PARAM = "agent_id";
 
-export function newTaskId(): string {
+export function newConversationId(): string {
   return KSUID.withPrefix("ses").randomSync();
 }
 
 /**
- * Deterministically derives a Task ID from a customer-supplied identifier.
+ * Deterministically derives a Conversation ID from a customer-supplied identifier.
  * The same id + project always yields the same ses_ KSUID, across processes
  * and restarts.
  *
@@ -30,7 +30,7 @@ export function newTaskId(): string {
  * @param projectId - Optional AgentCat project ID to include in the hash
  * @returns A KSUID with "ses" prefix derived deterministically from the inputs
  */
-export function deriveTaskId(id: string, projectId?: string): string {
+export function deriveConversationId(id: string, projectId?: string): string {
   const input = projectId ? `${id}:${projectId}` : id;
   const hash = createHash("sha256").update(input).digest();
 
@@ -52,7 +52,7 @@ export function deriveTaskId(id: string, projectId?: string): string {
  * shape validation.
  *
  * @param args - The tool call arguments, of unknown shape
- * @param name - The argument name to read (TASK_ID_PARAM or AGENT_ID_PARAM)
+ * @param name - The argument name to read (CONVERSATION_ID_PARAM or AGENT_ID_PARAM)
  * @returns The trimmed handle, or undefined when absent or not a usable string
  */
 export function extractHandle(args: unknown, name: string): string | undefined {
@@ -63,13 +63,13 @@ export function extractHandle(args: unknown, name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export type TaskSource = "hook" | "supplied" | "minted";
+export type ConversationSource = "hook" | "supplied" | "minted";
 export type AgentSource = "supplied";
 
 export interface HandleResolution {
-  taskId: string;
-  taskSource: TaskSource;
-  /** True when resolveTaskId is configured: no task prompting anywhere. */
+  conversationId: string;
+  conversationSource: ConversationSource;
+  /** True when resolveConversationId is configured: no task prompting anywhere. */
   hookMode: boolean;
   agentId?: string;
   agentSource?: AgentSource;
@@ -85,10 +85,10 @@ export interface HandleResolution {
  * @returns The instruction block, or null when no task was minted
  */
 export function buildMintBackText(res: HandleResolution): string | null {
-  if (res.hookMode || res.taskSource !== "minted") return null;
+  if (res.hookMode || res.conversationSource !== "minted") return null;
   return [
-    MINT_BACK_HEADER_TASK,
-    mintBackTaskLine(res.taskId),
+    MINT_BACK_HEADER_CONVERSATION,
+    mintBackConversationLine(res.conversationId),
     MINT_BACK_CLOSER,
   ].join("\n");
 }
@@ -110,7 +110,7 @@ export function appendMintBack(result: any, text: string): any {
 }
 
 export interface StructuredMintBack {
-  task_id?: string;
+  conversation_id?: string;
   agent_id?: string;
   instructions: string;
 }
@@ -119,8 +119,8 @@ export interface StructuredMintBack {
  * Builds the structured mint-back mirrored into structuredContent. Unlike
  * buildMintBackText (task-mint announcements only), this is persistent handle
  * state, present on EVERY response — supplied handles are re-confirmed, so an
- * agent can re-read its own task_id/agent_id mid-conversation. Handles the
- * agent cannot echo are never named: no task_id in hook mode, no agent_id
+ * agent can re-read its own conversation_id/agent_id mid-conversation. Handles the
+ * agent cannot echo are never named: no conversation_id in hook mode, no agent_id
  * when the agent didn't supply one. Returns null when nothing is echoable.
  *
  * @param res - The resolved handles for this call
@@ -130,11 +130,11 @@ export function buildStructuredMintBack(
   res: HandleResolution,
 ): StructuredMintBack | null {
   const names: string[] = [];
-  if (!res.hookMode) names.push(TASK_ID_PARAM);
+  if (!res.hookMode) names.push(CONVERSATION_ID_PARAM);
   if (res.agentId) names.push(AGENT_ID_PARAM);
   if (names.length === 0) return null;
   return {
-    ...(res.hookMode ? {} : { [TASK_ID_PARAM]: res.taskId }),
+    ...(res.hookMode ? {} : { [CONVERSATION_ID_PARAM]: res.conversationId }),
     ...(res.agentId ? { [AGENT_ID_PARAM]: res.agentId } : {}),
     instructions: buildMintBackText(res) ?? mintBackConfirmed(names),
   };
@@ -175,7 +175,7 @@ export function buildHandleTags(
   protocolVersion?: string,
 ): Record<string, string> {
   const tags: Record<string, string> = {
-    [AGENTCAT_TAG_TASK_SOURCE]: res.taskSource,
+    [AGENTCAT_TAG_CONVERSATION_SOURCE]: res.conversationSource,
   };
   if (res.agentId && res.agentSource) {
     // Tag channel contract: SDK tags bypass validateTags/redaction/truncation,
@@ -194,7 +194,7 @@ export function buildHandleTags(
  * Resolves both handles for one request. Stateless: nothing is stored on the
  * server, so concurrent requests cannot clobber each other.
  *
- * @param options - The AgentCat options; resolveTaskId selects hook mode
+ * @param options - The AgentCat options; resolveConversationId selects hook mode
  * @param projectId - Optional AgentCat project ID, used when deriving in hook mode
  * @param request - The MCP request whose arguments may carry supplied handles
  * @param extra - Optional MCP request handler extra, forwarded to the hook
@@ -207,39 +207,44 @@ export async function resolveHandles(
   extra?: CompatibleRequestHandlerExtra,
 ): Promise<HandleResolution> {
   const args = request?.params?.arguments;
-  const hookMode = typeof options.resolveTaskId === "function";
+  const hookMode = typeof options.resolveConversationId === "function";
 
-  let taskId: string;
-  let taskSource: TaskSource;
+  let conversationId: string;
+  let conversationSource: ConversationSource;
 
   if (hookMode) {
     let hookValue: string | null = null;
     try {
-      hookValue = (await options.resolveTaskId!(request, extra)) ?? null;
+      hookValue =
+        (await options.resolveConversationId!(request, extra)) ?? null;
     } catch (error) {
-      writeToLog(`resolveTaskId hook error: ${error}`);
+      writeToLog(`resolveConversationId hook error: ${error}`);
     }
     if (typeof hookValue === "string" && hookValue.trim().length > 0) {
-      taskId = deriveTaskId(hookValue.trim(), projectId);
-      taskSource = "hook";
+      conversationId = deriveConversationId(hookValue.trim(), projectId);
+      conversationSource = "hook";
     } else {
       // Hook contract violation: no parameter exists in hook mode, so the
       // agent can never learn this ID. One single-event task per null return.
-      taskId = newTaskId();
-      taskSource = "minted";
+      conversationId = newConversationId();
+      conversationSource = "minted";
     }
   } else {
-    const supplied = extractHandle(args, TASK_ID_PARAM);
+    const supplied = extractHandle(args, CONVERSATION_ID_PARAM);
     if (supplied) {
-      taskId = supplied;
-      taskSource = "supplied";
+      conversationId = supplied;
+      conversationSource = "supplied";
     } else {
-      taskId = newTaskId();
-      taskSource = "minted";
+      conversationId = newConversationId();
+      conversationSource = "minted";
     }
   }
 
-  const resolution: HandleResolution = { taskId, taskSource, hookMode };
+  const resolution: HandleResolution = {
+    conversationId,
+    conversationSource,
+    hookMode,
+  };
 
   // agent_id is self-chosen by the agent (schema-required when tracking is
   // on). Soft enforcement: an omitted agent_id never rejects the call — the

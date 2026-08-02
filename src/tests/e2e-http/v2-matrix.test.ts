@@ -37,7 +37,7 @@ import {
 } from "./scenario-types.js";
 import type { ToolSink } from "./toolkit.js";
 import {
-  AGENTCAT_TAG_TASK_SOURCE,
+  AGENTCAT_TAG_CONVERSATION_SOURCE,
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
@@ -59,23 +59,23 @@ const scenarios: Scenario[] = [
   {
     ...scenarioConfig("baseline-defaults"),
     script: async ({ client, capture, sink, lane }) => {
-      // Listing: agentcat injected context + task_id and added get_more_tools.
+      // Listing: agentcat injected context + conversation_id and added get_more_tools.
       const { tools } = await client.listTools();
       const names = tools.map((t: any) => t.name);
       expect(names).toContain("echo");
       expect(names).toContain("get_more_tools");
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties.context).toBeDefined();
-      expect(echo.inputSchema.properties.task_id).toBeDefined();
+      expect(echo.inputSchema.properties.conversation_id).toBeDefined();
 
-      // Call with context but no task_id → SDK mints and announces the handle.
+      // Call with context but no conversation_id → SDK mints and announces the handle.
       const result = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "e2e smoke intent" },
       });
       const mintBack = mintBackOf(result);
       expect(mintBack).toBeDefined();
-      expect(handleFrom(mintBack!, "task_id")).toMatch(/^ses_/);
+      expect(handleFrom(mintBack!, "conversation_id")).toMatch(/^ses_/);
 
       // Event: minted ses_ session + captured intent + minted source tag.
       await waitForEvents(capture, 1);
@@ -84,7 +84,7 @@ const scenarios: Scenario[] = [
       expect(echoEvents[0].sessionId).toMatch(/^ses_/);
       expect(echoEvents[0].userIntent).toBe("e2e smoke intent");
       expect(echoEvents[0].tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
       });
 
       // RAW on the event: injected params are preserved in the recorded request.
@@ -96,7 +96,7 @@ const scenarios: Scenario[] = [
       const seen = sink.filter((entry) => entry.tool === "echo");
       expect(seen).toHaveLength(1);
       expect(seen[0].args.msg).toBe("hi");
-      expect(seen[0].args.task_id).toBeUndefined();
+      expect(seen[0].args.conversation_id).toBeUndefined();
       expect(seen[0].args.context).toBeUndefined();
 
       // On the auto lane the 2026-07-28 era rides every call: the envelope
@@ -120,7 +120,7 @@ const scenarios: Scenario[] = [
       // independently by enableToolCallContext (default true), so it stays
       // listed — mirrors src/tests/v2/options.test.ts which asserts only the
       // handles absent.
-      expect(echo.inputSchema.properties).not.toHaveProperty("task_id");
+      expect(echo.inputSchema.properties).not.toHaveProperty("conversation_id");
       expect(echo.inputSchema.properties).not.toHaveProperty("agent_id");
       expect(echo.inputSchema.properties).toHaveProperty("context");
 
@@ -170,7 +170,7 @@ const scenarios: Scenario[] = [
       ).toBeUndefined();
       // Handle/context injection is unaffected.
       const echo = tools.find((t: any) => t.name === "echo")!;
-      expect(echo.inputSchema.properties).toHaveProperty("task_id");
+      expect(echo.inputSchema.properties).toHaveProperty("conversation_id");
       expect(echo.inputSchema.properties).toHaveProperty("context");
     },
   },
@@ -207,11 +207,11 @@ const scenarios: Scenario[] = [
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties).not.toHaveProperty("context");
       // Handles are independent of the context feature.
-      expect(echo.inputSchema.properties).toHaveProperty("task_id");
+      expect(echo.inputSchema.properties).toHaveProperty("conversation_id");
 
       await client.callTool({
         name: "echo",
-        arguments: { msg: "hi", task_id: "ses_ctxoff" },
+        arguments: { msg: "hi", conversation_id: "ses_ctxoff" },
       });
       const [event] = await waitForEvents(capture, 1);
       expect(event.sessionId).toBe("ses_ctxoff");
@@ -253,37 +253,37 @@ const scenarios: Scenario[] = [
       const { tools } = await client.listTools();
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties).toHaveProperty("agent_id");
-      expect(echo.inputSchema.properties).toHaveProperty("task_id");
-      // agent_id is self-chosen and required; task_id stays optional —
+      expect(echo.inputSchema.properties).toHaveProperty("conversation_id");
+      // agent_id is self-chosen and required; conversation_id stays optional —
       // omission is the task-minting signal.
       expect(echo.inputSchema.required).toContain("agent_id");
-      expect(echo.inputSchema.required ?? []).not.toContain("task_id");
+      expect(echo.inputSchema.required ?? []).not.toContain("conversation_id");
 
       // The structured tool carries the declared outputSchema, so the
       // mint-back mirrors into structuredContent (and the v2 client
       // validated the result against the injected outputSchema in transit).
       // agent_id is omitted here — there is no server-side agent minting, so
-      // the block and mirror carry the task_id only.
+      // the block and mirror carry the conversation_id only.
       const result = await client.callTool({
         name: "structured",
         arguments: { msg: "mint", context: "agent minting" },
       });
       const block = mintBackOf(result)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: task_id issued");
+      expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
       expect(block).not.toContain("agent_id");
-      const taskId = handleFrom(block, "task_id");
-      expect(taskId).toMatch(/^ses_/);
+      const conversationId = handleFrom(block, "conversation_id");
+      expect(conversationId).toMatch(/^ses_/);
 
       expect(result.structuredContent.echoed).toBe("mint");
       const mirror = result.structuredContent._mcp_instructions;
-      expect(mirror.task_id).toBe(taskId);
+      expect(mirror.conversation_id).toBe(conversationId);
       expect(mirror.agent_id).toBeUndefined();
-      expect(mirror.instructions).toContain("task_id issued");
+      expect(mirror.instructions).toContain("conversation_id issued");
 
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe(taskId);
+      expect(event.sessionId).toBe(conversationId);
       expect(event.tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
       });
       expect(event.tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_ID);
       expect(event.tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_SOURCE);
@@ -300,18 +300,18 @@ const scenarios: Scenario[] = [
         arguments: { msg: "one", context: "agent supplied — mint first" },
       });
       const block = mintBackOf(first)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: task_id issued");
+      expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
       expect(block).not.toContain("agent_id");
-      const taskId = handleFrom(block, "task_id");
+      const conversationId = handleFrom(block, "conversation_id");
 
-      // Call 2 supplies a self-chosen agent_id + call 1's task_id → both
+      // Call 2 supplies a self-chosen agent_id + call 1's conversation_id → both
       // sources "supplied", echoed verbatim, no mint-back.
       const second = await client.callTool({
         name: "echo",
         arguments: {
           msg: "two",
           context: "agent supplied — reuse",
-          task_id: taskId,
+          conversation_id: conversationId,
           agent_id: "opus-4.80-1m|claude-code|k3n9x",
         },
       });
@@ -319,11 +319,11 @@ const scenarios: Scenario[] = [
 
       const events = await waitForEvents(capture, 2);
       expect(events[0].tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_ID);
-      expect(events[1].sessionId).toBe(taskId);
+      expect(events[1].sessionId).toBe(conversationId);
       expect(events[1].tags).toMatchObject({
         [AGENTCAT_TAG_AGENT_ID]: "opus-4.80-1m|claude-code|k3n9x",
         [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",
-        [AGENTCAT_TAG_TASK_SOURCE]: "supplied",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "supplied",
       });
     },
   },
@@ -332,15 +332,15 @@ const scenarios: Scenario[] = [
   {
     ...scenarioConfig("agent-tracking-x-hook"),
     script: async ({ client, capture }) => {
-      // Hook mode: NO task_id param anywhere; agent_id stays available and
+      // Hook mode: NO conversation_id param anywhere; agent_id stays available and
       // required (self-chosen — there is no server-side agent minting).
       const { tools } = await client.listTools();
       const echo = tools.find((t: any) => t.name === "echo")!;
-      expect(echo.inputSchema.properties).not.toHaveProperty("task_id");
+      expect(echo.inputSchema.properties).not.toHaveProperty("conversation_id");
       expect(echo.inputSchema.properties).toHaveProperty("agent_id");
       expect(echo.inputSchema.required).toContain("agent_id");
       const gmt = tools.find((t: any) => t.name === "get_more_tools")!;
-      expect(gmt.inputSchema.properties).not.toHaveProperty("task_id");
+      expect(gmt.inputSchema.properties).not.toHaveProperty("conversation_id");
       expect(gmt.inputSchema.properties).toHaveProperty("agent_id");
       expect(gmt.inputSchema.required).toContain("agent_id");
 
@@ -372,7 +372,7 @@ const scenarios: Scenario[] = [
       expect(events[0].sessionId).toBe(events[1].sessionId);
       for (const event of events) {
         expect(event.tags).toMatchObject({
-          [AGENTCAT_TAG_TASK_SOURCE]: "hook",
+          [AGENTCAT_TAG_CONVERSATION_SOURCE]: "hook",
           [AGENTCAT_TAG_AGENT_ID]: "opus-4.80-1m|claude-code|k3n9x",
           [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",
         });
@@ -402,7 +402,7 @@ const scenarios: Scenario[] = [
       expect(events[0].sessionId).toBe(events[1].sessionId);
       for (const event of events) {
         expect(event.tags).toMatchObject({
-          [AGENTCAT_TAG_TASK_SOURCE]: "hook",
+          [AGENTCAT_TAG_CONVERSATION_SOURCE]: "hook",
         });
       }
     },
@@ -430,7 +430,7 @@ const scenarios: Scenario[] = [
       for (const event of events) {
         expect(event.sessionId).toMatch(/^ses_/);
         expect(event.tags).toMatchObject({
-          [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+          [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
         });
       }
       // One single-event task per null return — never a shared session.
@@ -447,27 +447,27 @@ const scenarios: Scenario[] = [
         name: "echo",
         arguments: { msg: "one", context: "continuity — mint" },
       });
-      const taskId = handleFrom(mintBackOf(first)!, "task_id");
-      expect(taskId).toMatch(/^ses_/);
+      const conversationId = handleFrom(mintBackOf(first)!, "conversation_id");
+      expect(conversationId).toMatch(/^ses_/);
 
       const second = await client.callTool({
         name: "echo",
         arguments: {
           msg: "two",
           context: "continuity — supply",
-          task_id: taskId,
+          conversation_id: conversationId,
         },
       });
       expect(mintBackOf(second)).toBeUndefined();
 
       const events = await waitForEvents(capture, 2);
-      expect(events[0].sessionId).toBe(taskId);
-      expect(events[1].sessionId).toBe(taskId);
+      expect(events[0].sessionId).toBe(conversationId);
+      expect(events[1].sessionId).toBe(conversationId);
       expect(events[0].tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
       });
       expect(events[1].tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "supplied",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "supplied",
       });
     },
   },
@@ -487,17 +487,17 @@ const scenarios: Scenario[] = [
 
       // Text block + structured mirror, consistent with each other.
       const block = mintBackOf(result)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: task_id issued");
-      const taskId = handleFrom(block, "task_id");
+      expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
+      const conversationId = handleFrom(block, "conversation_id");
       expect(result.structuredContent.echoed).toBe("mirrored");
       const mirror = result.structuredContent._mcp_instructions;
-      expect(mirror.task_id).toBe(taskId);
-      expect(mirror.instructions).toContain("task_id issued");
+      expect(mirror.conversation_id).toBe(conversationId);
+      expect(mirror.instructions).toContain("conversation_id issued");
       // Agent tracking is off → the mirror carries no agent_id.
       expect(mirror.agent_id).toBeUndefined();
 
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe(taskId);
+      expect(event.sessionId).toBe(conversationId);
       // Mint-back is wire-only — never recorded on the event.
       expect(JSON.stringify(event.response)).not.toContain(
         "[MCP INSTRUCTIONS]",
@@ -513,7 +513,7 @@ const scenarios: Scenario[] = [
       const strict = tools.find((t: any) => t.name === "strict")!;
       // additionalProperties:false is dropped so optional handles can ride.
       expect(strict.inputSchema.additionalProperties).toBeUndefined();
-      expect(strict.inputSchema.properties.task_id).toBeDefined();
+      expect(strict.inputSchema.properties.conversation_id).toBeDefined();
       expect(strict.inputSchema.properties.context).toBeDefined();
 
       // The call with handles riding must clear the strictObject zod gate
@@ -523,7 +523,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: "strictly",
           context: "strict schema test",
-          task_id: "ses_strict",
+          conversation_id: "ses_strict",
         },
       });
       expect(result.isError).not.toBe(true);
@@ -553,7 +553,7 @@ const scenarios: Scenario[] = [
           msg: "hi",
           customer_extra: "keep-me",
           context: "strip proof",
-          task_id: "ses_loose",
+          conversation_id: "ses_loose",
         },
       });
 
@@ -561,7 +561,7 @@ const scenarios: Scenario[] = [
       expect(seen).toHaveLength(1);
       expect(seen[0].args.msg).toBe("hi");
       expect(seen[0].args.customer_extra).toBe("keep-me");
-      expect(seen[0].args.task_id).toBeUndefined();
+      expect(seen[0].args.conversation_id).toBeUndefined();
       expect(seen[0].args.context).toBeUndefined();
       expect(seen[0].args.agent_id).toBeUndefined();
 
@@ -571,7 +571,7 @@ const scenarios: Scenario[] = [
       const raw = rawArgsOf(event);
       expect(raw.msg).toBe("hi");
       expect(raw.customer_extra).toBe("keep-me");
-      expect(raw.task_id).toBe("ses_loose");
+      expect(raw.conversation_id).toBe("ses_loose");
       expect(raw.context).toBe("strip proof");
     },
   },
@@ -589,7 +589,7 @@ const scenarios: Scenario[] = [
       // still appends the mint-back to the failed result on the wire.
       expect(result.isError).toBe(true);
       const block = mintBackOf(result)!;
-      expect(handleFrom(block, "task_id")).toMatch(/^ses_/);
+      expect(handleFrom(block, "conversation_id")).toMatch(/^ses_/);
 
       const [event] = await waitForEvents(capture, 1);
       expect(event.resourceName).toBe("boom");
@@ -598,7 +598,7 @@ const scenarios: Scenario[] = [
       expect(event.userIntent).toBe("error path intent");
       expect(event.sessionId).toMatch(/^ses_/);
       expect(event.tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
       });
       // Mint-back stays wire-only even on errors.
       expect(JSON.stringify(event.response)).not.toContain(
@@ -635,8 +635,8 @@ const scenarios: Scenario[] = [
       expect(event.identifyActorData).toEqual(IDENTITY_USER_DATA);
       // Customer tag present; on the colliding SDK-owned key the SDK wins.
       expect(event.tags?.[CUSTOMER_TAG_KEY]).toBe(CUSTOMER_TAG_VALUE);
-      expect(event.tags?.[AGENTCAT_TAG_TASK_SOURCE]).toBe("minted");
-      expect(event.tags?.[AGENTCAT_TAG_TASK_SOURCE]).not.toBe(
+      expect(event.tags?.[AGENTCAT_TAG_CONVERSATION_SOURCE]).toBe("minted");
+      expect(event.tags?.[AGENTCAT_TAG_CONVERSATION_SOURCE]).not.toBe(
         COLLIDING_TAG_VALUE,
       );
       // Properties merged.
@@ -656,7 +656,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: `payload ${REDACTION_SECRET} inside`,
           context: `intent mentioning ${REDACTION_SECRET}`,
-          task_id: "ses_redact",
+          conversation_id: "ses_redact",
         },
       });
 
@@ -740,12 +740,12 @@ const scenarios: Scenario[] = [
         (result.content as any[]).find((c) => c.text === "solo"),
       ).toBeDefined();
       const block = mintBackOf(result)!;
-      const taskId = handleFrom(block, "task_id");
-      expect(taskId).toMatch(/^ses_/);
+      const conversationId = handleFrom(block, "conversation_id");
+      expect(conversationId).toMatch(/^ses_/);
 
       const [event] = await waitForEvents(capture, 1);
       expect(event.resourceName).toBe("echo");
-      expect(event.sessionId).toBe(taskId);
+      expect(event.sessionId).toBe(conversationId);
       expect(event.userIntent).toBe("rebuild on demand");
     },
   },
@@ -771,13 +771,13 @@ const scenarios: Scenario[] = [
         name: "echo",
         arguments: { msg: "one", context: "stateful continuity" },
       });
-      const taskId = handleFrom(mintBackOf(first)!, "task_id");
+      const conversationId = handleFrom(mintBackOf(first)!, "conversation_id");
       const second: any = await client.callTool({
         name: "echo",
         arguments: {
           msg: "two",
           context: "stateful continuity",
-          task_id: taskId,
+          conversation_id: conversationId,
         },
       });
       expect(mintBackOf(second)).toBeUndefined();
@@ -786,13 +786,13 @@ const scenarios: Scenario[] = [
       expect(((client as any).transport as any).sessionId).toBe(httpSessionId);
 
       const events = await waitForEvents(capture, 2);
-      expect(events[0].sessionId).toBe(taskId);
-      expect(events[1].sessionId).toBe(taskId);
+      expect(events[0].sessionId).toBe(conversationId);
+      expect(events[1].sessionId).toBe(conversationId);
       expect(events[0].tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
       });
       expect(events[1].tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "supplied",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "supplied",
       });
     },
   },

@@ -18,7 +18,7 @@ describe("concurrent tool calls do not clobber each other's attribution", () => 
     await capture.stop();
   });
 
-  it("each event keeps its own task_id, agent_id, and actor under interleaving", async () => {
+  it("each event keeps its own conversation_id, agent_id, and actor under interleaving", async () => {
     const server = new McpServer({ name: "concurrent server", version: "1.0" });
     server.tool(
       "slow_echo",
@@ -42,9 +42,24 @@ describe("concurrent tool calls do not clobber each other's attribution", () => 
     await client.listTools();
 
     const calls = [
-      { text: "A", delay_ms: 120, task_id: "ses_task_A", agent_id: "agt_A" },
-      { text: "B", delay_ms: 40, task_id: "ses_task_B", agent_id: "agt_B" },
-      { text: "C", delay_ms: 80, task_id: "ses_task_C", agent_id: "agt_C" },
+      {
+        text: "A",
+        delay_ms: 120,
+        conversation_id: "ses_conversation_A",
+        agent_id: "agt_A",
+      },
+      {
+        text: "B",
+        delay_ms: 40,
+        conversation_id: "ses_conversation_B",
+        agent_id: "agt_B",
+      },
+      {
+        text: "C",
+        delay_ms: 80,
+        conversation_id: "ses_conversation_C",
+        agent_id: "agt_C",
+      },
     ];
     await Promise.all(
       calls.map((c) =>
@@ -63,7 +78,7 @@ describe("concurrent tool calls do not clobber each other's attribution", () => 
       const event = events.find(
         (e) => (e.parameters as any).request.params.arguments.text === c.text,
       )!;
-      expect(event.sessionId).toBe(c.task_id);
+      expect(event.sessionId).toBe(c.conversation_id);
       expect(event.tags).toMatchObject({ agentcat_agent_id: c.agent_id });
       expect(event.identifyActorGivenId).toBe(`actor-${c.text}`);
     }

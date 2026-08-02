@@ -6,7 +6,7 @@ import { connectClient } from "./harness.js";
 import { EventCapture } from "../test-utils.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
-  AGENTCAT_TAG_TASK_SOURCE,
+  AGENTCAT_TAG_CONVERSATION_SOURCE,
 } from "../../modules/constants.js";
 
 describe("v2 concurrent tool calls do not clobber each other's attribution", () => {
@@ -19,7 +19,7 @@ describe("v2 concurrent tool calls do not clobber each other's attribution", () 
     await capture.stop();
   });
 
-  it("each event keeps its own task_id, agent_id, and actor under interleaving", async () => {
+  it("each event keeps its own conversation_id, agent_id, and actor under interleaving", async () => {
     const mcp = new McpServer(
       { name: "v2-concurrent", version: "1.0.0" },
       { capabilities: { tools: {} } },
@@ -46,9 +46,24 @@ describe("v2 concurrent tool calls do not clobber each other's attribution", () 
     await client.listTools();
 
     const calls = [
-      { text: "A", delay_ms: 120, task_id: "ses_task_A", agent_id: "agt_A" },
-      { text: "B", delay_ms: 40, task_id: "ses_task_B", agent_id: "agt_B" },
-      { text: "C", delay_ms: 80, task_id: "ses_task_C", agent_id: "agt_C" },
+      {
+        text: "A",
+        delay_ms: 120,
+        conversation_id: "ses_conversation_A",
+        agent_id: "agt_A",
+      },
+      {
+        text: "B",
+        delay_ms: 40,
+        conversation_id: "ses_conversation_B",
+        agent_id: "agt_B",
+      },
+      {
+        text: "C",
+        delay_ms: 80,
+        conversation_id: "ses_conversation_C",
+        agent_id: "agt_C",
+      },
     ];
     await Promise.all(
       calls.map((c) =>
@@ -68,9 +83,9 @@ describe("v2 concurrent tool calls do not clobber each other's attribution", () 
         (e) => (e.parameters as any).request.params.arguments.text === c.text,
       )!;
       expect(event).toBeDefined();
-      expect(event.sessionId).toBe(c.task_id);
+      expect(event.sessionId).toBe(c.conversation_id);
       expect(event.tags).toMatchObject({
-        [AGENTCAT_TAG_TASK_SOURCE]: "supplied",
+        [AGENTCAT_TAG_CONVERSATION_SOURCE]: "supplied",
         [AGENTCAT_TAG_AGENT_ID]: c.agent_id,
       });
       expect(event.identifyActorGivenId).toBe(`actor-${c.text}`);

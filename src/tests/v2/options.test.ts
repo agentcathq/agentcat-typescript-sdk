@@ -38,7 +38,9 @@ describe("v2 options: enableTracing false", () => {
     const { client } = await setupHighLevel({ enableTracing: false });
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
-    expect((echo.inputSchema as any).properties).not.toHaveProperty("task_id");
+    expect((echo.inputSchema as any).properties).not.toHaveProperty(
+      "conversation_id",
+    );
     expect((echo.inputSchema as any).properties).not.toHaveProperty("agent_id");
     await client.close();
   });
@@ -79,7 +81,9 @@ describe("v2 options: enableReportMissing false", () => {
     const { tools } = await client.listTools();
     expect(tools.find((t) => t.name === "get_more_tools")).toBeUndefined();
     const echo = tools.find((t) => t.name === "echo")!;
-    expect((echo.inputSchema as any).properties).toHaveProperty("task_id");
+    expect((echo.inputSchema as any).properties).toHaveProperty(
+      "conversation_id",
+    );
     expect((echo.inputSchema as any).properties).toHaveProperty("context");
     await client.close();
   });
@@ -101,11 +105,13 @@ describe("v2 options: enableToolCallContext false", () => {
     const echo = tools.find((t) => t.name === "echo")!;
     expect((echo.inputSchema as any).properties).not.toHaveProperty("context");
     // Handles are independent of the context feature.
-    expect((echo.inputSchema as any).properties).toHaveProperty("task_id");
+    expect((echo.inputSchema as any).properties).toHaveProperty(
+      "conversation_id",
+    );
 
     await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", task_id: "ses_ctxoff" },
+      arguments: { msg: "hi", conversation_id: "ses_ctxoff" },
     });
     const [event] = capture.getEvents();
     expect(event.sessionId).toBe("ses_ctxoff");

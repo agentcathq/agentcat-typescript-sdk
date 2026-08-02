@@ -111,9 +111,9 @@ describe("structured mint-back: high-level (V2) path", () => {
     });
     const sc = result.structuredContent;
     const mint = sc._mcp_instructions;
-    expect(mint.task_id).toMatch(/^ses_/);
+    expect(mint.conversation_id).toMatch(/^ses_/);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("task_id issued");
+    expect(mint.instructions).toContain("conversation_id issued");
     expect(sc.count).toBe(0); // customer payload intact
     await cleanup();
   });
@@ -126,7 +126,7 @@ describe("structured mint-back: high-level (V2) path", () => {
     const prop = (stats.outputSchema as any).properties._mcp_instructions;
     expect(prop.type).toBe("object");
     expect(Object.keys(prop.properties)).toEqual([
-      "task_id",
+      "conversation_id",
       "agent_id",
       "instructions",
     ]);
@@ -143,12 +143,12 @@ describe("structured mint-back: high-level (V2) path", () => {
       name: "get_stats",
       arguments: {
         context: "checking stats",
-        task_id: "ses_fixed",
+        conversation_id: "ses_fixed",
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     const mint = result.structuredContent._mcp_instructions;
-    expect(mint.task_id).toBe("ses_fixed");
+    expect(mint.conversation_id).toBe("ses_fixed");
     expect(mint.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
     expect(mint.instructions).toContain("confirmed");
     // content footer is a mint-time announcement only — none in steady state
@@ -207,9 +207,9 @@ describe("structured mint-back: low-level (V1) path", () => {
     await client.listTools();
     const result: any = await client.callTool({ name: "stats", arguments: {} });
     const mint = result.structuredContent._mcp_instructions;
-    expect(mint.task_id).toMatch(/^ses_/);
+    expect(mint.conversation_id).toMatch(/^ses_/);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("task_id issued");
+    expect(mint.instructions).toContain("conversation_id issued");
     expect(result.structuredContent.count).toBe(42);
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(JSON.stringify(event.response)).not.toContain("_mcp_instructions");
@@ -233,9 +233,9 @@ describe("structured mint-back: low-level (V1) path", () => {
     await cleanup();
   });
 
-  it("hook mode: mirrored payload carries agent_id but never task_id", async () => {
+  it("hook mode: mirrored payload carries agent_id but never conversation_id", async () => {
     const { client, cleanup } = await setupLowLevelStructured({
-      resolveTaskId: () => "corr-1",
+      resolveConversationId: () => "corr-1",
     });
     await client.listTools();
     const result: any = await client.callTool({
@@ -243,7 +243,7 @@ describe("structured mint-back: low-level (V1) path", () => {
       arguments: { agent_id: "opus-4.80-1m|claude-code|k3n9x" },
     });
     const mint = result.structuredContent._mcp_instructions;
-    expect(mint).not.toHaveProperty("task_id");
+    expect(mint).not.toHaveProperty("conversation_id");
     expect(mint.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
     expect(mint.instructions).toContain("agent_id confirmed");
     await cleanup();
@@ -257,7 +257,9 @@ describe("structured mint-back: low-level (V1) path", () => {
       { method: "tools/call", params: { name: "stats", arguments: {} } },
       {},
     );
-    expect(result.structuredContent._mcp_instructions.task_id).toMatch(/^ses_/);
+    expect(result.structuredContent._mcp_instructions.conversation_id).toMatch(
+      /^ses_/,
+    );
     await cleanup();
   });
 });

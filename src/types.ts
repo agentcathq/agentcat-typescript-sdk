@@ -15,12 +15,12 @@ export interface AgentCatOptions {
   enableAgentTracking?: boolean;
   /**
    * Hook mode: you manage task state. When configured, AgentCat injects no
-   * task_id parameter and prompts no task instructions; the returned value is
+   * conversation_id parameter and prompts no task instructions; the returned value is
    * combined with the project ID into a deterministic ses_ KSUID. Nullish
    * returns and throws mint silently — a configured hook should answer every
    * request.
    */
-  resolveTaskId?: (
+  resolveConversationId?: (
     request: any,
     extra?: CompatibleRequestHandlerExtra,
   ) => string | null | Promise<string | null>;
@@ -85,7 +85,7 @@ export interface Exporter {
 }
 
 export enum AgentCatIDPrefixes {
-  Session = "ses", // Task IDs deliberately keep this prefix
+  Session = "ses", // Conversation IDs deliberately keep this prefix
   Event = "evt",
   Agent = "agt",
 }
@@ -254,8 +254,8 @@ export interface ErrorData {
 
 // Custom event types for publishCustomEvent function
 export interface CustomEventData {
-  /** Task ID to attribute this event to. Takes precedence over a session-id string argument. */
-  taskId?: string;
+  /** Conversation ID to attribute this event to. Takes precedence over a session-id string argument. */
+  conversationId?: string;
   resourceName?: string;
   parameters?: any;
   response?: any;

@@ -48,7 +48,7 @@ describe("v2 late registration: registerTool AFTER track()", () => {
     expect(names).toContain("late_tool");
     expect(names).toContain("get_more_tools");
     const late = tools.find((t) => t.name === "late_tool")!;
-    expect((late.inputSchema as any).properties.task_id).toBeDefined();
+    expect((late.inputSchema as any).properties.conversation_id).toBeDefined();
     expect((late.inputSchema as any).properties.context).toBeDefined();
     await client.close();
   });
@@ -80,12 +80,12 @@ describe("v2 late registration: registerTool AFTER track()", () => {
       arguments: {
         message: "hi",
         context: "late strip test",
-        task_id: "ses_late",
+        conversation_id: "ses_late",
       },
     });
 
     expect(lastSeenArgs).toBeDefined();
-    expect(lastSeenArgs!.task_id).toBeUndefined();
+    expect(lastSeenArgs!.conversation_id).toBeUndefined();
     expect(lastSeenArgs!.context).toBeUndefined();
     expect(lastSeenArgs!.message).toBe("hi");
 
@@ -93,9 +93,9 @@ describe("v2 late registration: registerTool AFTER track()", () => {
     expect(event.sessionId).toBe("ses_late");
     expect(event.userIntent).toBe("late strip test");
     // The event keeps the raw request, injected params included.
-    expect((event.parameters as any).request.params.arguments.task_id).toBe(
-      "ses_late",
-    );
+    expect(
+      (event.parameters as any).request.params.arguments.conversation_id,
+    ).toBe("ses_late");
     await client.close();
   });
 
@@ -118,7 +118,7 @@ describe("v2 late registration: registerTool AFTER track()", () => {
 
     const result: any = await client.callTool({
       name: "late_explode",
-      arguments: { task_id: "ses_late_err" },
+      arguments: { conversation_id: "ses_late_err" },
     });
     expect(result.isError).toBe(true); // v2 McpServer converts throws
 

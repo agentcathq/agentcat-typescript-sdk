@@ -8,7 +8,7 @@ import {
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
-  AGENTCAT_TAG_TASK_SOURCE,
+  AGENTCAT_TAG_CONVERSATION_SOURCE,
 } from "../../modules/constants.js";
 
 /**
@@ -73,7 +73,7 @@ describe("v2 low-level server: explicit handles", () => {
     const echo = tools.find((t) => t.name === "echo")!;
     expect(Object.keys((echo.inputSchema as any).properties)).toEqual([
       "text",
-      "task_id",
+      "conversation_id",
       "agent_id",
       "context",
     ]);
@@ -83,7 +83,9 @@ describe("v2 low-level server: explicit handles", () => {
       "context",
     ]);
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
-    expect((gmt.inputSchema as any).properties).toHaveProperty("task_id");
+    expect((gmt.inputSchema as any).properties).toHaveProperty(
+      "conversation_id",
+    );
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
     await client.close();
   });
@@ -102,7 +104,7 @@ describe("v2 low-level server: explicit handles", () => {
     await client.close();
   });
 
-  it("first call mints task_id, appends the mint-back, and tags the task source", async () => {
+  it("first call mints conversation_id, appends the mint-back, and tags the task source", async () => {
     const { client } = await setupLowLevel();
     await client.listTools();
     const result: any = await client.callTool({
@@ -110,15 +112,15 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: { text: "hi", context: "testing intent" },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: task_id issued.");
+    expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued.");
     expect(block).not.toContain("agent_id");
-    const taskId = handleFrom(block, "task_id");
-    expect(taskId).toMatch(/^ses_/);
+    const conversationId = handleFrom(block, "conversation_id");
+    expect(conversationId).toMatch(/^ses_/);
 
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(event.sessionId).toBe(taskId);
+    expect(event.sessionId).toBe(conversationId);
     expect(event.tags).toMatchObject({
-      [AGENTCAT_TAG_TASK_SOURCE]: "minted",
+      [AGENTCAT_TAG_CONVERSATION_SOURCE]: "minted",
     });
     expect(event.tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_ID);
     expect(event.tags).not.toHaveProperty(AGENTCAT_TAG_AGENT_SOURCE);
@@ -133,15 +135,15 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "why",
-        task_id: "ses_x",
+        conversation_id: "ses_x",
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     expect(receivedArgs[0]).toEqual({ text: "hi" });
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect((event.parameters as any).request.params.arguments.task_id).toBe(
-      "ses_x",
-    );
+    expect(
+      (event.parameters as any).request.params.arguments.conversation_id,
+    ).toBe("ses_x");
     await client.close();
   });
 
@@ -153,7 +155,9 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: { text: "explode", context: "testing" },
     });
     expect(result.isError).toBe(true);
-    expect(mintBackOf(result)).toContain("[MCP INSTRUCTIONS]: task_id issued.");
+    expect(mintBackOf(result)).toContain(
+      "[MCP INSTRUCTIONS]: conversation_id issued.",
+    );
     expect(mintBackOf(result)).not.toContain("agent_id");
 
     const event = capture.findEventByType("mcp:tools/call")!;
@@ -170,7 +174,11 @@ describe("v2 low-level server: explicit handles", () => {
     await expect(
       client.callTool({
         name: "echo",
-        arguments: { text: "throw", context: "testing", task_id: "ses_boom" },
+        arguments: {
+          text: "throw",
+          context: "testing",
+          conversation_id: "ses_boom",
+        },
       }),
     ).rejects.toThrow();
 
@@ -189,7 +197,9 @@ describe("v2 low-level server: explicit handles", () => {
       name: "echo",
       arguments: { text: "hi", context: "testing intent" },
     });
-    expect(mintBackOf(result)).toContain("[MCP INSTRUCTIONS]: task_id issued.");
+    expect(mintBackOf(result)).toContain(
+      "[MCP INSTRUCTIONS]: conversation_id issued.",
+    );
     expect(mintBackOf(result)).not.toContain("agent_id");
 
     const event = capture.findEventByType("mcp:tools/call")!;
@@ -208,7 +218,7 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "testing",
-        task_id: "ses_fixed",
+        conversation_id: "ses_fixed",
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });

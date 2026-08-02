@@ -46,7 +46,9 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
     expect(gmt).toBeDefined();
     expect(gmt.description).toContain("Check for additional tools");
     expect((gmt.inputSchema as any).required).toContain("context");
-    expect((gmt.inputSchema as any).properties).toHaveProperty("task_id");
+    expect((gmt.inputSchema as any).properties).toHaveProperty(
+      "conversation_id",
+    );
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
     expect((gmt.inputSchema as any).required).toContain("agent_id");
     expect(gmt.annotations).toEqual({
@@ -93,12 +95,12 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
       },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: task_id issued");
+    expect(block).toContain("[MCP INSTRUCTIONS]: conversation_id issued");
     expect(block).not.toContain("agent_id");
-    expect(handleFrom(block, "task_id")).toMatch(/^ses_/);
+    expect(handleFrom(block, "conversation_id")).toMatch(/^ses_/);
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe(handleFrom(block, "task_id"));
+    expect(event.sessionId).toBe(handleFrom(block, "conversation_id"));
     expect(event.tags).toMatchObject({
       [AGENTCAT_TAG_AGENT_ID]: "opus-4.80-1m|claude-code|k3n9x",
       [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",
@@ -111,26 +113,39 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
     await client.close();
   });
 
-  it("keeps task continuity when a supplied task_id spans customer tools and get_more_tools", async () => {
+  it("keeps task continuity when a supplied conversation_id spans customer tools and get_more_tools", async () => {
     const { client } = await setupHighLevel();
-    const taskId = "ses_gmt_continuity";
+    const conversationId = "ses_gmt_continuity";
     await client.callTool({
       name: "echo",
-      arguments: { msg: "one", context: "before reporting", task_id: taskId },
+      arguments: {
+        msg: "one",
+        context: "before reporting",
+        conversation_id: conversationId,
+      },
     });
     const gmtResult: any = await client.callTool({
       name: "get_more_tools",
-      arguments: { context: "need a bulk import tool", task_id: taskId },
+      arguments: {
+        context: "need a bulk import tool",
+        conversation_id: conversationId,
+      },
     });
     expect(mintBackOf(gmtResult)).toBeUndefined(); // nothing minted
     await client.callTool({
       name: "echo",
-      arguments: { msg: "two", context: "after reporting", task_id: taskId },
+      arguments: {
+        msg: "two",
+        context: "after reporting",
+        conversation_id: conversationId,
+      },
     });
 
     const events = capture.getEvents();
     expect(events).toHaveLength(3);
-    expect(new Set(events.map((e) => e.sessionId))).toEqual(new Set([taskId]));
+    expect(new Set(events.map((e) => e.sessionId))).toEqual(
+      new Set([conversationId]),
+    );
     expect(events.map((e) => e.resourceName)).toEqual([
       "echo",
       "get_more_tools",

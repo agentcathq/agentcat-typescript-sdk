@@ -334,9 +334,9 @@ describe("Report Missing Tool", () => {
         enableTracing: true,
       });
 
-      // Continuity is now the agent's job: it echoes the same task_id on
+      // Continuity is now the agent's job: it echoes the same conversation_id on
       // every call, including get_more_tools, and every event lands on it.
-      const taskId = "ses_report_missing_continuity";
+      const conversationId = "ses_report_missing_continuity";
 
       // Call add_todo
       await client.request(
@@ -347,7 +347,7 @@ describe("Report Missing Tool", () => {
             arguments: {
               text: "First todo",
               context: "Adding first todo to test task continuity",
-              task_id: taskId,
+              conversation_id: conversationId,
             },
           },
         },
@@ -362,7 +362,7 @@ describe("Report Missing Tool", () => {
             name: "get_more_tools",
             arguments: {
               context: "Need a bulk todo import tool",
-              task_id: taskId,
+              conversation_id: conversationId,
             },
           },
         },
@@ -377,7 +377,7 @@ describe("Report Missing Tool", () => {
             name: "list_todos",
             arguments: {
               context: "Listing todos after reporting missing tool",
-              task_id: taskId,
+              conversation_id: conversationId,
             },
           },
         },
@@ -398,7 +398,7 @@ describe("Report Missing Tool", () => {
 
       // All should be attributed to the supplied task
       const sessionIds = toolCallEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds)).toEqual(new Set([taskId]));
+      expect(new Set(sessionIds)).toEqual(new Set([conversationId]));
 
       // Verify the order and tool names
       expect(toolCallEvents[0].resourceName).toBe("add_todo");
@@ -635,20 +635,20 @@ describe("Report Missing Tool", () => {
       });
 
       // Simulate a user discovering multiple missing tools during their workflow.
-      // The agent echoes one task_id across the whole workflow.
-      const taskId = "ses_report_missing_workflow";
+      // The agent echoes one conversation_id across the whole workflow.
+      const conversationId = "ses_report_missing_workflow";
       const missingTools = [
         {
           context: "Importing data from spreadsheets",
-          task_id: taskId,
+          conversation_id: conversationId,
         },
         {
           context: "Need to validate imported data",
-          task_id: taskId,
+          conversation_id: conversationId,
         },
         {
           context: "Process large datasets",
-          task_id: taskId,
+          conversation_id: conversationId,
         },
       ];
 
@@ -680,7 +680,7 @@ describe("Report Missing Tool", () => {
       // All attributed to the one task the agent supplied
       expect(reportEvents.length).toBe(3);
       const sessionIds = reportEvents.map((e) => e.sessionId);
-      expect(new Set(sessionIds)).toEqual(new Set([taskId]));
+      expect(new Set(sessionIds)).toEqual(new Set([conversationId]));
 
       // The sequence shows a workflow pattern:
       // Import -> Validate -> Process

@@ -48,7 +48,7 @@ describe("v2 schema edges: input injection", () => {
     // handle or context params are advertised anywhere in the schema.
     expect((tool.inputSchema as any).oneOf).toBeDefined();
     const serialized = JSON.stringify(tool.inputSchema);
-    expect(serialized).not.toContain("task_id");
+    expect(serialized).not.toContain("conversation_id");
     expect(serialized).not.toContain("agent_id");
     expect(serialized).not.toContain('"context"');
   });
@@ -60,13 +60,13 @@ describe("v2 schema edges: input injection", () => {
     const tool = listed.find((t) => t.name === "bare")!;
     const schema = tool.inputSchema as any;
     expect(schema.type).toBe("object");
-    expect(schema.properties.task_id).toBeDefined();
+    expect(schema.properties.conversation_id).toBeDefined();
     expect(schema.properties.agent_id).toBeDefined();
     expect(schema.properties.context).toBeDefined();
     expect(schema.required).toContain("agent_id");
   });
 
-  it("preserves a customer-declared task_id/agent_id instead of overwriting", async () => {
+  it("preserves a customer-declared conversation_id/agent_id instead of overwriting", async () => {
     const listed = await listWithTools([
       {
         name: "own_handles",
@@ -74,7 +74,10 @@ describe("v2 schema edges: input injection", () => {
         inputSchema: {
           type: "object",
           properties: {
-            task_id: { type: "string", description: "customer task id" },
+            conversation_id: {
+              type: "string",
+              description: "customer conversation id",
+            },
             agent_id: { type: "string", description: "customer agent id" },
           },
         },
@@ -83,7 +86,7 @@ describe("v2 schema edges: input injection", () => {
     const tool = listed.find((t) => t.name === "own_handles")!;
     const schema = tool.inputSchema as any;
     const props = schema.properties;
-    expect(props.task_id.description).toBe("customer task id");
+    expect(props.conversation_id.description).toBe("customer conversation id");
     expect(props.agent_id.description).toBe("customer agent id");
     // Skipped injection must not touch the customer's required semantics.
     expect(schema.required ?? []).not.toContain("agent_id");
@@ -104,7 +107,7 @@ describe("v2 schema edges: input injection", () => {
     const tool = listed.find((t) => t.name === "strict")!;
     const schema = tool.inputSchema as any;
     expect(schema.additionalProperties).toBeUndefined();
-    expect(schema.properties.task_id).toBeDefined();
+    expect(schema.properties.conversation_id).toBeDefined();
   });
 });
 
@@ -128,7 +131,7 @@ describe("v2 schema edges: outputSchema injection", () => {
       ._mcp_instructions;
     expect(prop.type).toBe("object");
     expect(Object.keys(prop.properties)).toEqual([
-      "task_id",
+      "conversation_id",
       "agent_id",
       "instructions",
     ]);
@@ -152,7 +155,10 @@ describe("v2 schema edges: outputSchema injection", () => {
     const stats = listed.find((t) => t.name === "stats")!;
     const prop = ((stats.outputSchema as any).properties as any)
       ._mcp_instructions;
-    expect(Object.keys(prop.properties)).toEqual(["task_id", "instructions"]);
+    expect(Object.keys(prop.properties)).toEqual([
+      "conversation_id",
+      "instructions",
+    ]);
   });
 
   it("leaves composed (anyOf) outputSchemas untouched", async () => {

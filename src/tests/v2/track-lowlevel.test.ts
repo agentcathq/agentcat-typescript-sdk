@@ -57,11 +57,13 @@ describe("track() on v2 low-level Server", () => {
     expect((page as any).nextCursor).toBe("page-2");
     const names = (page as any).tools.map((t: any) => t.name);
     expect(names).toContain("get_more_tools");
-    expect((page as any).tools[0].inputSchema.properties.task_id).toBeDefined();
+    expect(
+      (page as any).tools[0].inputSchema.properties.conversation_id,
+    ).toBeDefined();
 
     const result = (await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", task_id: "ses_abc", context: "why" },
+      arguments: { msg: "hi", conversation_id: "ses_abc", context: "why" },
     })) as any;
     expect(result.content[0].text).toBe("echo:hi");
     const [event] = capture.getEvents();
@@ -85,7 +87,7 @@ describe("track() on v2 low-level Server", () => {
       method: "tools/call",
       params: {
         name: "echo",
-        arguments: { msg: "hi", task_id: "ses_abc", context: "why" },
+        arguments: { msg: "hi", conversation_id: "ses_abc", context: "why" },
       },
     });
     const [event] = capture.getEvents();

@@ -21,7 +21,7 @@ export function toUUIDv7(prefixedId: string): string {
     const ksuid = KSUID.parse(ksuidStr);
     timestampMs = ksuid.date.getTime();
   } catch {
-    // Fallback: non-KSUID input (e.g. verbatim customer task IDs). Derive the
+    // Fallback: non-KSUID input (e.g. verbatim customer conversation IDs). Derive the
     // 48-bit timestamp from the hash so the same input always yields the same
     // UUIDv7 — Date.now() here would fragment one task across sessions.
     timestampMs = hash.readUIntBE(10, 6);
