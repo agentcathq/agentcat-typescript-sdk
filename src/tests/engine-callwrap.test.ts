@@ -19,7 +19,7 @@ import {
 } from "../engine/registry.js";
 import { v2Adapter } from "../adapters/v2.js";
 import { setServerTrackingData } from "../modules/internal.js";
-import { EventCapture } from "./test-utils.js";
+import { EventCapture, sid } from "./test-utils.js";
 
 describe("MRTR helpers", () => {
   it("isInputRequiredShape matches only resultType === 'input_required'", () => {
@@ -99,7 +99,7 @@ describe("installCallWrap (synthetic seam)", () => {
           name: "echo",
           arguments: {
             msg: "hi",
-            session_id: "ses_supplied",
+            session_id: sid("supplied"),
             context: "why",
           },
         },
@@ -110,10 +110,10 @@ describe("installCallWrap (synthetic seam)", () => {
     // supplied task honored + mint-back only mints agent/nothing new
     const events = capture.getEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].sessionId).toBe("ses_supplied");
+    expect(events[0].sessionId).toBe(sid("supplied"));
     expect(
       (events[0].parameters as any).request.params.arguments.session_id,
-    ).toBe("ses_supplied");
+    ).toBe(sid("supplied"));
     expect(result.content.length).toBeGreaterThanOrEqual(1);
   });
 

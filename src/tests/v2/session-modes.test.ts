@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient, mintBackOf, handleFrom } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
@@ -193,12 +193,12 @@ describe("v2 session modes: supplied vs minted (no hook)", () => {
       arguments: {
         msg: "hi",
         context: "supplied task",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_fixed");
+    expect(event.sessionId).toBe(sid("fixed"));
     expect(event.tags).toMatchObject({
       [AGENTCAT_TAG_SESSION_SOURCE]: "supplied",
     });

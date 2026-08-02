@@ -208,6 +208,9 @@ export function buildHandleTags(
  * @param projectId - Optional AgentCat project ID, used when deriving in hook mode
  * @param request - The MCP request whose arguments may carry supplied handles
  * @param extra - Optional MCP request handler extra, forwarded to the hook
+ * @param sessionParamIsOurs - False when the tool declares its own session_id
+ *   param (AgentCat never injected one), so nothing in the arguments is ours
+ *   to read. Defaults to true.
  * @returns The resolved handles for this call
  */
 export async function resolveHandles(
@@ -215,6 +218,7 @@ export async function resolveHandles(
   projectId: string | undefined,
   request: any,
   extra?: CompatibleRequestHandlerExtra,
+  sessionParamIsOurs: boolean = true,
 ): Promise<HandleResolution> {
   const args = request?.params?.arguments;
   const hookMode = typeof options.resolveSessionId === "function";
@@ -238,11 +242,24 @@ export async function resolveHandles(
       sessionId = newSessionId();
       sessionSource = "minted";
     }
+  } else if (!sessionParamIsOurs) {
+    // The tool declares its own session_id. AgentCat never injected one here,
+    // so nothing in the arguments is ours to read. Sessionless until the
+    // customer adopts resolveSessionId.
+    sessionId = "";
+    sessionSource = "foreign";
   } else {
     const supplied = extractHandle(args, SESSION_ID_PARAM);
     if (supplied) {
-      sessionId = supplied;
-      sessionSource = "supplied";
+      if (isValidSessionId(supplied)) {
+        sessionId = supplied;
+        sessionSource = "supplied";
+      } else {
+        // Not an ID this server issued. Publish sessionless rather than adopt
+        // it: Event.sessionId is exempt from both redaction hooks.
+        sessionId = "";
+        sessionSource = "invalid";
+      }
     } else {
       sessionId = newSessionId();
       sessionSource = "minted";

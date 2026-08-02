@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient, mintBackOf, handleFrom } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import {
@@ -113,7 +113,7 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
 
   it("keeps task continuity when a supplied session_id spans customer tools and get_more_tools", async () => {
     const { client } = await setupHighLevel();
-    const sessionId = "ses_gmt_continuity";
+    const sessionId = sid("gmt_continuity");
     await client.callTool({
       name: "echo",
       arguments: {

@@ -10,7 +10,7 @@
 // toolkit sink — never ~/agentcat.log (concurrent suites interleave it).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import {
   laneById,
   waitForEvents,
@@ -215,10 +215,10 @@ const scenarios: Scenario[] = [
 
       await client.callTool({
         name: "echo",
-        arguments: { msg: "hi", session_id: "ses_ctxoff" },
+        arguments: { msg: "hi", session_id: sid("ctxoff") },
       });
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe("ses_ctxoff");
+      expect(event.sessionId).toBe(sid("ctxoff"));
       expect(event.tags).toMatchObject({
         [AGENTCAT_TAG_SESSION_SOURCE]: "supplied",
       });
@@ -513,7 +513,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: "strict ok",
           context: "strict schema test",
-          session_id: "ses_strict1",
+          session_id: sid("strict1"),
         },
       });
       expect(result.isError).toBeFalsy();
@@ -522,7 +522,7 @@ const scenarios: Scenario[] = [
       );
 
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe("ses_strict1");
+      expect(event.sessionId).toBe(sid("strict1"));
       const seen = sink.filter((entry) => entry.tool === "strict");
       expect(seen).toHaveLength(1);
       expect(seen[0].args).toEqual({ msg: "strict ok" });
@@ -540,7 +540,7 @@ const scenarios: Scenario[] = [
           msg: "keep",
           customer_extra: "customer says hi",
           context: "strip proof",
-          session_id: "ses_raw1",
+          session_id: sid("raw1"),
         },
       });
 
@@ -559,9 +559,9 @@ const scenarios: Scenario[] = [
         msg: "keep",
         customer_extra: "customer says hi",
         context: "strip proof",
-        session_id: "ses_raw1",
+        session_id: sid("raw1"),
       });
-      expect(event.sessionId).toBe("ses_raw1");
+      expect(event.sessionId).toBe(sid("raw1"));
       expect(event.userIntent).toBe("strip proof");
     },
   },
@@ -642,7 +642,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: `payload with ${REDACTION_SECRET} inside`,
           context: `intent mentioning ${REDACTION_SECRET}`,
-          session_id: "ses_redact",
+          session_id: sid("redact"),
         },
       });
 
@@ -662,7 +662,7 @@ const scenarios: Scenario[] = [
         `intent mentioning ${REDACTION_REPLACEMENT}`,
       );
       // Protected fields survive redaction untouched.
-      expect(event.sessionId).toBe("ses_redact");
+      expect(event.sessionId).toBe(sid("redact"));
       expect(event.resourceName).toBe("echo");
     },
   },

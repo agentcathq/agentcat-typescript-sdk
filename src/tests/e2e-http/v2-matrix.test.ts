@@ -11,7 +11,7 @@
 // STRIPPED args in the sink. All assertions run against EventCapture + the
 // toolkit sink only — never ~/agentcat.log (concurrent agents interleave it).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import {
   laneById,
   waitForEvents,
@@ -211,10 +211,10 @@ const scenarios: Scenario[] = [
 
       await client.callTool({
         name: "echo",
-        arguments: { msg: "hi", session_id: "ses_ctxoff" },
+        arguments: { msg: "hi", session_id: sid("ctxoff") },
       });
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe("ses_ctxoff");
+      expect(event.sessionId).toBe(sid("ctxoff"));
       expect(event.userIntent).toBeUndefined();
     },
   },
@@ -523,7 +523,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: "strictly",
           context: "strict schema test",
-          session_id: "ses_strict",
+          session_id: sid("strict"),
         },
       });
       expect(result.isError).not.toBe(true);
@@ -532,7 +532,7 @@ const scenarios: Scenario[] = [
       ).toBeDefined();
 
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe("ses_strict");
+      expect(event.sessionId).toBe(sid("strict"));
       const seen = sink.filter((e) => e.tool === "strict");
       expect(seen).toHaveLength(1);
       expect(seen[0].args).toEqual({ msg: "strictly" });
@@ -553,7 +553,7 @@ const scenarios: Scenario[] = [
           msg: "hi",
           customer_extra: "keep-me",
           context: "strip proof",
-          session_id: "ses_loose",
+          session_id: sid("loose"),
         },
       });
 
@@ -567,11 +567,11 @@ const scenarios: Scenario[] = [
 
       // The event keeps the RAW wire arguments, injected params included.
       const [event] = await waitForEvents(capture, 1);
-      expect(event.sessionId).toBe("ses_loose");
+      expect(event.sessionId).toBe(sid("loose"));
       const raw = rawArgsOf(event);
       expect(raw.msg).toBe("hi");
       expect(raw.customer_extra).toBe("keep-me");
-      expect(raw.session_id).toBe("ses_loose");
+      expect(raw.session_id).toBe(sid("loose"));
       expect(raw.context).toBe("strip proof");
     },
   },
@@ -656,7 +656,7 @@ const scenarios: Scenario[] = [
         arguments: {
           msg: `payload ${REDACTION_SECRET} inside`,
           context: `intent mentioning ${REDACTION_SECRET}`,
-          session_id: "ses_redact",
+          session_id: sid("redact"),
         },
       });
 
@@ -675,7 +675,7 @@ const scenarios: Scenario[] = [
         `intent mentioning ${REDACTION_REPLACEMENT}`,
       );
       // Protected fields survive redaction untouched.
-      expect(event.sessionId).toBe("ses_redact");
+      expect(event.sessionId).toBe(sid("redact"));
       expect(event.resourceName).toBe("echo");
     },
   },

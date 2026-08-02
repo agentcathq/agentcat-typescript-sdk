@@ -5,7 +5,7 @@ import {
 } from "./test-utils/client-server-factory";
 import { track, publishCustomEvent } from "../index";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { HighLevelMCPServerLike } from "../types";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import {
@@ -119,7 +119,7 @@ describe("Event Tags & Properties", () => {
           method: "tools/call",
           params: {
             name: "add_todo",
-            arguments: { text: "Test todo", session_id: "ses_supplied" },
+            arguments: { text: "Test todo", session_id: sid("supplied") },
           },
         },
         CallToolResultSchema,

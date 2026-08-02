@@ -7,7 +7,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { track } from "../index.js";
-import { EventCapture, setupTestHooks } from "./test-utils.js";
+import { EventCapture, setupTestHooks, sid } from "./test-utils.js";
 import {
   setupTestServerAndClient,
   resetTodos,
@@ -155,13 +155,13 @@ describe("low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "testing",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(event.sessionId).toBe("ses_fixed");
+    expect(event.sessionId).toBe(sid("fixed"));
     expect(event.tags).toMatchObject({
       agentcat_session_id_source: "supplied",
       agentcat_agent_id: "opus-4.80-1m|claude-code|k3n9x",
@@ -178,7 +178,7 @@ describe("low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "testing",
-        session_id: "ses_parent",
+        session_id: sid("parent"),
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
@@ -214,14 +214,14 @@ describe("low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "why",
-        session_id: "ses_x",
+        session_id: sid("x"),
         agent_id: "agt_x",
       },
     });
     expect(receivedArgs[0]).toEqual({ text: "hi" });
     const event = capture.findEventByType("mcp:tools/call")!;
     expect((event.parameters as any).request.params.arguments.session_id).toBe(
-      "ses_x",
+      sid("x"),
     );
     await cleanup();
   });
@@ -423,7 +423,7 @@ describe("high-level server: explicit handles", () => {
       arguments: {
         text: "buy milk",
         context: "testing",
-        session_id: "ses_hl",
+        session_id: sid("hl"),
         agent_id: "agt_hl",
       },
     });
@@ -431,7 +431,7 @@ describe("high-level server: explicit handles", () => {
     expect((result.content as any[])[0].text).toContain("buy milk");
     expect(mintBackOf(result)).toBeUndefined();
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(event.sessionId).toBe("ses_hl");
+    expect(event.sessionId).toBe(sid("hl"));
     expect(event.tags).toMatchObject({
       agentcat_session_id_source: "supplied",
     });
@@ -572,7 +572,7 @@ describe("published events exclude SDK-authored mint-back text", () => {
       arguments: {
         text: "hi",
         context: "testing",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
         agent_id: "agt_fixed",
       },
     });

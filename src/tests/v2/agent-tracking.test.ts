@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient, mintBackOf, handleFrom } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
@@ -88,18 +88,18 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
       arguments: {
         msg: "hi",
         context: "agent echo",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const mirror = result.structuredContent._mcp_instructions;
-    expect(mirror.session_id).toBe("ses_fixed");
+    expect(mirror.session_id).toBe(sid("fixed"));
     expect(mirror.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
     expect(mirror.instructions).toContain("confirmed");
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_fixed");
+    expect(event.sessionId).toBe(sid("fixed"));
     expect(event.tags).toMatchObject({
       [AGENTCAT_TAG_AGENT_ID]: "opus-4.80-1m|claude-code|k3n9x",
       [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",
@@ -114,13 +114,13 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
       arguments: {
         msg: "hi",
         context: "subagent flow",
-        session_id: "ses_parent",
+        session_id: sid("parent"),
         agent_id: "haiku-4.5|claude-code|q7w2e",
       },
     });
     expect(mintBackOf(result)).toBeUndefined();
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_parent");
+    expect(event.sessionId).toBe(sid("parent"));
     expect(event.tags).toMatchObject({
       [AGENTCAT_TAG_AGENT_ID]: "haiku-4.5|claude-code|q7w2e",
       [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",

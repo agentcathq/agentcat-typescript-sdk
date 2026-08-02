@@ -5,7 +5,7 @@ import {
 } from "./test-utils/client-server-factory";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("E2E Sanitization - real MCP tool calls", () => {
@@ -50,7 +50,7 @@ describe("E2E Sanitization - real MCP tool calls", () => {
             // tool returned it.
             arguments: {
               id: "att_1",
-              session_id: "ses_e2e",
+              session_id: sid("e2e"),
               agent_id: "agt_e2e",
             },
           },

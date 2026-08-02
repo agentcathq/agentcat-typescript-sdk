@@ -4,7 +4,7 @@ import { z } from "zod4";
 import { randomUUID } from "node:crypto";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getServerTrackingData } from "../../modules/internal.js";
 import { AgentCatOptions, UserIdentity } from "../../types.js";
@@ -336,7 +336,7 @@ describe("v2 hooks: eventTags", () => {
       arguments: {
         text: "collision",
         context: "tag test",
-        session_id: "ses_supplied",
+        session_id: sid("supplied"),
       },
     });
 

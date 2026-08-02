@@ -7,7 +7,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { track } from "../index.js";
-import { EventCapture, setupTestHooks } from "./test-utils.js";
+import { EventCapture, setupTestHooks, sid } from "./test-utils.js";
 import {
   setupTestServerAndClient,
   resetTodos,
@@ -143,12 +143,12 @@ describe("structured mint-back: high-level (V2) path", () => {
       name: "get_stats",
       arguments: {
         context: "checking stats",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     const mint = result.structuredContent._mcp_instructions;
-    expect(mint.session_id).toBe("ses_fixed");
+    expect(mint.session_id).toBe(sid("fixed"));
     expect(mint.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
     expect(mint.instructions).toContain("confirmed");
     // content footer is a mint-time announcement only — none in steady state

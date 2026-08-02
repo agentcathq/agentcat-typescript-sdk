@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Server } from "@modelcontextprotocol/server";
 import * as agentcat from "../../index.js";
 import { connectClient, mintBackOf, handleFrom } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
@@ -133,14 +133,14 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "why",
-        session_id: "ses_x",
+        session_id: sid("x"),
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
     expect(receivedArgs[0]).toEqual({ text: "hi" });
     const event = capture.findEventByType("mcp:tools/call")!;
     expect((event.parameters as any).request.params.arguments.session_id).toBe(
-      "ses_x",
+      sid("x"),
     );
     await client.close();
   });
@@ -175,13 +175,13 @@ describe("v2 low-level server: explicit handles", () => {
         arguments: {
           text: "throw",
           context: "testing",
-          session_id: "ses_boom",
+          session_id: sid("boom"),
         },
       }),
     ).rejects.toThrow();
 
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(event.sessionId).toBe("ses_boom");
+    expect(event.sessionId).toBe(sid("boom"));
     expect(event.isError).toBe(true);
     expect(event.error?.message).toContain("low-level handler exploded");
     expect(event.error?.stack).toBeTruthy();
@@ -216,7 +216,7 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: {
         text: "hi",
         context: "testing",
-        session_id: "ses_fixed",
+        session_id: sid("fixed"),
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });

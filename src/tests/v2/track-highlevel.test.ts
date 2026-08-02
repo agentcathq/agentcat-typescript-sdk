@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 
 // Module-scope capture of what a tool handler actually received — result
 // payload smuggling won't survive the wire schema, so assert through this.
@@ -124,12 +124,12 @@ describe("track() on v2 McpServer", () => {
 
     const result = (await client.callTool({
       name: "explode",
-      arguments: { session_id: "ses_fixed123" },
+      arguments: { session_id: sid("fixed123") },
     })) as any;
     expect(result.isError).toBe(true); // v2 McpServer converts throws
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_fixed123");
+    expect(event.sessionId).toBe(sid("fixed123"));
     expect(event.isError).toBe(true);
     expect(event.error?.message).toContain("kaboom with stack");
     expect(event.error?.stack).toBeTruthy(); // full stack via __agentcat_error
@@ -163,7 +163,7 @@ describe("track() on v2 McpServer", () => {
 
     await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", context: "why", session_id: "ses_x" },
+      arguments: { msg: "hi", context: "why", session_id: sid("x") },
     });
     expect(seen!.msg).toBe("hi");
     expect(seen!.session_id).toBeUndefined(); // tap active on the NEW executor

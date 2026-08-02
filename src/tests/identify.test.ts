@@ -8,7 +8,7 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getServerTrackingData } from "../modules/internal";
 import { HighLevelMCPServerLike, UserIdentity } from "../types";
@@ -320,7 +320,7 @@ describe("Identify Feature", () => {
 
       // The agent echoes one session_id across the whole workflow — that, not any
       // server-side cache, is what keeps these calls on the same task now.
-      const sessionId = "ses_identify_persistence";
+      const sessionId = sid("identify_persistence");
 
       // Make multiple tool calls
       await client.request(

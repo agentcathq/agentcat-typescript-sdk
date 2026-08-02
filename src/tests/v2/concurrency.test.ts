@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import {
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_SESSION_SOURCE,
@@ -49,19 +49,19 @@ describe("v2 concurrent tool calls do not clobber each other's attribution", () 
       {
         text: "A",
         delay_ms: 120,
-        session_id: "ses_session_A",
+        session_id: sid("session_A"),
         agent_id: "agt_A",
       },
       {
         text: "B",
         delay_ms: 40,
-        session_id: "ses_session_B",
+        session_id: sid("session_B"),
         agent_id: "agt_B",
       },
       {
         text: "C",
         delay_ms: 80,
-        session_id: "ses_session_C",
+        session_id: sid("session_C"),
         agent_id: "agt_C",
       },
     ];

@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient, mintBackOf } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "../../modules/constants.js";
 
@@ -107,10 +107,10 @@ describe("v2 options: enableToolCallContext false", () => {
 
     await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", session_id: "ses_ctxoff" },
+      arguments: { msg: "hi", session_id: sid("ctxoff") },
     });
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_ctxoff");
+    expect(event.sessionId).toBe(sid("ctxoff"));
     expect(event.userIntent).toBeUndefined();
     await client.close();
   });

@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 
 // Module-scope capture of what the late-registered handler actually received —
 // result payload smuggling won't survive the wire schema.
@@ -80,7 +80,7 @@ describe("v2 late registration: registerTool AFTER track()", () => {
       arguments: {
         message: "hi",
         context: "late strip test",
-        session_id: "ses_late",
+        session_id: sid("late"),
       },
     });
 
@@ -90,11 +90,11 @@ describe("v2 late registration: registerTool AFTER track()", () => {
     expect(lastSeenArgs!.message).toBe("hi");
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_late");
+    expect(event.sessionId).toBe(sid("late"));
     expect(event.userIntent).toBe("late strip test");
     // The event keeps the raw request, injected params included.
     expect((event.parameters as any).request.params.arguments.session_id).toBe(
-      "ses_late",
+      sid("late"),
     );
     await client.close();
   });
@@ -118,12 +118,12 @@ describe("v2 late registration: registerTool AFTER track()", () => {
 
     const result: any = await client.callTool({
       name: "late_explode",
-      arguments: { session_id: "ses_late_err" },
+      arguments: { session_id: sid("late_err") },
     });
     expect(result.isError).toBe(true); // v2 McpServer converts throws
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_late_err");
+    expect(event.sessionId).toBe(sid("late_err"));
     expect(event.isError).toBe(true);
     expect(event.error?.message).toContain("late kaboom with stack");
     expect(event.error?.stack).toBeTruthy(); // full stack via __agentcat_error

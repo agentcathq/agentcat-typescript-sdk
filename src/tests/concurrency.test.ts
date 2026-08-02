@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { z } from "zod";
 import { track } from "../index.js";
-import { EventCapture, setupTestHooks } from "./test-utils.js";
+import { EventCapture, setupTestHooks, sid } from "./test-utils.js";
 
 setupTestHooks();
 
@@ -45,19 +45,19 @@ describe("concurrent tool calls do not clobber each other's attribution", () => 
       {
         text: "A",
         delay_ms: 120,
-        session_id: "ses_session_A",
+        session_id: sid("session_A"),
         agent_id: "agt_A",
       },
       {
         text: "B",
         delay_ms: 40,
-        session_id: "ses_session_B",
+        session_id: sid("session_B"),
         agent_id: "agt_B",
       },
       {
         text: "C",
         delay_ms: 80,
-        session_id: "ses_session_C",
+        session_id: sid("session_C"),
         agent_id: "agt_C",
       },
     ];

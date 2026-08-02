@@ -86,7 +86,7 @@ describe("handle primitives", () => {
     expect(extractHandle("not-an-object", SESSION_ID_PARAM)).toBeUndefined();
   });
 
-  it("accepts arbitrary supplied strings verbatim (trust model)", () => {
+  it("extractHandle returns any non-empty string; validation happens in resolveHandles", () => {
     expect(
       extractHandle({ session_id: "my-own-correlation-id" }, SESSION_ID_PARAM),
     ).toBe("my-own-correlation-id");
@@ -272,10 +272,10 @@ describe("resolveHandles — prompted mode", () => {
     const res = await resolveHandles(
       { enableAgentTracking: true },
       "proj_1",
-      req({ session_id: "ses_parent" }),
+      req({ session_id: sid("parent") }),
     );
     expect(res.sessionSource).toBe("supplied");
-    expect(res.sessionId).toBe("ses_parent");
+    expect(res.sessionId).toBe(sid("parent"));
     expect(res.agentId).toBeUndefined();
     expect(res.agentSource).toBeUndefined();
   });
@@ -285,12 +285,12 @@ describe("resolveHandles — prompted mode", () => {
       { enableAgentTracking: true },
       "proj_1",
       req({
-        session_id: "anything-goes",
+        session_id: sid("anythinggoes"),
         agent_id: " opus-4.80-1m|claude-code|k3n9x ",
       }),
     );
     expect(res.sessionSource).toBe("supplied");
-    expect(res.sessionId).toBe("anything-goes");
+    expect(res.sessionId).toBe(sid("anythinggoes"));
     expect(res.agentSource).toBe("supplied");
     expect(res.agentId).toBe("opus-4.80-1m|claude-code|k3n9x");
   });
@@ -314,6 +314,72 @@ describe("resolveHandles — prompted mode", () => {
     expect(res.sessionSource).toBe("minted");
     expect(res.agentId).toBeUndefined();
     expect(res.agentSource).toBeUndefined();
+  });
+
+  it("rejects a malformed supplied session_id: sessionless, source invalid", async () => {
+    const res = await resolveHandles({}, "proj_1", req({ session_id: "nope" }));
+    expect(res.sessionSource).toBe("invalid");
+    expect(res.sessionId).toBe("");
+  });
+
+  it("never stores the raw rejected value", async () => {
+    const res = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: "sk_live_secret_token" }),
+    );
+    expect(res.sessionId).toBe("");
+    expect(JSON.stringify(res)).not.toContain("sk_live_secret_token");
+  });
+
+  it("accepts a well-formed supplied session_id verbatim", async () => {
+    const res = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: sid("parent") }),
+    );
+    expect(res.sessionSource).toBe("supplied");
+    expect(res.sessionId).toBe(sid("parent"));
+  });
+
+  it("foreign param: sessionless regardless of what the agent sent", async () => {
+    const withValue = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: "customer-value" }),
+      undefined,
+      false,
+    );
+    expect(withValue.sessionSource).toBe("foreign");
+    expect(withValue.sessionId).toBe("");
+
+    const withoutValue = await resolveHandles(
+      {},
+      "proj_1",
+      req({}),
+      undefined,
+      false,
+    );
+    expect(withoutValue.sessionSource).toBe("foreign");
+    expect(withoutValue.sessionId).toBe("");
+  });
+
+  it("hook mode wins over foreign: arguments are never read", async () => {
+    const res = await resolveHandles(
+      { resolveSessionId: () => "corr-7" },
+      "proj_1",
+      req({ session_id: "customer-value" }),
+      undefined,
+      false,
+    );
+    expect(res.sessionSource).toBe("hook");
+    expect(res.sessionId).toMatch(/^ses_/);
+  });
+
+  it("still mints when nothing is supplied on our own param", async () => {
+    const res = await resolveHandles({}, "proj_1", req({}));
+    expect(res.sessionSource).toBe("minted");
+    expect(res.sessionId).toMatch(/^ses_/);
   });
 });
 

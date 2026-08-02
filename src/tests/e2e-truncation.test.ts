@@ -5,7 +5,7 @@ import {
 } from "./test-utils/client-server-factory";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("E2E Truncation - real MCP tool calls", () => {
@@ -244,7 +244,7 @@ describe("E2E Truncation - real MCP tool calls", () => {
             // response shape stays exactly what the tool returned.
             arguments: {
               page: "dashboard",
-              session_id: "ses_e2e",
+              session_id: sid("e2e"),
               agent_id: "agt_e2e",
             },
           },

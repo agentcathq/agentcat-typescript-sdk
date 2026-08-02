@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { AgentCatOptions } from "../../types.js";
 import { AGENTCAT_CUSTOM_EVENT_TYPE } from "../../modules/constants.js";
 
@@ -50,7 +50,7 @@ describe("v2 pipeline: redactSensitiveInformation on captured events", () => {
       arguments: {
         query: "find the secret-sauce",
         context: "pipeline redaction test",
-        session_id: "ses_redact",
+        session_id: sid("redact"),
       },
     });
     await settle();
@@ -63,7 +63,7 @@ describe("v2 pipeline: redactSensitiveInformation on captured events", () => {
     const argsOnEvent = (event.parameters as any).request.params.arguments;
     expect(argsOnEvent.query).toBe("find the [REDACTED]");
     // Protected fields survive redaction untouched.
-    expect(event.sessionId).toBe("ses_redact");
+    expect(event.sessionId).toBe(sid("redact"));
     expect(event.resourceName).toBe("leaky");
     await client.close();
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Server } from "@modelcontextprotocol/server";
 import * as agentcat from "../../index.js";
 import { connectClient } from "./harness.js";
-import { EventCapture } from "../test-utils.js";
+import { EventCapture, sid } from "../test-utils.js";
 import { readFileSync, existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -63,11 +63,11 @@ describe("track() on v2 low-level Server", () => {
 
     const result = (await client.callTool({
       name: "echo",
-      arguments: { msg: "hi", session_id: "ses_abc", context: "why" },
+      arguments: { msg: "hi", session_id: sid("abc"), context: "why" },
     })) as any;
     expect(result.content[0].text).toBe("echo:hi");
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_abc");
+    expect(event.sessionId).toBe(sid("abc"));
     await client.close();
   });
 
@@ -87,11 +87,11 @@ describe("track() on v2 low-level Server", () => {
       method: "tools/call",
       params: {
         name: "echo",
-        arguments: { msg: "hi", session_id: "ses_abc", context: "why" },
+        arguments: { msg: "hi", session_id: sid("abc"), context: "why" },
       },
     });
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_abc");
+    expect(event.sessionId).toBe(sid("abc"));
     // Rebuild happened (log beacon), not the heuristic fallback:
     expect(existsSync(LOG_PATH)).toBe(true);
     const appended = readFileSync(LOG_PATH)

@@ -8,7 +8,7 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 import { getServerTrackingData } from "../modules/internal";
 import { randomUUID } from "node:crypto";
@@ -336,7 +336,7 @@ describe("Report Missing Tool", () => {
 
       // Continuity is now the agent's job: it echoes the same session_id on
       // every call, including get_more_tools, and every event lands on it.
-      const sessionId = "ses_report_missing_continuity";
+      const sessionId = sid("report_missing_continuity");
 
       // Call add_todo
       await client.request(
@@ -636,7 +636,7 @@ describe("Report Missing Tool", () => {
 
       // Simulate a user discovering multiple missing tools during their workflow.
       // The agent echoes one session_id across the whole workflow.
-      const sessionId = "ses_report_missing_workflow";
+      const sessionId = sid("report_missing_workflow");
       const missingTools = [
         {
           context: "Importing data from spreadsheets",
