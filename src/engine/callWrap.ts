@@ -22,7 +22,6 @@ import {
   buildStructuredMintBack,
   mirrorStructuredMintBack,
   HandleResolution,
-  SESSION_ID_PARAM,
 } from "../modules/handles.js";
 import { cloneRequestWithStrippedArguments } from "../modules/handle-injection.js";
 import {
@@ -32,6 +31,7 @@ import {
 import { GET_MORE_TOOLS_NAME, handleReportMissing } from "../modules/tools.js";
 import { AGENTCAT_TAG_MRTR } from "../modules/constants.js";
 import {
+  getDeclaredSessionParams,
   getEngineState,
   getInjectedParamsRegistry,
   getOutputInjectionRegistry,
@@ -140,16 +140,17 @@ export function installCallWrap(server: MCPServerLike): void {
     } else {
       try {
         await ensureRegistries(server, extra);
-        // A session_id is ours only if we injected it into this tool. A tool
-        // absent from the registry was never listed; treat it as ours so a
-        // pre-listing call still validates (spec: degrades to `invalid`).
+        // A session_id is the customer's only when their own schema declared
+        // it — recorded at the collision site during listing. Everything else
+        // is ours, including tools we skipped for schema shape
+        // (oneOf/allOf/anyOf), which carry no injection record but no
+        // customer session_id either. A tool never seen in any listing is
+        // likewise ours, so a pre-listing call still validates (spec:
+        // degrades to `invalid`, not `foreign`).
         const toolName = request?.params?.name;
-        const recorded = toolName
-          ? getInjectedParamsRegistry(server)?.get(toolName)
-          : undefined;
-        const sessionParamIsOurs = recorded
-          ? recorded.has(SESSION_ID_PARAM)
-          : true;
+        const sessionParamIsOurs = !(
+          toolName && getDeclaredSessionParams(data).has(toolName)
+        );
 
         const resolution = await resolveHandles(
           data.options,

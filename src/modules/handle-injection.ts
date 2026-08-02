@@ -43,6 +43,12 @@ export interface HandleInjectionOptions {
   injectAgentId: boolean; // false when enableAgentTracking is false
   /** Tools already reported for a session_id collision; prevents log spam. */
   reportedConflicts?: Set<string>;
+  /**
+   * Collects the tools whose schema declares `session_id` itself. callWrap
+   * reads it to decide whether the argument is ours: a tool NOT in here is
+   * ours (nothing declared it), including tools we skipped for schema shape.
+   */
+  declaredSessionParams?: Set<string>;
 }
 
 /**
@@ -75,6 +81,14 @@ function addHandleParametersToTool(
   const schema = modifiedTool.inputSchema as Record<string, any> | undefined;
 
   if (schema?.oneOf || schema?.allOf || schema?.anyOf) {
+    // Injection is skipped, but ownership still has to be recorded: a schema
+    // that composes AND declares session_id at its root is the customer's
+    // parameter, not ours to read at call time. (Only the root bag is
+    // visible here — a session_id nested inside a branch is unreachable,
+    // same limitation as the injection itself.)
+    if (opts.injectSessionId && schema.properties?.[SESSION_ID_PARAM]) {
+      opts.declaredSessionParams?.add(toolName);
+    }
     writeToLog(
       `WARN: Tool "${toolName}" has complex schema (oneOf/allOf/anyOf). Skipping handle injection.`,
     );
@@ -96,6 +110,9 @@ function addHandleParametersToTool(
 
   if (opts.injectSessionId) {
     if (properties[SESSION_ID_PARAM]) {
+      // The customer owns this name on this tool: record it so call-time
+      // resolution never reads their value as an AgentCat handle.
+      opts.declaredSessionParams?.add(toolName);
       if (!opts.reportedConflicts?.has(toolName)) {
         opts.reportedConflicts?.add(toolName);
         writeToLog(

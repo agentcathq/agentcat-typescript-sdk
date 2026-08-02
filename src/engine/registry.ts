@@ -48,6 +48,27 @@ export function getReportedConflicts(key: object): Set<string> {
   return set;
 }
 
+/**
+ * Tool names whose input schema declares `session_id` itself — the customer's
+ * parameter, never ours to read. This is the positive signal for ownership:
+ * "we recorded an injection" would misclassify every tool injection skipped
+ * for schema shape (oneOf/allOf/anyOf), which has no injection record but no
+ * customer `session_id` either. Membership only ever grows, so a tool that
+ * once declared the name stays foreign until the process restarts; the
+ * conservative direction, since the alternative is adopting a value that is
+ * not ours.
+ */
+const declaredSessionParams = new WeakMap<object, Set<string>>();
+
+export function getDeclaredSessionParams(key: object): Set<string> {
+  let set = declaredSessionParams.get(key);
+  if (!set) {
+    set = new Set<string>();
+    declaredSessionParams.set(key, set);
+  }
+  return set;
+}
+
 // ── Engine state ────────────────────────────────────────────────────────────
 
 export interface VersionAdapter {

@@ -10,6 +10,7 @@ import {
 import {
   InjectedParamsRegistry,
   OutputInjectionRegistry,
+  getDeclaredSessionParams,
   getEngineState,
   getReportedConflicts,
   setInjectedParamsRegistry,
@@ -58,6 +59,7 @@ export function buildInjectedList(
       injectAgentId:
         tracingEnabled && data.options.enableAgentTracking === true,
       reportedConflicts: getReportedConflicts(data),
+      declaredSessionParams: getDeclaredSessionParams(data),
     },
     registry,
     outputRegistry,

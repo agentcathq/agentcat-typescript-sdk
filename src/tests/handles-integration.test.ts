@@ -111,6 +111,61 @@ async function setupOwnSessionId() {
   };
 }
 
+/**
+ * A tool whose input schema is composed (oneOf), the shape produced by
+ * z.union / z.discriminatedUnion. Handle injection skips it — there is no
+ * single properties bag to extend — but the customer never declared
+ * session_id either, so the argument name is still AgentCat's.
+ */
+async function setupComposedSchema() {
+  const server = new Server(
+    { name: "composed schema server", version: "1.0" },
+    { capabilities: { tools: {} } },
+  );
+  const receivedArgs: any[] = [];
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "union_tool",
+        description: "takes one of two shapes",
+        inputSchema: {
+          type: "object",
+          oneOf: [
+            {
+              properties: { kind: { const: "a" }, a: { type: "string" } },
+              required: ["kind", "a"],
+            },
+            {
+              properties: { kind: { const: "b" }, b: { type: "number" } },
+              required: ["kind", "b"],
+            },
+          ],
+        },
+      },
+    ],
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    receivedArgs.push(request.params.arguments);
+    return { content: [{ type: "text", text: "ok" }] };
+  });
+  track(server, "proj_test");
+  const client = new Client({ name: "test client", version: "1.0" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await Promise.all([
+    client.connect(clientTransport),
+    server.connect(serverTransport),
+  ]);
+  return {
+    client,
+    receivedArgs,
+    cleanup: async () => {
+      await clientTransport.close?.();
+      await serverTransport.close?.();
+    },
+  };
+}
+
 const mintBackOf = (result: any): string | undefined =>
   (result.content as any[]).find(
     (c) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
@@ -283,6 +338,44 @@ describe("low-level server: explicit handles", () => {
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(event.sessionId).toBe("");
     expect(event.tags.agentcat_session_id_source).toBe("foreign");
+    await cleanup();
+  });
+
+  it("composed-schema tool: injection is skipped, yet the call still mints a session and announces it", async () => {
+    const { client, cleanup } = await setupComposedSchema();
+    const { tools } = await client.listTools();
+    const union = tools.find((t) => t.name === "union_tool")!;
+    // Injection really was skipped -- this is the oneOf path, not a normal tool.
+    expect(union.inputSchema.properties ?? {}).not.toHaveProperty("session_id");
+    expect((union.inputSchema as any).oneOf).toHaveLength(2);
+
+    const result: any = await client.callTool({
+      name: "union_tool",
+      arguments: { kind: "a", a: "x" },
+    });
+    // Skipping injection must not make the tool sessionless: nobody else
+    // declared session_id, so the name is still ours to mint into.
+    const block = mintBackOf(result)!;
+    expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued.");
+    const sessionId = handleFrom(block, "session_id");
+
+    const event = capture.findEventByType("mcp:tools/call")!;
+    expect(event.sessionId).toBe(sessionId);
+    expect(event.tags.agentcat_session_id_source).toBe("minted");
+    await cleanup();
+  });
+
+  it("composed-schema tool: an echoed session_id AgentCat issued is honored, not called foreign", async () => {
+    const { client, cleanup } = await setupComposedSchema();
+    await client.listTools();
+    const result: any = await client.callTool({
+      name: "union_tool",
+      arguments: { kind: "b", b: 2, session_id: sid("union") },
+    });
+    expect(mintBackOf(result)).toBeUndefined();
+    const event = capture.findEventByType("mcp:tools/call")!;
+    expect(event.sessionId).toBe(sid("union"));
+    expect(event.tags.agentcat_session_id_source).toBe("supplied");
     await cleanup();
   });
 

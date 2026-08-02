@@ -7,7 +7,10 @@ vi.mock("../modules/logging", () => ({
 import { writeToLog } from "../modules/logging.js";
 import { addHandleParametersToTools } from "../modules/handle-injection.js";
 import { buildInjectedList } from "../engine/listWrap.js";
-import { getReportedConflicts } from "../engine/registry.js";
+import {
+  getDeclaredSessionParams,
+  getReportedConflicts,
+} from "../engine/registry.js";
 import { AgentCatData } from "../types.js";
 
 beforeEach(() => {
@@ -170,5 +173,67 @@ describe("session_id collision report", () => {
       .map((c: any[]) => String(c[0]))
       .filter((m: string) => m.includes("own_session"));
     expect(logsAfterServerB).toHaveLength(2);
+  });
+});
+
+describe("customer-declared session_id tracking", () => {
+  const composedTool = () => ({
+    name: "union_tool",
+    inputSchema: {
+      type: "object",
+      oneOf: [
+        { properties: { kind: { const: "a" } } },
+        { properties: { kind: { const: "b" } } },
+      ],
+    },
+  });
+  const plainTool = () => ({
+    name: "normal",
+    inputSchema: { type: "object", properties: { q: { type: "string" } } },
+  });
+
+  it("records only the tools whose own schema declares session_id", () => {
+    const server = data();
+    buildInjectedList(server, [ownSessionTool(), composedTool(), plainTool()]);
+
+    const declared = getDeclaredSessionParams(server);
+    // The customer's parameter: theirs, never read as an AgentCat handle.
+    expect(declared.has("own_session")).toBe(true);
+    // Injection was skipped for shape, but nobody declared session_id --
+    // the name stays ours, so the tool must NOT be recorded here.
+    expect(declared.has("union_tool")).toBe(false);
+    expect(declared.has("normal")).toBe(false);
+  });
+
+  it("records a composed schema that also declares session_id at its root", () => {
+    const server = data();
+    const tool = {
+      name: "union_with_own_session",
+      inputSchema: {
+        ...composedTool().inputSchema,
+        properties: { session_id: { type: "string" } },
+      },
+    };
+    buildInjectedList(server, [tool]);
+
+    expect(getDeclaredSessionParams(server).has("union_with_own_session")).toBe(
+      true,
+    );
+  });
+
+  it("keys per AgentCatData object, like reportedConflicts", () => {
+    const serverA = data();
+    const serverB = data();
+    buildInjectedList(serverA, [ownSessionTool()]);
+
+    expect(getDeclaredSessionParams(serverA).has("own_session")).toBe(true);
+    expect(getDeclaredSessionParams(serverB).has("own_session")).toBe(false);
+  });
+
+  it("records nothing in hook mode, where session_id is never injected", () => {
+    const server = data({ resolveSessionId: () => "customer-7" });
+    buildInjectedList(server, [ownSessionTool()]);
+
+    expect(getDeclaredSessionParams(server).size).toBe(0);
   });
 });
