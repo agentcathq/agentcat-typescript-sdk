@@ -22,6 +22,7 @@ import {
   buildStructuredMintBack,
   mirrorStructuredMintBack,
   HandleResolution,
+  SESSION_ID_PARAM,
 } from "../modules/handles.js";
 import { cloneRequestWithStrippedArguments } from "../modules/handle-injection.js";
 import {
@@ -139,11 +140,23 @@ export function installCallWrap(server: MCPServerLike): void {
     } else {
       try {
         await ensureRegistries(server, extra);
+        // A session_id is ours only if we injected it into this tool. A tool
+        // absent from the registry was never listed; treat it as ours so a
+        // pre-listing call still validates (spec: degrades to `invalid`).
+        const toolName = request?.params?.name;
+        const recorded = toolName
+          ? getInjectedParamsRegistry(server)?.get(toolName)
+          : undefined;
+        const sessionParamIsOurs = recorded
+          ? recorded.has(SESSION_ID_PARAM)
+          : true;
+
         const resolution = await resolveHandles(
           data.options,
           data.projectId || undefined,
           request,
           extra,
+          sessionParamIsOurs,
         );
         const identity = await resolveIdentity(data, request, extra);
         const clientInfo = getClientInfoForRequest(server, request, extra);

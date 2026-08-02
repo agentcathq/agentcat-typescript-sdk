@@ -68,6 +68,49 @@ async function setupLowLevel(trackOptions: any = {}) {
   };
 }
 
+async function setupOwnSessionId() {
+  const server = new Server(
+    { name: "own session id server", version: "1.0" },
+    { capabilities: { tools: {} } },
+  );
+  const receivedArgs: any[] = [];
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "echo",
+        description: "declares its own session_id",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            session_id: { type: "string", description: "customer's own" },
+          },
+        },
+      },
+    ],
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    receivedArgs.push(request.params.arguments);
+    return { content: [{ type: "text", text: "ok" }] };
+  });
+  track(server, "proj_test", { enableAgentTracking: true });
+  const client = new Client({ name: "test client", version: "1.0" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await Promise.all([
+    client.connect(clientTransport),
+    server.connect(serverTransport),
+  ]);
+  return {
+    client,
+    receivedArgs,
+    cleanup: async () => {
+      await clientTransport.close?.();
+      await serverTransport.close?.();
+    },
+  };
+}
+
 const mintBackOf = (result: any): string | undefined =>
   (result.content as any[]).find(
     (c) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
@@ -223,6 +266,23 @@ describe("low-level server: explicit handles", () => {
     expect((event.parameters as any).request.params.arguments.session_id).toBe(
       sid("x"),
     );
+    await cleanup();
+  });
+
+  it("a customer's own session_id is never adopted and still reaches the handler", async () => {
+    const { client, receivedArgs, cleanup } = await setupOwnSessionId();
+    await client.listTools();
+    await client.callTool({
+      name: "echo",
+      arguments: { text: "hi", session_id: "CUSTOMER-VALUE-123" },
+    });
+
+    // Their parameter is untouched.
+    expect(receivedArgs[0].session_id).toBe("CUSTOMER-VALUE-123");
+    // Ours is not polluted by it.
+    const event = capture.findEventByType("mcp:tools/call")!;
+    expect(event.sessionId).toBe("");
+    expect(event.tags.agentcat_session_id_source).toBe("foreign");
     await cleanup();
   });
 
