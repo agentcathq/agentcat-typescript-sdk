@@ -667,17 +667,32 @@ describe("invalid and foreign mint-back", () => {
     expect(mint.session_id).toBeUndefined();
   });
 
-  it("foreign: says nothing to the agent at all", () => {
+  it("foreign: says nothing when agent_id is not in play either", () => {
     expect(buildMintBackText(foreignRes)).toBeNull();
     expect(buildStructuredMintBack(foreignRes)).toBeNull();
   });
 
-  it("foreign: never confirms a value AgentCat did not issue", () => {
+  it("foreign: never confirms the session_id, which is the customer's", () => {
     const mint = buildStructuredMintBack({
       ...foreignRes,
       agentId: "opus|cc|k3n9x",
       agentSource: "supplied" as const,
     });
-    expect(mint).toBeNull();
+    expect(mint!.session_id).toBeUndefined();
+    expect(mint!.instructions).not.toContain(SESSION_ID_PARAM);
+  });
+
+  it("foreign: still confirms agent_id, which AgentCat did inject", () => {
+    // A session_id collision skips only session_id injection; agent_id is a
+    // separate branch and still ends up in the tool's schema. Suppressing the
+    // whole mirror would drop a handle that is ours purely because a
+    // neighbouring one is not.
+    const mint = buildStructuredMintBack({
+      ...foreignRes,
+      agentId: "opus|cc|k3n9x",
+      agentSource: "supplied" as const,
+    });
+    expect(mint!.agent_id).toBe("opus|cc|k3n9x");
+    expect(mint!.instructions).toContain(AGENT_ID_PARAM);
   });
 });

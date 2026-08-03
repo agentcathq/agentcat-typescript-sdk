@@ -143,11 +143,15 @@ export interface StructuredMintBack {
  * buildMintBackText (task-mint announcements only), this is persistent handle
  * state, present on EVERY response — supplied handles are re-confirmed, so an
  * agent can re-read its own session_id/agent_id mid-conversation. Handles the
- * agent cannot echo are never named: no session_id in hook mode, none at all
- * for "invalid" (correcting, not confirming — no replacement is issued), and
- * no agent_id when the agent didn't supply one. Returns null for "foreign"
- * outright — that parameter is not ours to speak about — and otherwise when
- * nothing is echoable.
+ * agent cannot echo are never named: no session_id in hook mode, none for
+ * "invalid" (correcting, not confirming — no replacement is issued), none for
+ * "foreign" (that parameter is the customer's, not ours to speak about), and
+ * no agent_id when the agent didn't supply one. Returns null when nothing is
+ * echoable.
+ *
+ * Suppression is per-handle, not per-response: on a foreign tool AgentCat
+ * still injected agent_id, so that half stays ours to confirm even though
+ * session_id is not.
  *
  * @param res - The resolved handles for this call
  * @returns The structured mint-back payload, or null
@@ -155,10 +159,10 @@ export interface StructuredMintBack {
 export function buildStructuredMintBack(
   res: HandleResolution,
 ): StructuredMintBack | null {
-  // Never speak about a parameter that is not ours.
-  if (res.sessionSource === "foreign") return null;
-
-  const sessionEchoable = !res.hookMode && res.sessionSource !== "invalid";
+  const sessionEchoable =
+    !res.hookMode &&
+    res.sessionSource !== "invalid" &&
+    res.sessionSource !== "foreign";
   const names: string[] = [];
   if (sessionEchoable) names.push(SESSION_ID_PARAM);
   if (res.agentId) names.push(AGENT_ID_PARAM);
