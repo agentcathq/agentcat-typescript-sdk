@@ -6,7 +6,6 @@ settings:
 
 overrides:
   js-yaml: '>=4.1.1'
-  tmp: '>=0.2.4'
   vite: '>=6.4.1'
   body-parser: '>=2.2.1'
   brace-expansion: 2.0.2
