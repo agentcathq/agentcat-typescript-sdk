@@ -70,6 +70,28 @@ export class EventCapture {
     return [...this.capturedEvents];
   }
 
+  /**
+   * Waits until every event THIS capture has seen finishes the queue
+   * pipeline. Events are captured at add() time and mutated in place
+   * (deferred hook results land in stage 0), so assertions on
+   * identity/tags/properties/hook-mode sessionId must flush first. The
+   * completion marker is the event id, minted as the pipeline's final step
+   * before send. Scoped per capture so hung-hook events left in flight by
+   * other tests cannot stall this one.
+   */
+  async flush(timeoutMs = 5_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.capturedEvents.every((e: any) => e.id)) return;
+      if (Date.now() > deadline) {
+        throw new Error(
+          "EventCapture.flush timed out waiting for captured events to finish processing",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
   clear() {
     this.capturedEvents = [];
   }

@@ -164,6 +164,8 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
       arguments: { context: "Need GraphQL query builder" },
     });
 
+    // Identity resolves in the background pipeline.
+    await capture.flush();
     const events = capture.getEvents();
     expect(
       events.some(

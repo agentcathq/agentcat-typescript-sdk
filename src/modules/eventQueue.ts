@@ -9,12 +9,12 @@ import {
   UnredactedEvent,
   MCPServerLike,
   ServerClientInfoLike,
-  UserIdentity,
 } from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
 import { buildSessionInfo } from "./session.js";
 import { applyEventRedaction, redactEvent } from "./redaction.js";
+import { applyPendingEventFields } from "./pendingEvent.js";
 import { sanitizeEvent } from "./sanitization.js";
 import { truncateEvent } from "./truncation.js";
 import KSUID from "../thirdparty/ksuid/index.js";
@@ -101,6 +101,18 @@ class EventQueue {
     const { event } = queuedEvent;
 
     try {
+      // Stage 0: resolve deferred hook results. Detach FIRST so no later
+      // stage, hook input, or serializer can ever see the promises.
+      const pending = event.pending;
+      if (pending) {
+        delete event.pending;
+        try {
+          await applyPendingEventFields(event, pending);
+        } catch (error) {
+          writeToLog(`Failed to resolve pending hook results: ${error}`);
+        }
+      }
+
       if (event.eventRedactionFn) {
         const eventRedactionFn = event.eventRedactionFn;
         event.eventRedactionFn = undefined;
@@ -332,7 +344,6 @@ export function getTelemetryManager(): TelemetryManager | undefined {
 }
 
 export interface PublishEventContext {
-  identity?: UserIdentity | null;
   clientInfo?: ServerClientInfoLike;
 }
 
@@ -353,9 +364,12 @@ export function publishEvent(
     return;
   }
 
+  // Identity is no longer passed at publish time: the identify hook is
+  // deferred, and its result lands via event.pending in the queue's stage 0.
+  // buildSessionInfo's anonymous defaults are the correct pre-identity state.
   const sessionInfo = buildSessionInfo(
     server,
-    context?.identity,
+    null,
     context?.clientInfo ?? server.getClientVersion(),
   );
 
@@ -403,6 +417,9 @@ export function publishEvent(
     // Preserve redaction functions
     redactionFn: eventInput.redactionFn,
     eventRedactionFn: eventInput.eventRedactionFn ?? data.options.redactEvent,
+
+    // Deferred hook results, resolved in the queue's stage 0
+    pending: eventInput.pending,
 
     // Customer-defined metadata
     tags: eventInput.tags,

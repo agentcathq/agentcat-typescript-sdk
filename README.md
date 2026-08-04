@@ -86,6 +86,8 @@ Calling `track()` per instance is cheap — the event queue, telemetry exporters
 
 We strongly encourage identifying every actor. If you can't resolve a real user, return a stable anonymized ID instead — for example, a hash of the auth token or API key — so that all events from the same end user still roll up to one actor in your dashboard rather than scattering into anonymous one-off sessions.
 
+`identify` (like every AgentCat hook) runs concurrently with your tool handler and never adds latency to tool calls: a slow lookup — or a hook that fails outright — costs analytics data for that event, never your tool's response time.
+
 The callback receives the raw MCP `request` and the request context the SDK hands to handlers. On MCP TypeScript SDK v2 that context is the SDK's `ServerContext` — most identity signals live on its `http` property:
 
 ```ts

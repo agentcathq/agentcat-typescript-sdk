@@ -135,9 +135,25 @@ export interface Event {
   identifyData?: object; // Legacy name for identifyActorData
 }
 
+/**
+ * Promises for customer-hook results, fired at request start and resolved in
+ * the background event pipeline — customer hooks never hold up the tool call.
+ * Every promise here is constructed non-rejecting (hook failures resolve to
+ * null). Never serialized: detached at the top of processEvent before any
+ * pipeline stage or the wire payload can see it.
+ */
+export interface PendingEventFields {
+  /** Raw resolveSessionId hook value (pre-derivation). */
+  sessionHookValue?: Promise<string | null>;
+  identity?: Promise<UserIdentity | null>;
+  tags?: Promise<Record<string, string> | null>;
+  properties?: Promise<Record<string, any> | null>;
+}
+
 export interface UnredactedEvent extends Partial<Event> {
   redactionFn?: RedactFunction; // Optional redaction function for sensitive data
   eventRedactionFn?: RedactEventFunction; // Optional whole-event redaction hook
+  pending?: PendingEventFields; // Deferred hook results, applied in the queue
 }
 
 /**

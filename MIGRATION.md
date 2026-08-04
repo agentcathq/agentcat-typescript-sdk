@@ -61,7 +61,7 @@ If your integration is a `track(server, projectId, { ...hooks })` call, upgradin
 
 ### Behavior changes worth knowing
 
-- `identify` **now runs on every tool call**, and its result is stamped directly on that call's event. There is no identity cache. If your hook does a database or API lookup, it is now on the hot path for every call — add your own caching if that matters for your latency budget.
+- `identify` **now runs on every tool call**, and its result is stamped directly on that call's event. There is no identity cache. Hooks run concurrently with your tool handler and never delay the call — a slow or even hanging `identify` costs analytics completeness for that one event, never tool-call latency. One consequence of the concurrency: hooks no longer complete before your handler runs, so don't use `identify` to prime state your handler reads.
 - MCP `extra.sessionId` is ignored entirely, and inactivity-based session rollover is gone.
 
 ### Bringing your own session IDs

@@ -10,6 +10,8 @@ import {
   buildHandleTags,
   HandleResolution,
   resolveHandles,
+  invokeSessionHook,
+  sessionFromHookValue,
   buildStructuredMintBack,
   mirrorStructuredMintBack,
   StructuredMintBack,
@@ -372,8 +374,12 @@ describe("resolveHandles — prompted mode", () => {
       undefined,
       false,
     );
+    // Provisional: the hook is fired by the caller and finalized in the
+    // background (sessionFromHookValue). What matters here is that the
+    // customer's argument value is never adopted.
+    expect(res.hookMode).toBe(true);
     expect(res.sessionSource).toBe("hook");
-    expect(res.sessionId).toMatch(/^ses_/);
+    expect(res.sessionId).toBe("");
   });
 
   it("still mints when nothing is supplied on our own param", async () => {
@@ -384,14 +390,19 @@ describe("resolveHandles — prompted mode", () => {
 });
 
 describe("resolveHandles — hook mode", () => {
-  it("derives deterministically from the hook value + project", async () => {
-    const opts = { resolveSessionId: async () => "customer-42" };
-    const a = await resolveHandles(opts, "proj_1", req({}));
-    const b = await resolveHandles(opts, "proj_1", req({}));
-    expect(a.hookMode).toBe(true);
-    expect(a.sessionSource).toBe("hook");
-    expect(a.sessionId).toBe(b.sessionId);
-    expect(a.sessionId).toMatch(/^ses_/);
+  it("returns a provisional resolution: empty id, source 'hook', hookMode on", async () => {
+    // The hook itself is fired by the caller (invokeSessionHook) and the id
+    // is finalized in the background pipeline (sessionFromHookValue); the
+    // on-path resolution only carries the hookMode gate that mint-back
+    // consumers branch on.
+    const res = await resolveHandles(
+      { resolveSessionId: async () => "customer-42" },
+      "proj_1",
+      req({}),
+    );
+    expect(res.hookMode).toBe(true);
+    expect(res.sessionSource).toBe("hook");
+    expect(res.sessionId).toBe("");
   });
 
   it("ignores agent-supplied session_id — the hook wins", async () => {
@@ -403,50 +414,6 @@ describe("resolveHandles — hook mode", () => {
     );
     expect(res.sessionSource).toBe("hook");
     expect(res.sessionId).not.toBe("ses_agent_sent");
-  });
-
-  it("hook returning null mints silently", async () => {
-    const res = await resolveHandles(
-      { resolveSessionId: () => null },
-      "proj_1",
-      req({}),
-    );
-    expect(res.hookMode).toBe(true);
-    expect(res.sessionSource).toBe("minted");
-    expect(res.sessionId).toMatch(/^ses_/);
-  });
-
-  it("never reports 'supplied' when the hook falls back with a session_id present", async () => {
-    // Guards the buildMintBackText ack line: it fires on sessionSource ===
-    // "supplied", which must be unreachable in hook mode. A hook that returns
-    // null while the agent happens to send session_id is the danger case.
-    for (const resolveSessionId of [
-      () => null,
-      () => {
-        throw new Error("db down");
-      },
-    ]) {
-      const res = await resolveHandles(
-        { resolveSessionId },
-        "proj_1",
-        req({ session_id: "ses_agent_sent" }),
-      );
-      expect(res.sessionSource).toBe("minted");
-      expect(res.sessionId).not.toBe("ses_agent_sent");
-    }
-  });
-
-  it("hook throwing mints silently", async () => {
-    const res = await resolveHandles(
-      {
-        resolveSessionId: () => {
-          throw new Error("db down");
-        },
-      },
-      "proj_1",
-      req({}),
-    );
-    expect(res.sessionSource).toBe("minted");
   });
 
   it("hook mode: supplied agent_id resolves, omitted stays unresolved", async () => {
@@ -466,8 +433,10 @@ describe("resolveHandles — hook mode", () => {
     expect(omitted.agentId).toBeUndefined();
     expect(omitted.agentSource).toBeUndefined();
   });
+});
 
-  it("forwards the request and extra objects to the hook", async () => {
+describe("invokeSessionHook", () => {
+  it("resolves the hook value and forwards request/extra verbatim", async () => {
     // The flagship documented use reads off extra:
     //   resolveSessionId: (request, extra) =>
     //     extra?.requestInfo?.headers?.["x-correlation-id"]
@@ -479,14 +448,13 @@ describe("resolveHandles — hook mode", () => {
       requestInfo: { headers: { "x-correlation-id": "corr-1" } },
     };
 
-    const res = await resolveHandles(
+    const value = await invokeSessionHook(
       {
         resolveSessionId: (r, e) => {
           calls.push([r, e]);
           return e?.requestInfo?.headers?.["x-correlation-id"] ?? null;
         },
       },
-      "proj_1",
       request,
       extra,
     );
@@ -494,9 +462,72 @@ describe("resolveHandles — hook mode", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe(request);
     expect(calls[0][1]).toBe(extra);
-    // The header actually drove the derivation, so forwarding is observable.
-    expect(res.sessionSource).toBe("hook");
-    expect(res.sessionId).toBe(deriveSessionId("corr-1", "proj_1"));
+    expect(value).toBe("corr-1");
+  });
+
+  it("resolves null when the hook returns nullish", async () => {
+    expect(
+      await invokeSessionHook({ resolveSessionId: () => null }, req({})),
+    ).toBeNull();
+    expect(
+      await invokeSessionHook(
+        { resolveSessionId: () => undefined as any },
+        req({}),
+      ),
+    ).toBeNull();
+  });
+
+  it("contains a synchronous throw", async () => {
+    const value = await invokeSessionHook(
+      {
+        resolveSessionId: () => {
+          throw new Error("db down");
+        },
+      },
+      req({}),
+    );
+    expect(value).toBeNull();
+  });
+
+  it("contains a rejection", async () => {
+    const value = await invokeSessionHook(
+      { resolveSessionId: async () => Promise.reject(new Error("db down")) },
+      req({}),
+    );
+    expect(value).toBeNull();
+  });
+});
+
+describe("sessionFromHookValue", () => {
+  it("derives deterministically from the hook value + project", () => {
+    const a = sessionFromHookValue("customer-42", "proj_1");
+    const b = sessionFromHookValue("customer-42", "proj_1");
+    expect(a.sessionSource).toBe("hook");
+    expect(a.sessionId).toBe(b.sessionId);
+    expect(a.sessionId).toMatch(/^ses_/);
+    expect(a.sessionId).toBe(deriveSessionId("customer-42", "proj_1"));
+  });
+
+  it("trims the value before deriving", () => {
+    expect(sessionFromHookValue("  corr-1  ", "proj_1").sessionId).toBe(
+      deriveSessionId("corr-1", "proj_1"),
+    );
+  });
+
+  it("mints a fresh id per null — silent mint, never 'supplied'", () => {
+    // Guards the buildMintBackText ack line: it fires on sessionSource ===
+    // "supplied", which must be unreachable in hook mode — a null hook value
+    // (returned, thrown, or timed out) always mints.
+    const a = sessionFromHookValue(null, "proj_1");
+    const b = sessionFromHookValue(null, "proj_1");
+    expect(a.sessionSource).toBe("minted");
+    expect(b.sessionSource).toBe("minted");
+    expect(a.sessionId).toMatch(/^ses_/);
+    expect(a.sessionId).not.toBe(b.sessionId);
+  });
+
+  it("treats a whitespace-only value as null", () => {
+    expect(sessionFromHookValue("   ", "proj_1").sessionSource).toBe("minted");
   });
 });
 

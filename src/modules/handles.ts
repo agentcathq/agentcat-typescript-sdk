@@ -240,13 +240,15 @@ export function buildHandleTags(
  *   to read. Defaults to true.
  * @returns The resolved handles for this call
  */
-export async function resolveHandles(
+export function resolveHandles(
   options: AgentCatOptions,
   projectId: string | undefined,
   request: any,
   extra?: CompatibleRequestHandlerExtra,
   sessionParamIsOurs: boolean = true,
-): Promise<HandleResolution> {
+): HandleResolution {
+  void projectId; // derivation moved to sessionFromHookValue (background)
+  void extra;
   const args = request?.params?.arguments;
   const hookMode = typeof options.resolveSessionId === "function";
 
@@ -254,21 +256,13 @@ export async function resolveHandles(
   let sessionSource: SessionSource;
 
   if (hookMode) {
-    let hookValue: string | null = null;
-    try {
-      hookValue = (await options.resolveSessionId!(request, extra)) ?? null;
-    } catch (error) {
-      writeToLog(`resolveSessionId hook error: ${error}`);
-    }
-    if (typeof hookValue === "string" && hookValue.trim().length > 0) {
-      sessionId = deriveSessionId(hookValue.trim(), projectId);
-      sessionSource = "hook";
-    } else {
-      // Hook contract violation: no parameter exists in hook mode, so the
-      // agent can never learn this ID. One single-event task per null return.
-      sessionId = newSessionId();
-      sessionSource = "minted";
-    }
+    // Provisional: the customer hook is fired by the caller and awaited only
+    // in the background event pipeline (sessionFromHookValue finalizes the
+    // id and source there). Every on-path consumer — buildMintBackText,
+    // buildStructuredMintBack — gates on hookMode alone, so provisional
+    // sessionId/sessionSource are wire-invisible.
+    sessionId = "";
+    sessionSource = "hook";
   } else if (!sessionParamIsOurs) {
     // The tool declares its own session_id. AgentCat never injected one here,
     // so nothing in the arguments is ours to read. Sessionless until the
@@ -311,4 +305,57 @@ export async function resolveHandles(
   }
 
   return resolution;
+}
+
+/**
+ * Fires the customer's resolveSessionId hook, contained: a synchronous throw,
+ * a rejection, or a nullish value all resolve to null (logged), and the
+ * rejection handler is attached at creation so the returned promise can be
+ * left un-awaited with no unhandled-rejection window. Never rejects.
+ *
+ * @param options - The AgentCat options; resolveSessionId must be configured
+ * @param request - The MCP request, forwarded to the hook
+ * @param extra - Optional MCP request handler extra, forwarded to the hook
+ * @returns The hook's raw value, or null on any failure
+ */
+export function invokeSessionHook(
+  options: AgentCatOptions,
+  request: any,
+  extra?: CompatibleRequestHandlerExtra,
+): Promise<string | null> {
+  try {
+    return Promise.resolve(options.resolveSessionId!(request, extra)).then(
+      (value) => value ?? null,
+      (error) => {
+        writeToLog(`resolveSessionId hook error: ${error}`);
+        return null;
+      },
+    );
+  } catch (error) {
+    writeToLog(`resolveSessionId hook error: ${error}`);
+    return Promise.resolve(null);
+  }
+}
+
+/**
+ * Finalizes a hook-mode session from the hook's raw value: a non-empty string
+ * derives the deterministic session id; null (hook failure, timeout, or a
+ * deliberate null return) mints silently — no parameter exists in hook mode,
+ * so the agent can never learn a minted ID. One single-event task per null.
+ *
+ * @param hookValue - The settled resolveSessionId value
+ * @param projectId - Optional AgentCat project ID, salt for derivation
+ * @returns The final session id and its source
+ */
+export function sessionFromHookValue(
+  hookValue: string | null,
+  projectId?: string,
+): { sessionId: string; sessionSource: "hook" | "minted" } {
+  if (typeof hookValue === "string" && hookValue.trim().length > 0) {
+    return {
+      sessionId: deriveSessionId(hookValue.trim(), projectId),
+      sessionSource: "hook",
+    };
+  }
+  return { sessionId: newSessionId(), sessionSource: "minted" };
 }

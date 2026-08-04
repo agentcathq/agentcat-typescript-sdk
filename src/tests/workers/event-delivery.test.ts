@@ -67,6 +67,68 @@ describe("Cloudflare Workers event delivery", () => {
     }
   });
 
+  it("resolves deferred hooks inside waitUntil after the response has returned", async () => {
+    const ingestBodies: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          input instanceof Request
+            ? new URL(input.url)
+            : new URL(String(input));
+        if (url.origin !== "https://ingest.agentcat.test") {
+          throw new Error(`Unexpected outbound request to ${url.toString()}`);
+        }
+        const body =
+          typeof init?.body === "string"
+            ? init.body
+            : input instanceof Request
+              ? await input.text()
+              : "";
+        ingestBodies.push(body);
+        return new Response(null, { status: 202 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL("https://worker.test/mcp-hook"),
+      {
+        fetch: (input, init) => SELF.fetch(new Request(input, init)),
+      },
+    );
+    const client = new Client(
+      { name: "workers-test-client", version: "1.0.0" },
+      { versionNegotiation: { mode: "auto" } },
+    );
+
+    try {
+      await client.connect(transport);
+      const result: any = await client.callTool({
+        name: "echo",
+        arguments: { text: "deferred hooks" },
+      });
+      // The tool responded while the 100ms hooks were still pending —
+      // nothing was published yet at response time.
+      expect(result.content[0].text).toBe("deferred hooks");
+      expect(ingestBodies.length).toBe(0);
+
+      // The pending awaits complete inside waitUntil: the event arrives
+      // carrying the hook-derived session and the identify result.
+      await vi.waitFor(() =>
+        expect(
+          ingestBodies.some(
+            (body) =>
+              body.includes('"agentcat_session_id_source":"hook"') &&
+              body.includes("workers-hook-user") &&
+              body.includes("ses_"),
+          ),
+        ).toBe(true),
+      );
+    } finally {
+      await client.close();
+    }
+  });
+
   it("captures HTTP headers from a genuine workerd Request into event parameters", async () => {
     // workerd's Request is a different realm/implementation than undici's —
     // exactly the case the extra projection duck-types for. Record every

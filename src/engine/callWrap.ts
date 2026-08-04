@@ -1,7 +1,7 @@
 import {
   MCPServerLike,
+  PendingEventFields,
   UnredactedEvent,
-  UserIdentity,
   ServerClientInfoLike,
 } from "../types.js";
 import { writeToLog } from "../modules/logging.js";
@@ -16,6 +16,7 @@ import { publishEvent } from "../modules/eventQueue.js";
 import { captureException } from "../modules/exceptions.js";
 import {
   resolveHandles,
+  invokeSessionHook,
   buildHandleTags,
   buildMintBackText,
   appendMintBack,
@@ -165,7 +166,6 @@ export function installCallWrap(server: MCPServerLike): void {
     let tracing: {
       event: UnredactedEvent;
       resolution: HandleResolution;
-      identity: UserIdentity | null;
       clientInfo: ServerClientInfoLike | undefined;
     } | null = null;
 
@@ -188,15 +188,39 @@ export function installCallWrap(server: MCPServerLike): void {
           toolName && getDeclaredSessionParams(data).has(toolName)
         );
 
-        const resolution = await resolveHandles(
+        const resolution = resolveHandles(
           data.options,
           data.projectId || undefined,
           request,
           extra,
           sessionParamIsOurs,
         );
-        const identity = await resolveIdentity(data, request, extra);
         const clientInfo = getClientInfoForRequest(server, request, extra);
+
+        // Fire the customer hooks NOW, awaited only in the background event
+        // pipeline — a slow or hanging hook can never hold up the tool call.
+        // Each invocation yields a non-rejecting promise (the internal.ts
+        // resolvers catch everything; invokeSessionHook contains sync throws
+        // with its rejection handler attached at creation), so leaving them
+        // un-awaited cannot surface an unhandled rejection. Hooks receive the
+        // raw request: injected params are visible to them by contract.
+        const pending: PendingEventFields = {};
+        if (resolution.hookMode) {
+          pending.sessionHookValue = invokeSessionHook(
+            data.options,
+            request,
+            extra,
+          );
+        }
+        if (data.options.identify) {
+          pending.identity = resolveIdentity(data, request, extra);
+        }
+        if (data.options.eventTags) {
+          pending.tags = resolveEventTags(data, request, extra);
+        }
+        if (data.options.eventProperties) {
+          pending.properties = resolveEventProperties(data, request, extra);
+        }
 
         const event: UnredactedEvent = {
           sessionId: resolution.sessionId,
@@ -212,20 +236,14 @@ export function installCallWrap(server: MCPServerLike): void {
           timestamp: startTime,
           redactionFn: data.options.redactSensitiveInformation,
         };
+        if (Object.keys(pending).length > 0) event.pending = pending;
 
-        const customerTags = await resolveEventTags(data, request, extra);
-        // SDK tags LAST: namespaced, exempt from the 50-tag budget.
+        // On-path tags are SDK-owned only. Customer eventTags resolve in the
+        // background and merge UNDER these (SDK tags stay last-writer).
         event.tags = {
-          ...(customerTags ?? {}),
           ...mrtrContinuationTags(extra),
           ...buildHandleTags(resolution, getProtocolVersion(request, extra)),
         };
-        const resolvedProperties = await resolveEventProperties(
-          data,
-          request,
-          extra,
-        );
-        if (resolvedProperties) event.properties = resolvedProperties;
 
         if (
           data.options.enableToolCallContext &&
@@ -237,7 +255,7 @@ export function installCallWrap(server: MCPServerLike): void {
           event.userIntent = request.params.arguments.context;
         }
 
-        tracing = { event, resolution, identity, clientInfo };
+        tracing = { event, resolution, clientInfo };
       } catch (error) {
         writeToLog(
           `Warning: AgentCat tracing failed for tool ${request?.params?.name}, falling back to original handler - ${error}`,
@@ -255,7 +273,7 @@ export function installCallWrap(server: MCPServerLike): void {
       return originalHandler(request, extra);
     }
 
-    const { event, resolution, identity, clientInfo } = tracing;
+    const { event, resolution, clientInfo } = tracing;
 
     const finish = (result: any) => {
       // The handler has already succeeded: nothing in this stage may reach
@@ -293,7 +311,7 @@ export function installCallWrap(server: MCPServerLike): void {
         // Mint-back is wire-only: the event records the customer's original result.
         event.response = result;
         event.duration = new Date().getTime() - startTime.getTime();
-        publishEvent(server, event, { identity, clientInfo });
+        publishEvent(server, event, { clientInfo });
         return finalResult;
       } catch (error) {
         writeToLog(
@@ -323,7 +341,7 @@ export function installCallWrap(server: MCPServerLike): void {
       event.isError = true;
       event.error = captureException(error);
       event.duration = new Date().getTime() - startTime.getTime();
-      publishEvent(server, event, { identity, clientInfo });
+      publishEvent(server, event, { clientInfo });
       throw error;
     }
   };

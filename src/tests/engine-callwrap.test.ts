@@ -397,6 +397,131 @@ describe("get_more_tools gating", () => {
   });
 });
 
+describe("deferred customer hooks", () => {
+  let capture: EventCapture;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capture = new EventCapture();
+    await capture.start();
+  });
+  afterEach(async () => {
+    await capture.stop();
+  });
+
+  const callEcho = {
+    method: "tools/call",
+    params: { name: "echo", arguments: { msg: "hi" } },
+  };
+  const okHandler = async () => ({ content: [{ type: "text", text: "ok" }] });
+
+  it("a hanging identify hook does not delay the tool call", async () => {
+    const wrapped = trackFake(fakeServer(okHandler), {
+      identify: () => new Promise(() => {}),
+    });
+    const result = await wrapped(callEcho, {});
+    expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+  }, 2000);
+
+  it("hanging resolveSessionId/eventTags/eventProperties do not delay the tool call", async () => {
+    const never = () => new Promise<never>(() => {});
+    const wrapped = trackFake(fakeServer(okHandler), {
+      resolveSessionId: never,
+      eventTags: never,
+      eventProperties: never,
+    });
+    const result = await wrapped(callEcho, {});
+    expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+  }, 2000);
+
+  it("the handler starts before a slow hook settles", async () => {
+    const order: string[] = [];
+    let releaseHook!: () => void;
+    const wrapped = trackFake(
+      fakeServer(async () => {
+        order.push("handler");
+        return { content: [{ type: "text", text: "ok" }] };
+      }),
+      {
+        identify: () =>
+          new Promise((resolve) => {
+            releaseHook = () => {
+              order.push("hook settled");
+              resolve({ userId: "u1" });
+            };
+          }),
+      },
+    );
+
+    await wrapped(callEcho, {});
+    releaseHook();
+    await capture.flush();
+
+    expect(order[0]).toBe("handler");
+    const [event] = capture.getEvents();
+    expect(event.identifyActorGivenId).toBe("u1");
+  });
+
+  it("a synchronously-throwing hook is contained and the event still publishes", async () => {
+    const wrapped = trackFake(fakeServer(okHandler), {
+      resolveSessionId: () => {
+        throw new Error("sync hook boom");
+      },
+    });
+
+    const result = await wrapped(callEcho, {});
+    await capture.flush();
+
+    expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+    const [event] = capture.getEvents();
+    // Hook failure degrades to a silent mint, same as a thrown async hook.
+    expect(event.sessionId).toMatch(/^ses_/);
+    expect(event.tags?.agentcat_session_id_source).toBe("minted");
+  });
+
+  it("redactEvent sees resolved hook state, and pending never reaches it or the processed event", async () => {
+    let hookInput: any;
+    const wrapped = trackFake(fakeServer(okHandler), {
+      identify: async () => ({ userId: "u-redact" }),
+      eventTags: async () => ({ env: "prod" }),
+      redactEvent: (e: any) => {
+        hookInput = { ...e };
+        return e;
+      },
+    });
+
+    await wrapped(callEcho, {});
+    await capture.flush();
+
+    // Stage ordering: deferred hooks resolve BEFORE the redactEvent hook.
+    expect(hookInput.identifyActorGivenId).toBe("u-redact");
+    expect(hookInput.tags.env).toBe("prod");
+    expect("pending" in hookInput).toBe(false);
+    const [event] = capture.getEvents();
+    expect((event as any).pending).toBeUndefined();
+  });
+
+  it("error-path events carry hook results resolved after the throw", async () => {
+    const wrapped = trackFake(
+      fakeServer(async () => {
+        throw new Error("handler boom");
+      }),
+      {
+        identify: async () => {
+          await new Promise((r) => setTimeout(r, 20));
+          return { userId: "late-user" };
+        },
+      },
+    );
+
+    await expect(wrapped(callEcho, {})).rejects.toThrow("handler boom");
+    await capture.flush();
+
+    const [event] = capture.getEvents();
+    expect(event.isError).toBe(true);
+    expect(event.identifyActorGivenId).toBe("late-user");
+  });
+});
+
 describe("registry rebuild bounding", () => {
   let capture: EventCapture;
   beforeEach(async () => {

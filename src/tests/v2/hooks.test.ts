@@ -173,6 +173,7 @@ describe("v2 hooks: identify", () => {
       });
     }
 
+    await capture.flush();
     const toolCallEvents = toolCallEventsOf(capture);
     expect(toolCallEvents).toHaveLength(2);
     expect(toolCallEvents[0].identifyActorGivenId).toBe("event-user-a");
@@ -241,7 +242,7 @@ describe("v2 hooks: identify", () => {
     await client.close();
   });
 
-  it("holds the call open for async identify; the event's duration covers the lookup", async () => {
+  it("returns the call while async identify is still in flight; identity lands in the background", async () => {
     let asyncOperationCompleted = false;
     const { client } = await setupHighLevel({
       identify: async () => {
@@ -256,15 +257,18 @@ describe("v2 hooks: identify", () => {
       arguments: { text: "async", context: "async identify test" },
     });
     expect(result.content[0].text).toContain("Added note");
-    expect(asyncOperationCompleted).toBe(true);
+    // Deferred hooks: the 100ms lookup never held the call open.
+    expect(asyncOperationCompleted).toBe(false);
 
+    await capture.flush();
+    expect(asyncOperationCompleted).toBe(true);
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent.identifyActorGivenId).toBe("async-user");
     expect(toolCallEvent.identifyActorData).toEqual({
       source: "async-lookup",
     });
-    // 95, not 100: setTimeout can fire ~1ms early and Date truncates to ms.
-    expect(toolCallEvent.duration).toBeGreaterThanOrEqual(95);
+    // Duration covers the handler only, not the identity lookup.
+    expect(toolCallEvent.duration).toBeLessThan(95);
     await client.close();
   });
 
@@ -309,6 +313,7 @@ describe("v2 hooks: eventTags", () => {
       },
     });
 
+    await capture.flush();
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent).toBeDefined();
     expect(customerTags(toolCallEvent.tags)).toEqual({
@@ -340,6 +345,7 @@ describe("v2 hooks: eventTags", () => {
       },
     });
 
+    await capture.flush();
     const [toolCallEvent] = toolCallEventsOf(capture);
     // SDK tags are merged last, so ours wins the collision.
     expect(toolCallEvent.tags![AGENTCAT_TAG_SESSION_SOURCE]).toBe("supplied");
@@ -394,6 +400,7 @@ describe("v2 hooks: eventTags", () => {
       arguments: { text: "validate", context: "tag test" },
     });
 
+    await capture.flush();
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({ valid: "value" });
     await client.close();
@@ -424,6 +431,7 @@ describe("v2 hooks: eventProperties", () => {
       arguments: { text: "props", context: "props test" },
     });
 
+    await capture.flush();
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent.properties).toEqual({
       device: "desktop",
@@ -474,6 +482,7 @@ describe("v2 hooks: eventProperties", () => {
       arguments: { text: "both", context: "combined test" },
     });
 
+    await capture.flush();
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({ env: "test" });
     expect(toolCallEvent.properties).toEqual({ device: "mobile" });

@@ -162,6 +162,8 @@ describe("v2 session modes: resolveSessionId hook", () => {
     expect(mintBackOf(first)).toBeUndefined();
     expect(mintBackOf(second)).toBeUndefined();
 
+    // Hook-mode minting is finalized in the background pipeline.
+    await capture.flush();
     const events = capture.getEvents();
     expect(events).toHaveLength(2);
     for (const event of events) {

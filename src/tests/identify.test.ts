@@ -657,13 +657,15 @@ describe("Identify Feature", () => {
       );
 
       expect(result.content[0].text).toContain("Added todo");
+      // The identify hook is deferred: the call returns while the 100ms
+      // lookup is still in flight — hooks never hold up the tool call.
+      expect(asyncOperationCompleted).toBe(false);
+
+      // The awaited identity lands on the tool call event in the background
+      // pipeline.
+      await eventCapture.flush();
       expect(asyncOperationCompleted).toBe(true);
 
-      // Wait for events
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // The awaited identity lands on the tool call event, and the call is
-      // held open for it — so the event's duration covers the async lookup.
       const toolCallEvent = eventCapture
         .getEvents()
         .find(
@@ -675,8 +677,9 @@ describe("Identify Feature", () => {
       expect(toolCallEvent?.identifyActorData).toEqual({
         source: "async-lookup",
       });
-      // 95, not 100: setTimeout can fire ~1ms early and Date truncates to ms.
-      expect(toolCallEvent?.duration).toBeGreaterThanOrEqual(95);
+      // Duration covers the handler only — the async lookup no longer
+      // stretches the call.
+      expect(toolCallEvent?.duration).toBeLessThan(95);
 
       await eventCapture.stop();
     });

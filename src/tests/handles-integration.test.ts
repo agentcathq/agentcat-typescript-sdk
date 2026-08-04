@@ -408,6 +408,8 @@ describe("low-level server: explicit handles", () => {
     // Hook mode never emits a text mint-back block, agent supplied or not.
     expect(mintBackOf(result)).toBeUndefined();
 
+    // Hook-derived session id and tags land in the background pipeline.
+    await capture.flush();
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(event.tags).toMatchObject({
       agentcat_session_id_source: "hook",
@@ -663,6 +665,8 @@ describe("high-level server: explicit handles", () => {
       name: "add_todo",
       arguments: { text: "x", context: "testing" },
     });
+    // Identity is stamped in the background pipeline.
+    await capture.flush();
     const events = capture.getEvents();
     expect(events.map((e) => e.eventType)).not.toContain("agentcat:identify");
     const call = capture.findEventByType("mcp:tools/call")!;
