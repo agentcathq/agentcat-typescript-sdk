@@ -113,16 +113,26 @@ export function installListWrap(server: MCPServerLike): void {
       return originalResponse;
     }
 
-    const injected = buildInjectedList(data, tools);
-    setInjectedParamsRegistry(server, injected.registry);
-    setOutputInjectionRegistry(server, injected.outputRegistry);
+    // Injection failure must degrade to the customer's own listing — the
+    // tools/call path already contains the identical pipeline (ensureRegistries);
+    // tools/list gets the same policy.
+    try {
+      const injected = buildInjectedList(data, tools);
+      setInjectedParamsRegistry(server, injected.registry);
+      setOutputInjectionRegistry(server, injected.outputRegistry);
 
-    // Inner-tap re-sweep: catches tools registered or update()d since the
-    // last wrap pass (v2 update() regenerates executor).
-    if (st.highLevel) rewrapAllTools(server, st.highLevel, st.adapter);
+      // Inner-tap re-sweep: catches tools registered or update()d since the
+      // last wrap pass (v2 update() regenerates executor).
+      if (st.highLevel) rewrapAllTools(server, st.highLevel, st.adapter);
 
-    // Spread: nextCursor, result _meta, and any future fields pass through.
-    return { ...originalResponse, tools: injected.tools };
+      // Spread: nextCursor, result _meta, and any future fields pass through.
+      return { ...originalResponse, tools: injected.tools };
+    } catch (error) {
+      writeToLog(
+        `Warning: AgentCat tool-list injection failed; serving the original tool list unmodified - ${error}`,
+      );
+      return originalResponse;
+    }
   };
 
   st.listWrapper = wrapper;

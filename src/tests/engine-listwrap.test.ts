@@ -140,3 +140,94 @@ describe("installListWrap (synthetic seam)", () => {
     expect(getInjectedParamsRegistry(server)).toBeUndefined();
   });
 });
+
+describe("tools/list fault containment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function listWith(tools: any[]) {
+    const server = fakeListServer(async () => ({ tools }));
+    setServerTrackingData(server, data());
+    initEngineState(server, { adapter: v2Adapter });
+    installListWrap(server);
+    const wrapped = server._requestHandlers.get("tools/list");
+    return {
+      server,
+      res: await wrapped({ method: "tools/list", params: {} }, {}),
+    };
+  }
+
+  it("lists a boolean-schema tool uninjected while the healthy tool keeps its handles", async () => {
+    // JSON Schema allows `true` as a schema; property assignment on the
+    // primitive throws in strict mode.
+    const { res } = await listWith([
+      { name: "poison", description: "p", inputSchema: true },
+      echoTool(),
+    ]);
+    const byName = Object.fromEntries(res.tools.map((t: any) => [t.name, t]));
+    expect(byName.poison.inputSchema).toBe(true); // passed through untouched
+    expect(byName.echo.inputSchema.properties.session_id).toBeDefined();
+    expect(byName.echo.inputSchema.properties.context).toBeDefined();
+    expect(writeToLog).toHaveBeenCalledWith(expect.stringContaining("poison"));
+  });
+
+  it("passes a null tools-array entry through and injects the rest", async () => {
+    const { res } = await listWith([null, echoTool()]);
+    expect(res.tools).toContain(null);
+    const echo = res.tools.find((t: any) => t?.name === "echo");
+    expect(echo.inputSchema.properties.session_id).toBeDefined();
+  });
+
+  it("lists a circular-schema tool uninjected without failing the listing", async () => {
+    const node: any = { type: "object", properties: {} };
+    node.properties.children = { type: "array", items: node };
+    const { res } = await listWith([
+      { name: "recursive", description: "r", inputSchema: node },
+      echoTool(),
+    ]);
+    const recursive = res.tools.find((t: any) => t?.name === "recursive");
+    expect(recursive.inputSchema).toBe(node); // untouched original
+    const echo = res.tools.find((t: any) => t?.name === "echo");
+    expect(echo.inputSchema.properties.session_id).toBeDefined();
+  });
+
+  it("lists a BigInt-carrying schema uninjected without failing the listing", async () => {
+    const { res } = await listWith([
+      {
+        name: "bigint",
+        description: "b",
+        inputSchema: {
+          type: "object",
+          properties: { n: { type: "integer", maximum: 9007199254740993n } },
+        },
+      },
+      echoTool(),
+    ]);
+    expect(res.tools.find((t: any) => t?.name === "bigint")).toBeDefined();
+    const echo = res.tools.find((t: any) => t?.name === "echo");
+    expect(echo.inputSchema.properties.session_id).toBeDefined();
+  });
+
+  it("returns the customer's original listing when the whole pipeline fails", async () => {
+    // Array.isArray passes, but the spread inside buildInjectedList throws —
+    // upstream of the per-tool guards.
+    const evil: any = [echoTool()];
+    evil[Symbol.iterator] = () => {
+      throw new Error("pipeline boom");
+    };
+    const originalResponse = { tools: evil, nextCursor: "p2" };
+    const server = fakeListServer(async () => originalResponse);
+    setServerTrackingData(server, data());
+    initEngineState(server, { adapter: v2Adapter });
+    installListWrap(server);
+    const wrapped = server._requestHandlers.get("tools/list");
+
+    const res = await wrapped({ method: "tools/list", params: {} }, {});
+
+    expect(res).toBe(originalResponse);
+    expect(writeToLog).toHaveBeenCalledWith(
+      expect.stringContaining("serving the original tool list"),
+    );
+  });
+});

@@ -103,9 +103,24 @@ export function addContextParameterToTools(
 ): RegisteredTool[] {
   return tools.map((tool) => {
     // Skip get_more_tools - it has its own special context parameter
-    if ((tool as any).name === "get_more_tools") {
+    if ((tool as any)?.name === "get_more_tools") {
       return tool;
     }
-    return addContextParameterToTool(tool, customContextDescription, registry);
+    try {
+      return addContextParameterToTool(
+        tool,
+        customContextDescription,
+        registry,
+      );
+    } catch (error) {
+      // One tool's schema must never poison the listing: serve it unmodified
+      // and roll back the registry record so stripping matches the schema.
+      const toolName = (tool as any)?.name || "unknown";
+      registry?.get(toolName)?.delete("context");
+      writeToLog(
+        `WARN: Context injection failed for tool "${toolName}"; listing it unmodified - ${error}`,
+      );
+      return tool;
+    }
   });
 }

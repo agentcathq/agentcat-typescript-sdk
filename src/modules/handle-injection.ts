@@ -65,9 +65,22 @@ export function addHandleParametersToTools(
   outputRegistry?: OutputInjectionRegistry,
 ): RegisteredTool[] {
   if (!opts.injectSessionId && !opts.injectAgentId) return tools;
-  return tools.map((tool) =>
-    addHandleParametersToTool(tool, opts, registry, outputRegistry),
-  );
+  return tools.map((tool) => {
+    try {
+      return addHandleParametersToTool(tool, opts, registry, outputRegistry);
+    } catch (error) {
+      // One tool's schema must never poison the listing: serve it unmodified
+      // and roll back any partial registry writes so call-time stripping and
+      // output mirroring never act on state the advertised schema lacks.
+      const toolName = (tool as any)?.name || "unknown";
+      registry.delete(toolName);
+      outputRegistry?.delete(toolName);
+      writeToLog(
+        `WARN: Handle injection failed for tool "${toolName}"; listing it unmodified - ${error}`,
+      );
+      return tool;
+    }
+  });
 }
 
 function addHandleParametersToTool(
