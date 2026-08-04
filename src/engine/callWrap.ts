@@ -24,6 +24,7 @@ import {
   HandleResolution,
 } from "../modules/handles.js";
 import { cloneRequestWithStrippedArguments } from "../modules/handle-injection.js";
+import { projectExtraForEvent } from "../modules/extra-projection.js";
 import {
   getClientInfoForRequest,
   getProtocolVersion,
@@ -167,7 +168,11 @@ export function installCallWrap(server: MCPServerLike): void {
           resourceName: request?.params?.name || "Unknown Tool",
           // Raw request on purpose: the event records exactly what the agent
           // sent, handles included. Stripping applies only to the handler copy.
-          parameters: { request, extra },
+          // extra is projected at capture time: v2's live web Request (and
+          // v1's URL instance) become plain JSON the pipeline walkers can
+          // traverse — headers would otherwise flatten to {}. Contract: the
+          // redactEvent hook sees this projection, i.e. what ships.
+          parameters: { request, extra: projectExtraForEvent(extra) },
           eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
           timestamp: startTime,
           redactionFn: data.options.redactSensitiveInformation,

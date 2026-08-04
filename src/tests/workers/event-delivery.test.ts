@@ -66,4 +66,62 @@ describe("Cloudflare Workers event delivery", () => {
       await client.close();
     }
   });
+
+  it("captures HTTP headers from a genuine workerd Request into event parameters", async () => {
+    // workerd's Request is a different realm/implementation than undici's —
+    // exactly the case the extra projection duck-types for. Record every
+    // outbound ingest body and prove the sentinel header the client sent
+    // survived into the published event payload.
+    const ingestBodies: string[] = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          input instanceof Request
+            ? new URL(input.url)
+            : new URL(String(input));
+        if (url.origin !== "https://ingest.agentcat.test") {
+          throw new Error(`Unexpected outbound request to ${url.toString()}`);
+        }
+        const body =
+          typeof init?.body === "string"
+            ? init.body
+            : input instanceof Request
+              ? await input.text()
+              : "";
+        ingestBodies.push(body);
+        return new Response(null, { status: 202 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL("https://worker.test/mcp"),
+      {
+        fetch: (input, init) => SELF.fetch(new Request(input, init)),
+        requestInit: {
+          headers: { "x-agentcat-health-run": "workers-sentinel" },
+        },
+      },
+    );
+    const client = new Client(
+      { name: "workers-test-client", version: "1.0.0" },
+      { versionNegotiation: { mode: "auto" } },
+    );
+
+    try {
+      await client.connect(transport);
+      await client.callTool({
+        name: "echo",
+        arguments: { text: "headers please" },
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          ingestBodies.some((body) => body.includes("workers-sentinel")),
+        ).toBe(true),
+      );
+    } finally {
+      await client.close();
+    }
+  });
 });

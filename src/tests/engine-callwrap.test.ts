@@ -264,3 +264,67 @@ describe("installCallWrap (synthetic seam)", () => {
     expect(event.duration).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("extra projection on captured events", () => {
+  // The event pipeline (redact → sanitize → truncate) mutates queued events
+  // in place asynchronously after add(); give it a beat before asserting.
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+
+  let capture: EventCapture;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capture = new EventCapture();
+    await capture.start();
+  });
+  afterEach(async () => {
+    await capture.stop();
+  });
+
+  const okHandler = async () => ({
+    content: [{ type: "text", text: "ok" }],
+  });
+  const callEcho = {
+    method: "tools/call",
+    params: { name: "echo", arguments: { msg: "hi" } },
+  };
+
+  it("publishes v1-shaped extra with headers verbatim and url as a string", async () => {
+    const wrapped = trackFake(fakeServer(okHandler));
+    await wrapped(callEcho, {
+      requestInfo: {
+        headers: { "x-agentcat-health-run": "run:v1" },
+        url: new URL("http://localhost:4105/mcp"),
+      },
+      authInfo: { token: "tok" },
+    });
+    await settle();
+
+    const [event] = capture.getEvents();
+    const extra = (event.parameters as any).extra;
+    // Post-pipeline: values survived redact → sanitize → truncate.
+    expect(extra.requestInfo.headers["x-agentcat-health-run"]).toBe("run:v1");
+    expect(extra.requestInfo.url).toBe("http://localhost:4105/mcp");
+    expect(extra.authInfo.token).toBe("tok");
+  });
+
+  it("publishes v2-shaped extra with the web Request as plain { method, url, headers }", async () => {
+    const wrapped = trackFake(fakeServer(okHandler));
+    await wrapped(callEcho, {
+      sessionId: "transport-1",
+      mcpReq: { id: 5 },
+      http: {
+        req: new Request("http://127.0.0.1:4105/mcp", {
+          method: "POST",
+          headers: { "x-agentcat-health-run": "run:ts_v2" },
+        }),
+      },
+    });
+    await settle();
+
+    const [event] = capture.getEvents();
+    const extra = (event.parameters as any).extra;
+    expect(extra.http.req.method).toBe("POST");
+    expect(extra.http.req.url).toBe("http://127.0.0.1:4105/mcp");
+    expect(extra.http.req.headers["x-agentcat-health-run"]).toBe("run:ts_v2");
+  });
+});
