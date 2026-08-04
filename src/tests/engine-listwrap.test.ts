@@ -209,6 +209,34 @@ describe("tools/list fault containment", () => {
     expect(echo.inputSchema.properties.session_id).toBeDefined();
   });
 
+  it("warns once when the customer owns get_more_tools while report-missing is enabled", async () => {
+    const customerTool = {
+      name: "get_more_tools",
+      description: "customer version",
+      inputSchema: { type: "object", properties: {} },
+    };
+    const server = fakeListServer(async () => ({
+      tools: [customerTool, echoTool()],
+    }));
+    setServerTrackingData(server, data());
+    initEngineState(server, { adapter: v2Adapter });
+    installListWrap(server);
+    const wrapped = server._requestHandlers.get("tools/list");
+
+    const res = await wrapped({ method: "tools/list", params: {} }, {});
+    await wrapped({ method: "tools/list", params: {} }, {});
+
+    // Customer's descriptor is kept, not replaced.
+    const listed = res.tools.filter((t: any) => t?.name === "get_more_tools");
+    expect(listed).toHaveLength(1);
+    expect(listed[0].description).toBe("customer version");
+    // Shadow warning is one-time, not per listing.
+    const shadowWarns = (writeToLog as any).mock.calls.filter((c: any[]) =>
+      String(c[0]).includes("shadow"),
+    );
+    expect(shadowWarns).toHaveLength(1);
+  });
+
   it("returns the customer's original listing when the whole pipeline fails", async () => {
     // Array.isArray passes, but the spread inside buildInjectedList throws —
     // upstream of the per-tool guards.

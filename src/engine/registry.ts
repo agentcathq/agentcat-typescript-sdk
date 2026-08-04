@@ -1,4 +1,5 @@
 import { HighLevelMCPServerLike } from "../types.js";
+import { writeToLog } from "../modules/logging.js";
 
 /** toolName -> names AgentCat actually injected into that tool's schema. */
 export type InjectedParamsRegistry = Map<string, Set<string>>;
@@ -67,6 +68,22 @@ export function getDeclaredSessionParams(key: object): Set<string> {
     declaredSessionParams.set(key, set);
   }
   return set;
+}
+
+/**
+ * Marks that this server registered its own get_more_tools tool while
+ * enableReportMissing is on. Dispatch still answers with AgentCat's canned
+ * response (report-missing keeps working), but the shadowing must be
+ * discoverable rather than silent — warned once per tracking-data lifetime.
+ */
+const customerOwnedReportMissing = new WeakSet<object>();
+
+export function recordCustomerOwnedReportMissing(key: object): void {
+  if (customerOwnedReportMissing.has(key)) return;
+  customerOwnedReportMissing.add(key);
+  writeToLog(
+    `WARN: This server registers its own "get_more_tools" tool, which is shadowed by AgentCat's report-missing tool: calls to it are answered by AgentCat and never reach your handler. Rename your tool, or set enableReportMissing: false to keep yours reachable.`,
+  );
 }
 
 // ── Engine state ────────────────────────────────────────────────────────────

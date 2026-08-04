@@ -13,6 +13,7 @@ import {
   getDeclaredSessionParams,
   getEngineState,
   getReportedConflicts,
+  recordCustomerOwnedReportMissing,
   setInjectedParamsRegistry,
   setOutputInjectionRegistry,
 } from "./registry.js";
@@ -44,6 +45,7 @@ export function buildInjectedList(
       (t: any) => t?.name === GET_MORE_TOOLS_NAME,
     );
     if (!alreadyPresent) result.push(getReportMissingToolDescriptor());
+    else recordCustomerOwnedReportMissing(data);
   }
 
   // Order matters: handles first, then context ->

@@ -115,9 +115,18 @@ export function installCallWrap(server: MCPServerLike): void {
 
   const wrapper = async (request: any, extra: any) => {
     const data = getServerTrackingData(server);
+    // The report-missing intercept answers by NAME, so it must be gated on
+    // the feature actually being on — otherwise a customer's own
+    // get_more_tools tool would be unreachable with the feature disabled.
+    // (When enabled, AgentCat answers even for a customer-owned name; the
+    // listing warns once about the shadowing.)
+    const interceptReportMissing = (name: any) =>
+      data?.options?.enableReportMissing === true &&
+      name === GET_MORE_TOOLS_NAME;
+
     // Tracing off: no resolution, no mint-back, no event.
     if (data && data.options.enableTracing === false) {
-      if (request?.params?.name === GET_MORE_TOOLS_NAME) {
+      if (interceptReportMissing(request?.params?.name)) {
         return handleReportMissing({
           context: request?.params?.arguments?.context,
         });
@@ -212,7 +221,7 @@ export function installCallWrap(server: MCPServerLike): void {
 
     // Degraded path: run the tool unstripped — no event, no mint-back.
     if (!tracing) {
-      if (request?.params?.name === GET_MORE_TOOLS_NAME) {
+      if (interceptReportMissing(request?.params?.name)) {
         return handleReportMissing({
           context: request?.params?.arguments?.context,
         });
@@ -269,7 +278,7 @@ export function installCallWrap(server: MCPServerLike): void {
     };
 
     try {
-      if (request?.params?.name === GET_MORE_TOOLS_NAME) {
+      if (interceptReportMissing(request?.params?.name)) {
         event.userIntent = request?.params?.arguments?.context;
         return finish(
           await handleReportMissing({

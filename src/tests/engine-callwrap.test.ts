@@ -54,7 +54,7 @@ function fakeServer(callHandler: (req: any, extra?: any) => Promise<any>) {
   } as any;
 }
 
-function trackFake(server: any) {
+function trackFake(server: any, overrides: Record<string, any> = {}) {
   setServerTrackingData(server, {
     projectId: "proj_test",
     options: {
@@ -62,6 +62,7 @@ function trackFake(server: any) {
       enableTracing: true,
       enableToolCallContext: true,
       enableAgentTracking: false,
+      ...overrides,
     },
   });
   initEngineState(server, { adapter: v2Adapter });
@@ -326,6 +327,73 @@ describe("extra projection on captured events", () => {
     expect(extra.http.req.method).toBe("POST");
     expect(extra.http.req.url).toBe("http://127.0.0.1:4105/mcp");
     expect(extra.http.req.headers["x-agentcat-health-run"]).toBe("run:ts_v2");
+  });
+});
+
+describe("get_more_tools gating", () => {
+  let capture: EventCapture;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capture = new EventCapture();
+    await capture.start();
+  });
+  afterEach(async () => {
+    await capture.stop();
+  });
+
+  const callGetMoreTools = {
+    method: "tools/call",
+    params: { name: "get_more_tools", arguments: { context: "need csv" } },
+  };
+
+  it("does not intercept when enableReportMissing is false — the customer's own tool runs", async () => {
+    let customerRan = 0;
+    const server = fakeServer(async () => {
+      customerRan++;
+      return { content: [{ type: "text", text: "customer answer" }] };
+    });
+    const wrapped = trackFake(server, { enableReportMissing: false });
+
+    const result = await wrapped(callGetMoreTools, {});
+
+    expect(customerRan).toBe(1);
+    const text = result.content.map((c: any) => c?.text ?? "").join(" ");
+    expect(text).toContain("customer answer");
+    expect(text).not.toContain("full tool list");
+  });
+
+  it("does not intercept on the tracing-off path when enableReportMissing is false", async () => {
+    let customerRan = 0;
+    const server = fakeServer(async () => {
+      customerRan++;
+      return { content: [{ type: "text", text: "customer answer" }] };
+    });
+    const wrapped = trackFake(server, {
+      enableReportMissing: false,
+      enableTracing: false,
+    });
+
+    const result = await wrapped(callGetMoreTools, {});
+
+    expect(customerRan).toBe(1);
+    expect(result.content[0].text).toBe("customer answer");
+  });
+
+  it("does not intercept on the degraded path when enableReportMissing is false", async () => {
+    let customerRan = 0;
+    const server = fakeServer(async () => {
+      customerRan++;
+      return { content: [{ type: "text", text: "customer answer" }] };
+    });
+    server.getClientVersion = () => {
+      throw new Error("client info boom");
+    };
+    const wrapped = trackFake(server, { enableReportMissing: false });
+
+    const result = await wrapped(callGetMoreTools, {});
+
+    expect(customerRan).toBe(1);
+    expect(result.content[0].text).toBe("customer answer");
   });
 });
 
