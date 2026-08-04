@@ -397,6 +397,78 @@ describe("get_more_tools gating", () => {
   });
 });
 
+describe("registry rebuild bounding", () => {
+  let capture: EventCapture;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capture = new EventCapture();
+    await capture.start();
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    await capture.stop();
+  });
+
+  function setupWithoutRegistry(listHandler: () => Promise<any>) {
+    const server = fakeServer(async () => ({
+      content: [{ type: "text", text: "ok" }],
+    }));
+    setServerTrackingData(server, {
+      projectId: "proj_test",
+      options: {
+        enableReportMissing: true,
+        enableTracing: true,
+        enableToolCallContext: true,
+        enableAgentTracking: false,
+      },
+    });
+    // No injected-params registry: forces the rebuild-on-demand path.
+    initEngineState(server, {
+      adapter: v2Adapter,
+      originalList: listHandler,
+    });
+    installCallWrap(server);
+    return server._requestHandlers.get("tools/call");
+  }
+
+  it("bounds the rebuild: a hanging tools/list handler cannot hang tools/call", async () => {
+    vi.useFakeTimers();
+    const wrapped = setupWithoutRegistry(() => new Promise(() => {}));
+
+    const resultPromise = wrapped(
+      {
+        method: "tools/call",
+        params: { name: "echo", arguments: { msg: "hi" } },
+      },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    const result = await resultPromise;
+
+    expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+    expect(writeToLog).toHaveBeenCalledWith(
+      expect.stringContaining("rebuild-on-demand failed"),
+    );
+  });
+
+  it("keeps serving calls when the list handler fails every time", async () => {
+    const wrapped = setupWithoutRegistry(async () => {
+      throw new Error("list boom");
+    });
+
+    for (let i = 0; i < 2; i++) {
+      const result = await wrapped(
+        {
+          method: "tools/call",
+          params: { name: "echo", arguments: { msg: "hi" } },
+        },
+        {},
+      );
+      expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+    }
+  });
+});
+
 describe("finish() fault containment", () => {
   let capture: EventCapture;
   beforeEach(async () => {

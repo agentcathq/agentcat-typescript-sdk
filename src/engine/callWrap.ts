@@ -64,6 +64,14 @@ export function mrtrContinuationTags(extra: unknown): Record<string, string> {
 }
 
 /**
+ * The rebuild runs the CUSTOMER's list handler on the tools/call request
+ * path, so it must be time-bounded: a hanging list handler would otherwise
+ * hang every tool call on this instance. On timeout the call proceeds with
+ * the heuristic strip fallback; the next call retries the rebuild.
+ */
+const REGISTRY_REBUILD_TIMEOUT_MS = 5_000;
+
+/**
  * Registry rebuild-on-demand: a tools/call on an instance that never served
  * tools/list (per-request 2026-era topology) rebuilds the registries by
  * running the original list handler through the same pure injection
@@ -78,11 +86,27 @@ async function ensureRegistries(
   const data = getServerTrackingData(server);
   const originalList = getEngineState(server)?.originalList;
   if (!data || !originalList) return; // heuristic strip fallback applies
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await originalList(
-      { method: "tools/list", params: {} },
-      extra,
+    const listPromise = Promise.resolve(
+      originalList({ method: "tools/list", params: {} }, extra),
     );
+    // The abandoned promise must never surface as an unhandled rejection.
+    listPromise.catch(() => {});
+    const response: any = await Promise.race([
+      listPromise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `tools/list did not respond within ${REGISTRY_REBUILD_TIMEOUT_MS}ms`,
+              ),
+            ),
+          REGISTRY_REBUILD_TIMEOUT_MS,
+        );
+      }),
+    ]);
     const tools = response?.tools;
     if (!Array.isArray(tools)) return;
     const injected = buildInjectedList(data, tools);
@@ -93,6 +117,8 @@ async function ensureRegistries(
     );
   } catch (error) {
     writeToLog(`Warning: registry rebuild-on-demand failed - ${error}`);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
