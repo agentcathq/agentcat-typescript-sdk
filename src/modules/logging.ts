@@ -14,36 +14,73 @@ export function setDiagnosticsSink(fn: ((entry: string) => void) | null): void {
   diagnosticsSink = fn;
 }
 
+export type LogTarget =
+  | { kind: "file"; fs: typeof import("fs"); path: string }
+  | { kind: "console" }
+  | { kind: "silent" };
+
+/**
+ * Decides where log lines go. Pure so the decision is testable:
+ *
+ * - `file`: Node-like runtime with a resolvable home directory.
+ * - `console`: fs/os modules unavailable — an edge isolate (Workers), where
+ *   console is the only sink and no stdio protocol channel exists.
+ * - `silent`: a Node-like runtime whose home directory cannot be resolved
+ *   (containers running an arbitrary UID with no passwd entry, HOME unset).
+ *   Logging is dropped entirely rather than falling back to console:
+ *   stdout IS the JSON-RPC wire for stdio-transport MCP servers, and one
+ *   stray line per event would corrupt the protocol stream. The diagnostics
+ *   sink still receives every entry.
+ */
+export function resolveLogTarget(
+  loadModules: () => {
+    fs: typeof import("fs");
+    os: { homedir?: () => string | undefined };
+    path: { join: (...parts: string[]) => string };
+  },
+): LogTarget {
+  let mods;
+  try {
+    mods = loadModules();
+  } catch {
+    return { kind: "console" };
+  }
+  try {
+    const home = mods.os.homedir?.();
+    if (home) {
+      return {
+        kind: "file",
+        fs: mods.fs,
+        path: mods.path.join(home, "agentcat.log"),
+      };
+    }
+  } catch {
+    // homedir threw (ENOENT on no-passwd-entry containers) — silent below.
+  }
+  return { kind: "silent" };
+}
+
 /**
  * Attempts to initialize Node.js file logging.
- * Falls back to console.log in edge environments where fs/os modules are unavailable.
  */
 function tryInitSync(): void {
   if (initAttempted) return;
   initAttempted = true;
 
-  try {
+  const target = resolveLogTarget(() => {
     // Use createRequire for ESM compatibility
-    // Works in Node.js ESM/CJS, fails gracefully in Workers/edge environments
+    // Works in Node.js ESM/CJS, throws in Workers/edge environments
     const require = createRequire(import.meta.url);
-    const fs = require("fs");
-    const os = require("os");
-    const path = require("path");
-
-    const home = os.homedir?.();
-    if (home) {
-      fsModule = fs;
-      logFilePath = path.join(home, "agentcat.log");
-    } else {
-      // homedir() returned null/undefined - use console fallback
-      useConsoleFallback = true;
-    }
-  } catch {
-    // Module not available or homedir() not implemented - use console fallback
+    return { fs: require("fs"), os: require("os"), path: require("path") };
+  });
+  if (target.kind === "file") {
+    fsModule = target.fs;
+    logFilePath = target.path;
+  } else if (target.kind === "console") {
     useConsoleFallback = true;
-    fsModule = null;
-    logFilePath = null;
   }
+  // "silent": all state stays null — writeToLog drops messages after the
+  // diagnostics tee.
 }
 
 export function writeToLog(message: string): void {
