@@ -271,17 +271,50 @@ class EventQueue {
 
 export const eventQueue = new EventQueue();
 
+/**
+ * Signal-driven shutdown: drain the queue and diagnostics, then RESTORE the
+ * signal's default behavior. Installing any SIGINT/SIGTERM listener disables
+ * Node's default exit, so without the re-raise the first Ctrl+C / kill would
+ * leave the customer's server running as an unkillable zombie until a second
+ * signal — AgentCat must not change process lifecycle. The re-raise is
+ * skipped when the customer has their own listener for the signal: then they
+ * own termination, exactly as they did without AgentCat.
+ *
+ * Exported for tests; the deps parameter exists only as a test seam.
+ */
+export async function runSignalShutdown(
+  signal: NodeJS.Signals,
+  deps: {
+    destroy: () => Promise<void>;
+    flush: () => Promise<void>;
+    listenerCount: (s: NodeJS.Signals) => number;
+    reRaise: (s: NodeJS.Signals) => void;
+  } = {
+    destroy: () => eventQueue.destroy(),
+    flush: () => flushDiagnostics(),
+    listenerCount: (s) => process.listenerCount(s),
+    reRaise: (s) => process.kill(process.pid, s),
+  },
+): Promise<void> {
+  await Promise.allSettled([deps.destroy(), deps.flush()]);
+  try {
+    if (deps.listenerCount(signal) === 0) deps.reRaise(signal);
+  } catch {
+    // Re-raise is best effort; never throw from a signal handler.
+  }
+}
+
 // Register graceful shutdown handlers if available (Node.js only)
 // Edge environments (Cloudflare Workers, etc.) don't have process signals
 try {
   if (typeof process !== "undefined" && typeof process.once === "function") {
-    const shutdown = () => {
+    process.once("SIGINT", () => void runSignalShutdown("SIGINT"));
+    process.once("SIGTERM", () => void runSignalShutdown("SIGTERM"));
+    process.once("beforeExit", () => {
+      // Natural exit path: flush only — no signal to restore.
       void eventQueue.destroy();
       void flushDiagnostics();
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-    process.once("beforeExit", shutdown);
+    });
   }
 } catch {
   // process.once not available in this environment - graceful shutdown handlers not registered
