@@ -223,39 +223,49 @@ export function installCallWrap(server: MCPServerLike): void {
     const { event, resolution, identity, clientInfo } = tracing;
 
     const finish = (result: any) => {
-      let finalResult = result;
-      if (isInputRequiredShape(result)) {
-        // Intermediate round: tag it, decorate nothing — the completing
-        // round carries the mint-back.
-        event.tags = { ...event.tags, [AGENTCAT_TAG_MRTR]: "input_required" };
-      } else {
-        const text = buildMintBackText(resolution);
-        finalResult = text ? appendMintBack(result, text) : result;
-        // Structured mirror, gated by the output-injection registry.
-        // ensureRegistries makes a missing registry rare (rebuild failed);
-        // in that case mirror anyway — the client cannot have a declared
-        // schema we know about.
-        const outputRegistry = getOutputInjectionRegistry(server);
-        if (!outputRegistry || outputRegistry.has(request?.params?.name)) {
-          const mint = buildStructuredMintBack(resolution);
-          if (mint) finalResult = mirrorStructuredMintBack(finalResult, mint);
-        }
-      }
-      if (isToolResultError(result)) {
-        event.isError = true;
-        const capturedError = (extra as any)?.__agentcat_error;
-        if (capturedError) {
-          event.error = captureException(capturedError);
-          delete (extra as any).__agentcat_error;
+      // The handler has already succeeded: nothing in this stage may reach
+      // the client as an error. Any failure here forfeits decoration and
+      // analytics for this call and returns the customer's result untouched.
+      try {
+        let finalResult = result;
+        if (isInputRequiredShape(result)) {
+          // Intermediate round: tag it, decorate nothing — the completing
+          // round carries the mint-back.
+          event.tags = { ...event.tags, [AGENTCAT_TAG_MRTR]: "input_required" };
         } else {
-          event.error = captureException(result);
+          const text = buildMintBackText(resolution);
+          finalResult = text ? appendMintBack(result, text) : result;
+          // Structured mirror, gated by the output-injection registry.
+          // ensureRegistries makes a missing registry rare (rebuild failed);
+          // in that case mirror anyway — the client cannot have a declared
+          // schema we know about.
+          const outputRegistry = getOutputInjectionRegistry(server);
+          if (!outputRegistry || outputRegistry.has(request?.params?.name)) {
+            const mint = buildStructuredMintBack(resolution);
+            if (mint) finalResult = mirrorStructuredMintBack(finalResult, mint);
+          }
         }
+        if (isToolResultError(result)) {
+          event.isError = true;
+          const capturedError = (extra as any)?.__agentcat_error;
+          if (capturedError) {
+            event.error = captureException(capturedError);
+            delete (extra as any).__agentcat_error;
+          } else {
+            event.error = captureException(result);
+          }
+        }
+        // Mint-back is wire-only: the event records the customer's original result.
+        event.response = result;
+        event.duration = new Date().getTime() - startTime.getTime();
+        publishEvent(server, event, { identity, clientInfo });
+        return finalResult;
+      } catch (error) {
+        writeToLog(
+          `Warning: AgentCat post-handler processing failed for tool ${request?.params?.name}; returning the customer's result untouched - ${error}`,
+        );
+        return result;
       }
-      // Mint-back is wire-only: the event records the customer's original result.
-      event.response = result;
-      event.duration = new Date().getTime() - startTime.getTime();
-      publishEvent(server, event, { identity, clientInfo });
-      return finalResult;
     };
 
     try {

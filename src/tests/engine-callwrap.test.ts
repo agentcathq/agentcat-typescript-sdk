@@ -328,3 +328,55 @@ describe("extra projection on captured events", () => {
     expect(extra.http.req.headers["x-agentcat-health-run"]).toBe("run:ts_v2");
   });
 });
+
+describe("finish() fault containment", () => {
+  let capture: EventCapture;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capture = new EventCapture();
+    await capture.start();
+  });
+  afterEach(async () => {
+    await capture.stop();
+  });
+
+  const callEcho = {
+    method: "tools/call",
+    params: { name: "echo", arguments: { msg: "hi" } },
+  };
+
+  it("returns the customer's isError result when a content entry is null", async () => {
+    // A v1 low-level server never validates result shape, so a handler can
+    // legitimately return a content array with a null hole.
+    const customerResult = {
+      isError: true,
+      content: [null, { type: "text", text: "quota exceeded, retry later" }],
+    };
+    const wrapped = trackFake(fakeServer(async () => customerResult));
+
+    const result = await wrapped(callEcho, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual(
+      expect.arrayContaining(customerResult.content),
+    );
+  });
+
+  it("returns the raw customer result when post-handler decoration throws", async () => {
+    // Array.isArray passes but spreading throws — trips appendMintBack
+    // inside finish() after the handler has already succeeded.
+    const evil: any = [{ type: "text", text: "ok" }];
+    evil[Symbol.iterator] = () => {
+      throw new Error("decoration boom");
+    };
+    const customerResult = { content: evil };
+    const wrapped = trackFake(fakeServer(async () => customerResult));
+
+    const result = await wrapped(callEcho, {});
+
+    expect(result).toBe(customerResult);
+    expect(writeToLog).toHaveBeenCalledWith(
+      expect.stringContaining("post-handler"),
+    );
+  });
+});

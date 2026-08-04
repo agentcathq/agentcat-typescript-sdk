@@ -785,10 +785,11 @@ function captureCallToolResultError(
   result: any,
   _contextStack?: Error,
 ): ErrorData {
-  // Extract message from content array
+  // Extract message from content array. Entries are untrusted handler output:
+  // a low-level server can return null/primitive holes, so shape-check first.
   const message =
     result.content
-      ?.filter((c: any) => c.type === "text")
+      ?.filter((c: any) => c && typeof c === "object" && c.type === "text")
       .map((c: any) => c.text)
       .join(" ")
       .trim() || "Unknown error";
