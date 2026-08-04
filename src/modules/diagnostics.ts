@@ -1,6 +1,6 @@
 // src/modules/diagnostics.ts
-import { createRequire } from "module";
 import { setDiagnosticsSink } from "./logging.js";
+import { loadNodeModule, getRuntimeVersions } from "./runtime-versions.js";
 import {
   DIAGNOSTICS_SCOPE_NAME,
   DEFAULT_DIAGNOSTICS_ENDPOINT,
@@ -62,57 +62,6 @@ function attr(key: string, value: string | undefined | null): OtlpAttribute[] {
   return value ? [{ key, value: { stringValue: String(value) } }] : [];
 }
 
-function loadNodeModule<T>(name: string): T | null {
-  try {
-    return createRequire(import.meta.url)(name) as T;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reads an installed package's version even when its exports map seals
- * "./package.json" (the v2 MCP packages do): resolve the entry module,
- * then walk up the real directory tree to the package manifest.
- */
-function readInstalledPackageVersion(name: string): string | null {
-  const direct = loadNodeModule<{ version?: string }>(`${name}/package.json`);
-  if (direct?.version) return direct.version;
-  try {
-    const req = createRequire(import.meta.url);
-    const path = loadNodeModule<typeof import("path")>("path");
-    const fs = loadNodeModule<typeof import("fs")>("fs");
-    if (!path || !fs) return null;
-    // Anchor on the package entry; some packages (e.g. v1 SDK >= 1.30) have
-    // no root "." export, but do export "./package.json" (as a dist stub) —
-    // its dirname is an equally valid starting point for the walk-up.
-    let anchor: string;
-    try {
-      anchor = req.resolve(name);
-    } catch {
-      anchor = req.resolve(`${name}/package.json`);
-    }
-    let dir = path.dirname(anchor);
-    for (let i = 0; i < 6; i++) {
-      const candidate = path.join(dir, "package.json");
-      try {
-        if (fs.existsSync(candidate)) {
-          const pkg = JSON.parse(fs.readFileSync(candidate, "utf8"));
-          if (pkg?.name === name) return pkg.version ?? null;
-        }
-      } catch {
-        // malformed or unreadable manifest at this level; keep climbing
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  } catch {
-    // best-effort
-  }
-  return null;
-}
-
 function computeInstallId(): string | null {
   try {
     const os = loadNodeModule<typeof import("os")>("os");
@@ -140,18 +89,9 @@ function buildStaticAttributes(projectId: string | null): OtlpAttribute[] {
     out.push(...attr("agentcat.sdk.version", packageJson.version));
 
     // Best-effort: resolved MCP SDK versions (both majors are optional peers).
-    out.push(
-      ...attr(
-        "agentcat.mcp_sdk.version",
-        readInstalledPackageVersion("@modelcontextprotocol/sdk"),
-      ),
-    );
-    out.push(
-      ...attr(
-        "agentcat.mcp_sdk_v2.version",
-        readInstalledPackageVersion("@modelcontextprotocol/server"),
-      ),
-    );
+    const versions = getRuntimeVersions();
+    out.push(...attr("agentcat.mcp_sdk.version", versions.mcpV1));
+    out.push(...attr("agentcat.mcp_sdk_v2.version", versions.mcpV2));
 
     // Runtime
     const proc = globalThis.process;
@@ -203,6 +143,24 @@ function inferSeverity(entry: string): { number: number; text: string } {
   return { number: 9, text: "INFO" };
 }
 
+// Version attributes ride on every record (not just the resource) so records
+// stay attributable after pipelines flatten them away from the resource
+// envelope. Built once: the versions cannot change within a process.
+let versionRecordAttributes: OtlpAttribute[] | null = null;
+
+function getVersionRecordAttributes(): OtlpAttribute[] {
+  if (!versionRecordAttributes) {
+    const versions = getRuntimeVersions();
+    versionRecordAttributes = [
+      ...attr("agentcat.sdk.version", versions.sdk),
+      ...attr("process.runtime.version", versions.node),
+      ...attr("agentcat.mcp_sdk.version", versions.mcpV1),
+      ...attr("agentcat.mcp_sdk_v2.version", versions.mcpV2),
+    ];
+  }
+  return versionRecordAttributes;
+}
+
 function buildRecord(entry: string): OtlpLogRecord {
   const sev = inferSeverity(entry);
   return {
@@ -210,7 +168,7 @@ function buildRecord(entry: string): OtlpLogRecord {
     severityNumber: sev.number,
     severityText: sev.text,
     body: { stringValue: entry },
-    attributes: [],
+    attributes: getVersionRecordAttributes(),
   };
 }
 
@@ -323,6 +281,7 @@ export function _resetDiagnosticsForTest(): void {
   enabled = false;
   initialized = false;
   staticAttributes = [];
+  versionRecordAttributes = null;
   buffer = [];
   if (flushTimer) {
     clearTimeout(flushTimer);

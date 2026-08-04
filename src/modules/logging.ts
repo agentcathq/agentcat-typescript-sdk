@@ -1,4 +1,5 @@
 import { createRequire } from "module";
+import { getVersionLogPrefix } from "./runtime-versions.js";
 
 // Lazy-loaded module references for Node.js file logging
 // These are loaded dynamically to support edge environments (Cloudflare Workers, etc.)
@@ -49,7 +50,7 @@ export function writeToLog(message: string): void {
   tryInitSync();
 
   const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] ${message}`;
+  const logEntry = `[${timestamp}] ${getVersionLogPrefix()} ${message}`;
 
   // Tee to diagnostics if registered. Must never break logging.
   try {
