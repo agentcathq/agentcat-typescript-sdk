@@ -54,6 +54,7 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  *   - `otlp`: OpenTelemetry Protocol exporter (see {@link ../modules/exporters/otlp.OTLPExporter})
  *   - `datadog`: Datadog APM exporter (see {@link ../modules/exporters/datadog.DatadogExporter})
  *   - `sentry`: Sentry Monitoring exporter (see {@link ../modules/exporters/sentry.SentryExporter})
+ *   - `posthog`: PostHog analytics exporter (see {@link ../modules/exporters/posthog.PostHogExporter})
  *
  * @returns The tracked server instance.
  *

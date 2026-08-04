@@ -14,8 +14,8 @@ export const DEFAULT_DIAGNOSTICS_TOKEN =
   "dgk_sdk_diag_3f9a2c7e1b8d4065af2e9c1d7b6a4f80";
 
 // ── Explicit handles: agent-facing copy ─────────────────────────────────────
-// Single source of truth: docs/superpowers/specs/2026-07-29-explicit-handles-copy.md
-// Do not reword without updating the copy spec.
+// This copy is read by agents, not humans — its exact wording drives whether
+// agents echo handles back correctly. Do not reword casually.
 
 export const SESSION_ID_PARAM_DESCRIPTION =
   "REQUIRED on every call after your first. This MCP server associates all of your tool calls for a given task using session_id; a call that arrives without it cannot be associated with your earlier work and is treated as the start of an unrelated task, disconnected from the original goal. Omit it on your first call only — the server will issue one in the _mcp_instructions field of the result (or a trailing [MCP INSTRUCTIONS] text block) — then echo that exact value on every later call. Never invent a value, and do not issue parallel tool calls until the server has issued your session_id. One session_id covers the whole goal from start to finish: when you spawn subagents you MUST give them this same session_id, or their work is severed from yours. Without session_id, this server does not function as intended.";

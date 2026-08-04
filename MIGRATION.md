@@ -2,7 +2,7 @@
 
 MCP protocol 2026-07-28 (SEP-2567) removed protocol-level sessions, so AgentCat now correlates work with two explicit, server-minted handles that agents echo back as tool parameters:
 
-- `session_id` — one goal, start to finish. Subagents share their parent's session_id. It is stored in the existing `sessionId` event field with the same `ses`_ prefix, so dashboards, queries, and exporters are unaffected.
+- `session_id` — one goal, start to finish. Subagents share their parent's session_id. It is stored in the existing `sessionId` event field with the same `ses_` prefix, so dashboards, queries, and exporters are unaffected.
 - `agent_id` — one per agent; subagents get their own. Rides on events as the `agentcat_agent_id` tag. Off by default — opt in with `enableAgentTracking: true`.
 
 ### This changes your tools' public interface
@@ -77,7 +77,7 @@ agentcat.track(server, "proj_abc", {
 
 # Migrating from `mcpcat` to `agentcat`
 
-MCPcat is now **AgentCat** — same team, same product, new name. The npm package has been renamed from `mcpcat` to `[agentcat](https://www.npmjs.com/package/agentcat)`, starting fresh at `v1.0.0`.
+MCPcat is now **AgentCat** — same team, same product, new name. The npm package has been renamed from `mcpcat` to [`agentcat`](https://www.npmjs.com/package/agentcat), with its own version line (v1.0.0 at the rename; now v2).
 
 ## Nothing breaks if you stay
 
@@ -94,7 +94,7 @@ If you never touch your integration, nothing stops working. Migrate on your own 
 
 |                   | `mcpcat` (old)                                      | `agentcat` (new)                                          |
 | ----------------- | --------------------------------------------------- | --------------------------------------------------------- |
-| npm package       | `mcpcat`                                            | `agentcat` (starts at `v1.0.0`)                           |
+| npm package       | `mcpcat`                                            | `agentcat`                                                |
 | Import            | `import * as mcpcat from "mcpcat"`                  | `import * as agentcat from "agentcat"`                    |
 | Default endpoint  | `https://api.mcpcat.io`                             | `https://api.agentcat.com`                                |
 | Public types      | `MCPCatOptions` / `MCPCatData` / `MCPCatIDPrefixes` | `AgentCatOptions` / `AgentCatData` / `AgentCatIDPrefixes` |
