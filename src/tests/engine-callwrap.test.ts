@@ -557,23 +557,30 @@ describe("registry rebuild bounding", () => {
   }
 
   it("bounds the rebuild: a hanging tools/list handler cannot hang tools/call", async () => {
+    // Fake timers are restored inside the test so afterEach stays trivial —
+    // a hook doing cleanup for a failed fake-timer state has blown CI's
+    // hook timeout before.
     vi.useFakeTimers();
-    const wrapped = setupWithoutRegistry(() => new Promise(() => {}));
+    try {
+      const wrapped = setupWithoutRegistry(() => new Promise(() => {}));
 
-    const resultPromise = wrapped(
-      {
-        method: "tools/call",
-        params: { name: "echo", arguments: { msg: "hi" } },
-      },
-      {},
-    );
-    await vi.advanceTimersByTimeAsync(5_000);
-    const result = await resultPromise;
+      const resultPromise = wrapped(
+        {
+          method: "tools/call",
+          params: { name: "echo", arguments: { msg: "hi" } },
+        },
+        {},
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await resultPromise;
 
-    expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
-    expect(writeToLog).toHaveBeenCalledWith(
-      expect.stringContaining("rebuild-on-demand failed"),
-    );
+      expect(result.content.some((c: any) => c?.text === "ok")).toBe(true);
+      expect(writeToLog).toHaveBeenCalledWith(
+        expect.stringContaining("rebuild-on-demand failed"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps serving calls when the list handler fails every time", async () => {

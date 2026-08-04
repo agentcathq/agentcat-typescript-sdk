@@ -35,12 +35,17 @@ export const setupTestHooks = () => {
 // Event capture helper for testing
 export class EventCapture {
   private capturedEvents: Event[] = [];
+  private eq?: any;
   private originalEventQueueAdd?: (event: Event) => void;
   private originalSendEvent?: (event: Event, retries?: number) => Promise<void>;
 
   async start() {
+    // The queue reference is kept on the instance so stop() never has to
+    // re-import — a dynamic import in afterEach can stall on loaded CI
+    // runners (vite-node module RPC) and blow the hook timeout.
     const eventQueueModule = await import("../modules/eventQueue.js");
-    const eq = eventQueueModule.eventQueue as any;
+    this.eq = eventQueueModule.eventQueue as any;
+    const eq = this.eq;
     this.originalEventQueueAdd = eq.add.bind(eq);
     this.originalSendEvent = eq.sendEvent.bind(eq);
 
@@ -56,13 +61,12 @@ export class EventCapture {
   }
 
   async stop() {
-    if (this.originalEventQueueAdd && this.originalSendEvent) {
-      const eventQueueModule = await import("../modules/eventQueue.js");
-      const eq = eventQueueModule.eventQueue as any;
-      eq.add = this.originalEventQueueAdd;
-      eq.sendEvent = this.originalSendEvent;
+    if (this.eq && this.originalEventQueueAdd && this.originalSendEvent) {
+      this.eq.add = this.originalEventQueueAdd;
+      this.eq.sendEvent = this.originalSendEvent;
       this.originalEventQueueAdd = undefined;
       this.originalSendEvent = undefined;
+      this.eq = undefined;
     }
   }
 
