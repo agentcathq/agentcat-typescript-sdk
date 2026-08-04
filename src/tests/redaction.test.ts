@@ -38,6 +38,38 @@ describe("redactEvent", () => {
     expect(mockRedactFn).toHaveBeenCalledWith("sensitive user intent");
   });
 
+  it("terminates on circular structures, preserving the cycle in the clone", async () => {
+    // Express-style req.res.req cycle with a string before the back-edge —
+    // the shape that starves the event loop when the walker has no cycle guard.
+    const req: any = { url: "/checkout", token: "secret" };
+    const res: any = { statusText: "oops", req };
+    req.res = res;
+    const event: UnredactedEvent = {
+      parameters: { request: req },
+    } as any;
+
+    const redacted: any = await redactEvent(event, mockRedactFn);
+
+    expect(redacted.parameters.request.url).toBe("[REDACTED-9]");
+    expect(redacted.parameters.request.res.statusText).toBe("[REDACTED-4]");
+    // Back-edge resolves to the already-built clone, not a fresh walk.
+    expect(redacted.parameters.request.res.req).toBe(
+      redacted.parameters.request,
+    );
+  });
+
+  it("redacts a shared (non-circular) reference once and reuses the clone", async () => {
+    const shared: any = { note: "shared secret" };
+    const event: UnredactedEvent = {
+      parameters: { a: shared, b: shared },
+    } as any;
+
+    const redacted: any = await redactEvent(event, mockRedactFn);
+
+    expect(redacted.parameters.a.note).toBe("[REDACTED-13]");
+    expect(redacted.parameters.a).toBe(redacted.parameters.b);
+  });
+
   it("should not redact protected fields", async () => {
     const event: UnredactedEvent = {
       sessionId: "ses_123",

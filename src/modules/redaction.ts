@@ -34,6 +34,11 @@ const PROTECTED_FIELDS = new Set([
  * @param redactFn - The redaction function to apply to each string
  * @param path - The current path in the object tree (used to check protected fields)
  * @param isProtected - Whether the current object/value is within a protected field
+ * @param seen - Clones of objects already visited on this walk. Cycles in
+ *   customer-supplied data (hook payloads, tool responses) must terminate:
+ *   because each level suspends at an await, an unguarded cycle starves the
+ *   event loop and dies in an uncatchable V8 heap-limit abort rather than a
+ *   stack overflow. Same policy as normalize() in truncation.ts.
  * @returns A new object with all strings redacted
  */
 async function redactStringsInObject(
@@ -41,6 +46,7 @@ async function redactStringsInObject(
   redactFn: RedactFunction,
   path: string = "",
   isProtected: boolean = false,
+  seen: WeakMap<object, any> = new WeakMap(),
 ): Promise<any> {
   if (obj === null || obj === undefined) {
     return obj;
@@ -57,11 +63,21 @@ async function redactStringsInObject(
 
   // Handle arrays
   if (Array.isArray(obj)) {
-    return Promise.all(
-      obj.map((item, index) =>
-        redactStringsInObject(item, redactFn, `${path}[${index}]`, isProtected),
-      ),
-    );
+    const existing = seen.get(obj);
+    if (existing) return existing;
+    const redactedArr: any[] = [];
+    // Register the clone BEFORE descending so a back-edge resolves to it.
+    seen.set(obj, redactedArr);
+    for (let index = 0; index < obj.length; index++) {
+      redactedArr[index] = await redactStringsInObject(
+        obj[index],
+        redactFn,
+        `${path}[${index}]`,
+        isProtected,
+        seen,
+      );
+    }
+    return redactedArr;
   }
 
   // Handle dates (don't redact)
@@ -71,7 +87,11 @@ async function redactStringsInObject(
 
   // Handle objects
   if (typeof obj === "object") {
+    const existing = seen.get(obj);
+    if (existing) return existing;
     const redactedObj: any = {};
+    // Register the clone BEFORE descending so a back-edge resolves to it.
+    seen.set(obj, redactedObj);
 
     for (const [key, value] of Object.entries(obj)) {
       // Skip functions and undefined values
@@ -89,6 +109,7 @@ async function redactStringsInObject(
         redactFn,
         fieldPath,
         isFieldProtected,
+        seen,
       );
     }
 
