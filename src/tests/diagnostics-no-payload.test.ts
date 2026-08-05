@@ -48,7 +48,7 @@ describe("diagnostics sink never receives event payloads", () => {
     await cleanup();
   });
 
-  it("identify log carries the actor id but never userName/userData (PII)", async () => {
+  it("resolved identity is stamped on the event but never reaches the sink", async () => {
     const userId = `actor-${randomUUID()}`;
     const SECRET_NAME = `name-${randomUUID()}`;
     const SECRET_DATA = `data-${randomUUID()}`;
@@ -76,13 +76,17 @@ describe("diagnostics sink never receives event payloads", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const identifyLine = captured.find((l) => l.includes("Identified session"));
-    expect(identifyLine).toBeDefined();
-    expect(identifyLine).toContain(userId); // the actor id is metadata — fine
+    // Identity now rides on the event itself — there is no identify event and
+    // no "Identified session" diagnostics line to carry it.
+    const toolCallEvent = eventCapture.findEventByType("mcp:tools/call");
+    expect(toolCallEvent).toBeDefined();
+    expect(toolCallEvent!.identifyActorGivenId).toBe(userId);
+    expect(toolCallEvent!.identifyActorName).toBe(SECRET_NAME);
 
-    // No identity PII (name / custom data) is ever published, and the old
-    // full-object dump is gone.
+    // No identity data — id, name or custom payload — is ever published to the
+    // diagnostics sink, and the old full-object dump is gone.
     expect(captured.some((l) => l.includes("with identity:"))).toBe(false);
+    expect(captured.some((l) => l.includes(userId))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_NAME))).toBe(false);
     expect(captured.some((l) => l.includes(SECRET_DATA))).toBe(false);
   });
@@ -97,10 +101,12 @@ describe("diagnostics sink never receives event payloads", () => {
       l.includes("AgentCat setup complete"),
     );
 
-    // Start beacon anchors the install to its project id and server type.
+    // Start beacon anchors the install to its project id and the detection
+    // fingerprint (SDK major/flavor + raw feature-detection signals).
     expect(started).toBeDefined();
     expect(started).toContain("test-project");
-    expect(started).toContain("server high-level");
+    expect(started).toContain("sdk v1/high");
+    expect(started).toContain("signals ");
 
     // Complete beacon confirms success and records the resolved feature flags.
     expect(complete).toBeDefined();

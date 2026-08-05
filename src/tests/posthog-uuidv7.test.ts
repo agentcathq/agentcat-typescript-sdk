@@ -71,9 +71,29 @@ describe("toUUIDv7", () => {
 
   it("should handle invalid KSUID gracefully with fallback timestamp", () => {
     const result = toUUIDv7("ses_invalid_ksuid_string");
-    // Should still produce a valid UUIDv7 (falls back to Date.now())
+    // Should still produce a valid UUIDv7 (hash-derived fallback timestamp)
     expect(uuidValidate(result)).toBe(true);
     expect(uuidVersion(result)).toBe(7);
+  });
+
+  it("should be deterministic for non-KSUID input (fallback path)", async () => {
+    const first = toUUIDv7("my-customer-task-id");
+    // Cross a millisecond boundary to prove the fallback ignores wall time.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = toUUIDv7("my-customer-task-id");
+    expect(first).toBe(second);
+  });
+
+  it("should produce different UUIDs for different non-KSUID inputs", () => {
+    expect(toUUIDv7("task-a")).not.toBe(toUUIDv7("task-b"));
+  });
+
+  it("should be deterministic for empty-string input", async () => {
+    const first = toUUIDv7("");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(toUUIDv7("")).toBe(first);
+    expect(uuidValidate(first)).toBe(true);
+    expect(uuidVersion(first)).toBe(7);
   });
 
   it("should produce timestamps that are before or equal to current time", () => {

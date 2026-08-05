@@ -11,6 +11,9 @@ import KSUID from "../../thirdparty/ksuid/index.js";
  * and a SHA-256 hash of the full ID for the random bits.
  */
 export function toUUIDv7(prefixedId: string): string {
+  // Hash the full ID for deterministic random bits (and fallback timestamp)
+  const hash = createHash("sha256").update(prefixedId).digest();
+
   // Strip prefix (ses_, evt_, etc.) and parse KSUID
   const ksuidStr = prefixedId.replace(/^[a-z]+_/, "");
   let timestampMs: number;
@@ -18,12 +21,11 @@ export function toUUIDv7(prefixedId: string): string {
     const ksuid = KSUID.parse(ksuidStr);
     timestampMs = ksuid.date.getTime();
   } catch {
-    // Fallback: if KSUID parsing fails, use current time
-    timestampMs = Date.now();
+    // Fallback: non-KSUID input (e.g. verbatim customer session IDs). Derive the
+    // 48-bit timestamp from the hash so the same input always yields the same
+    // UUIDv7 — Date.now() here would fragment one task across sessions.
+    timestampMs = hash.readUIntBE(10, 6);
   }
-
-  // Hash the full ID for deterministic random bits
-  const hash = createHash("sha256").update(prefixedId).digest();
 
   const buf = Buffer.alloc(16);
 
@@ -157,9 +159,13 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $session_id: toUUIDv7(event.sessionId),
       source: AGENTCAT_SOURCE,
     };
+    // Sessionless events (empty sessionId) get no $session_id at all —
+    // synthesizing one would group unrelated events into a fake session.
+    if (event.sessionId) {
+      properties.$session_id = toUUIDv7(event.sessionId);
+    }
 
     if (event.resourceName) {
       properties.resource_name = event.resourceName;
@@ -224,8 +230,10 @@ export class PostHogExporter implements Exporter {
 
     const properties: Record<string, any> = {
       $exception_source: "backend",
-      $session_id: toUUIDv7(event.sessionId),
     };
+    if (event.sessionId) {
+      properties.$session_id = toUUIDv7(event.sessionId);
+    }
 
     if (event.error) {
       if (event.error.message) {
@@ -265,14 +273,18 @@ export class PostHogExporter implements Exporter {
     const timestamp = getTimestamp(event);
 
     const properties: Record<string, any> = {
-      $ai_session_id: `agentcat_${event.sessionId}`,
-      $ai_trace_id: toUUIDv7(event.sessionId),
+      // Sessionless events fall back to a per-event trace; $ai_session_id and
+      // $session_id are omitted rather than synthesized from "".
+      $ai_trace_id: toUUIDv7(event.sessionId || event.id),
       $ai_span_id: toUUIDv7(event.id),
       $ai_span_name: event.resourceName || "unknown_tool",
       $ai_is_error: event.isError || false,
-      $session_id: toUUIDv7(event.sessionId),
       source: AGENTCAT_SOURCE,
     };
+    if (event.sessionId) {
+      properties.$ai_session_id = `agentcat_${event.sessionId}`;
+      properties.$session_id = toUUIDv7(event.sessionId);
+    }
 
     if (event.duration !== undefined) {
       properties.$ai_latency = event.duration / 1000;

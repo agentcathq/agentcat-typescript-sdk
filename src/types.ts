@@ -1,10 +1,29 @@
-import { CallToolResult } from "@modelcontextprotocol/sdk/types";
-
 export interface AgentCatOptions {
   enableReportMissing?: boolean;
   enableTracing?: boolean;
   enableToolCallContext?: boolean;
   customContextDescription?: string;
+  /**
+   * Default false. Set true to inject a required agent_id parameter into every
+   * tool. Agents self-generate the value (model|harness|nonce, e.g.
+   * "opus-4.80-1m|claude-code|k3n9x"); it is echoed back in _mcp_instructions
+   * and stamped on events as tags. Omission never rejects a call server-side —
+   * the event is simply published without agent identity. The intended
+   * enforcement is client-side: a strict schema-validating MCP client will
+   * refuse to send a call that omits a required agent_id in the first place.
+   */
+  enableAgentTracking?: boolean;
+  /**
+   * Hook mode: you manage task state. When configured, AgentCat injects no
+   * session_id parameter and prompts no task instructions; the returned value is
+   * combined with the project ID into a deterministic ses_ KSUID. Nullish
+   * returns and throws mint silently — a configured hook should answer every
+   * request.
+   */
+  resolveSessionId?: (
+    request: any,
+    extra?: CompatibleRequestHandlerExtra,
+  ) => string | null | Promise<string | null>;
   identify?: (
     request: any,
     extra?: CompatibleRequestHandlerExtra,
@@ -24,14 +43,21 @@ export interface AgentCatOptions {
   ) => Record<string, any> | null | Promise<Record<string, any> | null>;
 }
 
+export interface CompatibleToolResult {
+  content?: Array<Record<string, unknown>>;
+  structuredContent?: unknown;
+  isError?: boolean;
+  [key: string]: unknown;
+}
+
 export type ToolCallback =
   | ((
       args: any,
       extra: CompatibleRequestHandlerExtra,
-    ) => CallToolResult | Promise<CallToolResult>)
+    ) => CompatibleToolResult | Promise<CompatibleToolResult>)
   | ((
       extra: CompatibleRequestHandlerExtra,
-    ) => CallToolResult | Promise<CallToolResult>);
+    ) => CompatibleToolResult | Promise<CompatibleToolResult>);
 
 // RegisteredTool type that supports both MCP SDK 1.23- (callback) and 1.24+ (handler)
 export type RegisteredTool = {
@@ -59,8 +85,9 @@ export interface Exporter {
 }
 
 export enum AgentCatIDPrefixes {
-  Session = "ses",
+  Session = "ses", // Session IDs deliberately keep this prefix
   Event = "evt",
+  Agent = "agt",
 }
 
 export interface Event {
@@ -108,15 +135,46 @@ export interface Event {
   identifyData?: object; // Legacy name for identifyActorData
 }
 
+/**
+ * Promises for customer-hook results, fired at request start and resolved in
+ * the background event pipeline — customer hooks never hold up the tool call.
+ * Every promise here is constructed non-rejecting (hook failures resolve to
+ * null). Never serialized: detached at the top of processEvent before any
+ * pipeline stage or the wire payload can see it.
+ */
+export interface PendingEventFields {
+  /** Raw resolveSessionId hook value (pre-derivation). */
+  sessionHookValue?: Promise<string | null>;
+  identity?: Promise<UserIdentity | null>;
+  tags?: Promise<Record<string, string> | null>;
+  properties?: Promise<Record<string, any> | null>;
+}
+
 export interface UnredactedEvent extends Partial<Event> {
   redactionFn?: RedactFunction; // Optional redaction function for sensitive data
   eventRedactionFn?: RedactEventFunction; // Optional whole-event redaction hook
+  pending?: PendingEventFields; // Deferred hook results, applied in the queue
 }
 
-// Use our own minimal interface for what we actually need
+/**
+ * Duck type over the second argument the MCP SDK passes to request handlers,
+ * covering both supported majors:
+ * - v1 (`@modelcontextprotocol/sdk`): the SDK's `RequestHandlerExtra` —
+ *   e.g. `sessionId`, `authInfo`, `requestId`.
+ * - v2 (`@modelcontextprotocol/server`): the SDK's `ServerContext` —
+ *   `{ sessionId, mcpReq, http }`; note `http?.req?.headers` is a Web
+ *   `Headers` object (use `.get("x-header")`, not bracket access).
+ *
+ * Only `sessionId` is common to both; everything else is reached through the
+ * index signature and is SDK-version-specific.
+ */
 export interface CompatibleRequestHandlerExtra {
+  /**
+   * The MCP transport session, assigned by the SDK and reset on reconnect.
+   * NOT AgentCat's `session_id` handle, which outlives the transport — that
+   * one is the agent-echoed tool parameter stored in `Event.sessionId`.
+   */
   sessionId?: string;
-  headers?: Record<string, string | string[]>;
   [key: string]: any;
 }
 
@@ -178,20 +236,14 @@ export interface SessionInfo {
   serverVersion?: string;
   clientName?: string;
   clientVersion?: string;
-  identifyActorGivenId?: string; // Actor ID for agentcat:identify events
-  identifyActorName?: string; // Actor name for agentcat:identify events
+  identifyActorGivenId?: string; // Actor identity stamped on every event
+  identifyActorName?: string; // Actor identity stamped on every event
   identifyActorData?: object;
 }
 
 export interface AgentCatData {
-  projectId: string; // Project ID for AgentCat
-  sessionId: string; // Unique identifier for the session (KSUID with ses prefix)
-  lastActivity: Date; // Last activity timestamp
-  identifiedSessions: Map<string, UserIdentity>;
-  sessionInfo: SessionInfo;
+  projectId: string; // Project ID for AgentCat ("" in telemetry-only mode)
   options: AgentCatOptions;
-  lastMcpSessionId?: string; // Track the last MCP sessionId we saw
-  sessionSource: "mcp" | "agentcat"; // Track whether session ID came from MCP protocol or AgentCat generation
 }
 
 // Error tracking types
@@ -223,6 +275,8 @@ export interface ErrorData {
 
 // Custom event types for publishCustomEvent function
 export interface CustomEventData {
+  /** Session ID to attribute this event to. Takes precedence over a session-id string argument. */
+  sessionId?: string;
   resourceName?: string;
   parameters?: any;
   response?: any;

@@ -3,6 +3,10 @@ import {
   AGENTCAT_CUSTOM_EVENT_TYPE,
   AGENTCAT_SOURCE,
   DIAGNOSTICS_SCOPE_NAME,
+  SESSION_ID_PARAM_DESCRIPTION,
+  AGENT_ID_PARAM_DESCRIPTION,
+  AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
+  MCP_INSTRUCTIONS_KEY,
 } from "../modules/constants.js";
 
 describe("brand constants (wire literals)", () => {
@@ -16,5 +20,22 @@ describe("brand constants (wire literals)", () => {
 
   it("uses the agentcat diagnostics scope name", () => {
     expect(DIAGNOSTICS_SCOPE_NAME).toBe("agentcat-diagnostics");
+  });
+});
+
+describe("handle param descriptions name the delivery channel", () => {
+  it("session_id describes server-issued delivery via _mcp_instructions", () => {
+    expect(SESSION_ID_PARAM_DESCRIPTION).toContain(MCP_INSTRUCTIONS_KEY);
+    expect(SESSION_ID_PARAM_DESCRIPTION).toContain("[MCP INSTRUCTIONS]");
+  });
+
+  it("agent_id describes self-chosen generation, not server delivery", () => {
+    for (const description of [
+      AGENT_ID_PARAM_DESCRIPTION,
+      AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
+    ]) {
+      expect(description).toContain("generate its own");
+      expect(description).toContain("opus-4.80-1m|claude-code|k3n9x");
+    }
   });
 });

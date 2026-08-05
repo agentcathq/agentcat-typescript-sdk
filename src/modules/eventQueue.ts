@@ -4,20 +4,33 @@ import {
   PublishEventRequest,
   PublishEventRequestEventTypeEnum,
 } from "agentcat-api";
-import { Event, UnredactedEvent, MCPServerLike } from "../types.js";
+import {
+  Event,
+  UnredactedEvent,
+  MCPServerLike,
+  ServerClientInfoLike,
+} from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
-import { getSessionInfo } from "./session.js";
+import { buildSessionInfo } from "./session.js";
 import { applyEventRedaction, redactEvent } from "./redaction.js";
+import { applyPendingEventFields } from "./pendingEvent.js";
 import { sanitizeEvent } from "./sanitization.js";
 import { truncateEvent } from "./truncation.js";
 import KSUID from "../thirdparty/ksuid/index.js";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
 import { TelemetryManager } from "./telemetry.js";
 import { flushDiagnostics } from "./diagnostics.js";
+import { registerBackgroundTask } from "./backgroundTasks.js";
+
+interface QueuedEvent {
+  event: UnredactedEvent;
+  delivery: Promise<void>;
+  settle: () => void;
+}
 
 class EventQueue {
-  private queue: UnredactedEvent[] = [];
+  private queue: QueuedEvent[] = [];
   private processing = false;
   private maxRetries = 3;
   private maxQueueSize = 10000; // Prevent unbounded growth
@@ -41,14 +54,31 @@ class EventQueue {
   }
 
   add(event: UnredactedEvent): void {
+    let settleDelivery: () => void = () => {};
+    const delivery = new Promise<void>((resolve) => {
+      settleDelivery = resolve;
+    });
+    const queuedEvent: QueuedEvent = {
+      event,
+      delivery,
+      settle: settleDelivery,
+    };
+
     // Drop oldest events if queue is full (or implement your preferred strategy)
     if (this.queue.length >= this.maxQueueSize) {
       writeToLog("Event queue full, dropping oldest event");
-      this.queue.shift();
+      this.queue.shift()?.settle();
     }
 
-    this.queue.push(event);
-    this.process();
+    this.queue.push(queuedEvent);
+
+    // Only AgentCat ingestion is protected. Telemetry-only events and custom
+    // exporters retain their existing best-effort lifecycle.
+    if (event.projectId) {
+      registerBackgroundTask(delivery);
+    }
+
+    void this.process();
   }
 
   private async process(): Promise<void> {
@@ -57,8 +87,31 @@ class EventQueue {
     this.processing = true;
 
     while (this.queue.length > 0 && this.activeRequests < this.concurrency) {
-      const event = this.queue.shift();
-      if (!event) continue;
+      const queuedEvent = this.queue.shift();
+      if (!queuedEvent) continue;
+
+      this.activeRequests++;
+      void this.processEvent(queuedEvent);
+    }
+
+    this.processing = false;
+  }
+
+  private async processEvent(queuedEvent: QueuedEvent): Promise<void> {
+    const { event } = queuedEvent;
+
+    try {
+      // Stage 0: resolve deferred hook results. Detach FIRST so no later
+      // stage, hook input, or serializer can ever see the promises.
+      const pending = event.pending;
+      if (pending) {
+        delete event.pending;
+        try {
+          await applyPendingEventFields(event, pending);
+        } catch (error) {
+          writeToLog(`Failed to resolve pending hook results: ${error}`);
+        }
+      }
 
       if (event.eventRedactionFn) {
         const eventRedactionFn = event.eventRedactionFn;
@@ -66,11 +119,11 @@ class EventQueue {
         try {
           if (!(await applyEventRedaction(event, eventRedactionFn))) {
             writeToLog("Event dropped by redactEvent hook");
-            continue;
+            return;
           }
         } catch (error) {
           writeToLog(`Failed to redact event (event-level hook): ${error}`);
-          continue;
+          return;
         }
       }
 
@@ -81,7 +134,7 @@ class EventQueue {
           Object.assign(event, redactedEvent);
         } catch (error) {
           writeToLog(`Failed to redact event: ${error}`);
-          continue;
+          return;
         }
       }
 
@@ -89,24 +142,27 @@ class EventQueue {
         Object.assign(event, sanitizeEvent(event));
       } catch (error) {
         writeToLog(`Failed to sanitize event: ${error}`);
-        continue;
+        return;
       }
+
       try {
         Object.assign(event, truncateEvent(event));
       } catch (error) {
         writeToLog(`Failed to truncate event: ${error}`);
-        continue;
+        return;
       }
 
       event.id = event.id || (await KSUID.withPrefix("evt").random());
-      this.activeRequests++;
-      this.sendEvent(event as Event).finally(() => {
-        this.activeRequests--;
-        this.process();
-      });
+      await this.sendEvent(event as Event);
+    } catch (error) {
+      writeToLog(
+        `Failed to deliver AgentCat event after retries: ${getMCPCompatibleErrorMessage(error)}`,
+      );
+    } finally {
+      queuedEvent.settle();
+      this.activeRequests--;
+      void this.process();
     }
-
-    this.processing = false;
   }
 
   private toPublishEventRequest(event: Event): PublishEventRequest {
@@ -115,7 +171,7 @@ class EventQueue {
       id: event.id,
       // Safe: sendEvent only publishes when event.projectId is truthy
       projectId: event.projectId!,
-      sessionId: event.sessionId,
+      sessionId: event.sessionId || null,
       timestamp: event.timestamp,
       duration: event.duration,
 
@@ -227,29 +283,74 @@ class EventQueue {
 
 export const eventQueue = new EventQueue();
 
+/**
+ * Signal-driven shutdown: drain the queue and diagnostics, then RESTORE the
+ * signal's default behavior. Installing any SIGINT/SIGTERM listener disables
+ * Node's default exit, so without the re-raise the first Ctrl+C / kill would
+ * leave the customer's server running as an unkillable zombie until a second
+ * signal — AgentCat must not change process lifecycle. The re-raise is
+ * skipped when the customer has their own listener for the signal: then they
+ * own termination, exactly as they did without AgentCat.
+ *
+ * Exported for tests; the deps parameter exists only as a test seam.
+ */
+export async function runSignalShutdown(
+  signal: NodeJS.Signals,
+  deps: {
+    destroy: () => Promise<void>;
+    flush: () => Promise<void>;
+    listenerCount: (s: NodeJS.Signals) => number;
+    reRaise: (s: NodeJS.Signals) => void;
+  } = {
+    destroy: () => eventQueue.destroy(),
+    flush: () => flushDiagnostics(),
+    listenerCount: (s) => process.listenerCount(s),
+    reRaise: (s) => process.kill(process.pid, s),
+  },
+): Promise<void> {
+  await Promise.allSettled([deps.destroy(), deps.flush()]);
+  try {
+    if (deps.listenerCount(signal) === 0) deps.reRaise(signal);
+  } catch {
+    // Re-raise is best effort; never throw from a signal handler.
+  }
+}
+
 // Register graceful shutdown handlers if available (Node.js only)
 // Edge environments (Cloudflare Workers, etc.) don't have process signals
 try {
   if (typeof process !== "undefined" && typeof process.once === "function") {
-    const shutdown = () => {
+    process.once("SIGINT", () => void runSignalShutdown("SIGINT"));
+    process.once("SIGTERM", () => void runSignalShutdown("SIGTERM"));
+    process.once("beforeExit", () => {
+      // Natural exit path: flush only — no signal to restore.
       void eventQueue.destroy();
       void flushDiagnostics();
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-    process.once("beforeExit", shutdown);
+    });
   }
 } catch {
   // process.once not available in this environment - graceful shutdown handlers not registered
 }
 
+let currentTelemetryManager: TelemetryManager | undefined;
+
 export function setTelemetryManager(telemetryManager: TelemetryManager): void {
+  currentTelemetryManager = telemetryManager;
   eventQueue.setTelemetryManager(telemetryManager);
+}
+
+export function getTelemetryManager(): TelemetryManager | undefined {
+  return currentTelemetryManager;
+}
+
+export interface PublishEventContext {
+  clientInfo?: ServerClientInfoLike;
 }
 
 export function publishEvent(
   server: MCPServerLike,
   eventInput: UnredactedEvent,
+  context?: PublishEventContext,
 ): void {
   const data = getServerTrackingData(server);
   if (!data) {
@@ -263,7 +364,14 @@ export function publishEvent(
     return;
   }
 
-  const sessionInfo = getSessionInfo(server, data);
+  // Identity is no longer passed at publish time: the identify hook is
+  // deferred, and its result lands via event.pending in the queue's stage 0.
+  // buildSessionInfo's anonymous defaults are the correct pre-identity state.
+  const sessionInfo = buildSessionInfo(
+    server,
+    null,
+    context?.clientInfo ?? server.getClientVersion(),
+  );
 
   // Calculate duration if not provided
   const duration =
@@ -276,7 +384,7 @@ export function publishEvent(
   const fullEvent: UnredactedEvent = {
     // Core fields (id will be generated later in the queue)
     id: eventInput.id || "",
-    sessionId: eventInput.sessionId || data.sessionId,
+    sessionId: eventInput.sessionId || "",
     projectId: data.projectId,
 
     // Event metadata
@@ -309,6 +417,9 @@ export function publishEvent(
     // Preserve redaction functions
     redactionFn: eventInput.redactionFn,
     eventRedactionFn: eventInput.eventRedactionFn ?? data.options.redactEvent,
+
+    // Deferred hook results, resolved in the queue's stage 0
+    pending: eventInput.pending,
 
     // Customer-defined metadata
     tags: eventInput.tags,

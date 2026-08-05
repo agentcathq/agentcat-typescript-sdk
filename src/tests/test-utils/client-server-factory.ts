@@ -89,6 +89,21 @@ export async function setupTestServerAndClient() {
     },
   );
 
+  server.registerTool(
+    "get_stats",
+    {
+      description: "Get todo stats",
+      inputSchema: {},
+      outputSchema: {
+        count: z.number().describe("Number of todos"),
+      },
+    },
+    async () => ({
+      content: [{ type: "text", text: `${todos.length} todos` }],
+      structuredContent: { count: todos.length },
+    }),
+  );
+
   // Create client instance
   const client = new Client(
     {

@@ -6,18 +6,30 @@ import { setupTestHooks } from "./test-utils.js";
 vi.mock("agentcat-api");
 vi.mock("../modules/logging.js");
 vi.mock("../modules/internal.js");
-vi.mock("../modules/session.js");
+// Session metadata is now built per event by buildSessionInfo(server, identity,
+// clientInfo) — there is no cached session-info getter to mock any more.
+vi.mock("../modules/session.js", () => ({
+  buildSessionInfo: vi.fn(),
+  getClientInfoForRequest: vi.fn(),
+  getProtocolVersion: vi.fn(),
+}));
 vi.mock("../thirdparty/ksuid/index.js");
 
 // Import mocked modules
 import { Configuration, EventsApi } from "agentcat-api";
 import { writeToLog } from "../modules/logging.js";
 import { getServerTrackingData } from "../modules/internal.js";
-import { getSessionInfo } from "../modules/session.js";
+import { buildSessionInfo } from "../modules/session.js";
 import KSUID from "../thirdparty/ksuid/index.js";
+import { setBackgroundTaskRegistrar } from "../modules/backgroundTasks.js";
 
 // Import the module under test - need to do this after mocking
 const { publishEvent, eventQueue } = await import("../modules/eventQueue.js");
+
+// publishEvent falls back to server.getClientVersion() when no clientInfo is
+// supplied on the context, so every mock server must expose it.
+const makeMockServer = (): MCPServerLike =>
+  ({ getClientVersion: () => undefined }) as any as MCPServerLike;
 
 describe("EventQueue", () => {
   setupTestHooks();
@@ -50,12 +62,11 @@ describe("EventQueue", () => {
     // Mock server tracking data
     (getServerTrackingData as any).mockReturnValue({
       projectId: "test-project",
-      sessionId: "test-session",
       options: { enableTracing: true },
     });
 
-    // Mock session info
-    (getSessionInfo as any).mockReturnValue({
+    // Mock the per-event session info builder
+    (buildSessionInfo as any).mockReturnValue({
       ipAddress: "127.0.0.1",
       sdkLanguage: "typescript",
       agentcatVersion: "1.0.0",
@@ -63,9 +74,9 @@ describe("EventQueue", () => {
       serverVersion: "1.0.0",
       clientName: "test-client",
       clientVersion: "1.0.0",
-      actorGivenId: null,
-      actorName: null,
-      actorData: {},
+      identifyActorGivenId: undefined,
+      identifyActorName: undefined,
+      identifyActorData: {},
     });
   });
 
@@ -75,7 +86,7 @@ describe("EventQueue", () => {
 
   describe("publishEvent", () => {
     it("should publish event with server tracking data and session info", async () => {
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: Event = {
         sessionId: "test-session",
         tool: "test-tool",
@@ -89,13 +100,13 @@ describe("EventQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(getServerTrackingData).toHaveBeenCalledWith(mockServer);
-      expect(getSessionInfo).toHaveBeenCalled();
+      expect(buildSessionInfo).toHaveBeenCalled();
     });
 
     it("should not publish event when server tracking data is missing", () => {
       (getServerTrackingData as any).mockReturnValue(null);
 
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: Event = {
         sessionId: "test-session",
         tool: "test-tool",
@@ -113,11 +124,10 @@ describe("EventQueue", () => {
     it("should not publish event when enableTracing is false", () => {
       (getServerTrackingData as any).mockReturnValue({
         projectId: "test-project",
-        sessionId: "test-session",
         options: { enableTracing: false },
       });
 
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: Event = {
         sessionId: "test-session",
         tool: "test-tool",
@@ -127,11 +137,11 @@ describe("EventQueue", () => {
 
       publishEvent(mockServer, event);
 
-      expect(getSessionInfo).not.toHaveBeenCalled();
+      expect(buildSessionInfo).not.toHaveBeenCalled();
     });
 
     it("should calculate duration when not provided", () => {
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const timestamp = new Date(Date.now() - 1000); // 1 second ago
       const event: Event = {
         sessionId: "test-session",
@@ -143,11 +153,11 @@ describe("EventQueue", () => {
       publishEvent(mockServer, event);
 
       // Duration should be calculated based on timestamp difference
-      expect(getSessionInfo).toHaveBeenCalled();
+      expect(buildSessionInfo).toHaveBeenCalled();
     });
 
     it("should preserve existing duration", () => {
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: Event = {
         sessionId: "test-session",
         tool: "test-tool",
@@ -158,7 +168,213 @@ describe("EventQueue", () => {
 
       publishEvent(mockServer, event);
 
-      expect(getSessionInfo).toHaveBeenCalled();
+      expect(buildSessionInfo).toHaveBeenCalled();
+    });
+
+    it("should publish an absent sessionId as empty string and send it as null", async () => {
+      // There is no data.sessionId fallback any more: a caller that supplies
+      // no sessionId gets "" on the event, which the wire mapping turns into
+      // an explicit null rather than dropping the field.
+      (eventQueue as any).apiClient = mockApiClient;
+      const addSpy = vi.spyOn(eventQueue, "add");
+
+      try {
+        publishEvent(makeMockServer(), {
+          eventType: "mcp:tools/call",
+          resourceName: "do_thing",
+          timestamp: new Date(),
+        } as any);
+
+        expect(addSpy).toHaveBeenCalledTimes(1);
+        expect(addSpy.mock.calls[0][0].sessionId).toBe("");
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        expect(mockPublishEvent).toHaveBeenCalledTimes(1);
+        const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+        expect(sent.sessionId).toBeNull();
+      } finally {
+        addSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("background delivery lifecycle", () => {
+    afterEach(() => {
+      setBackgroundTaskRegistrar(undefined);
+    });
+
+    it("keeps the registered task pending until AgentCat ingestion completes", async () => {
+      let finishSend: (() => void) | undefined;
+      mockPublishEvent.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSend = resolve;
+          }),
+      );
+      (eventQueue as any).apiClient = mockApiClient;
+
+      const registeredTasks: Promise<void>[] = [];
+      setBackgroundTaskRegistrar((task) => registeredTasks.push(task));
+
+      publishEvent(makeMockServer(), {
+        sessionId: "test-session",
+        eventType: "mcp:tools/call",
+        resourceName: "slow_tool",
+        timestamp: new Date(),
+      });
+
+      await vi.waitFor(() => expect(registeredTasks).toHaveLength(1));
+      await vi.waitFor(() => expect(finishSend).toBeTypeOf("function"));
+
+      let settled = false;
+      void registeredTasks[0].then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      finishSend!();
+      await registeredTasks[0];
+      expect(settled).toBe(true);
+    });
+
+    it("settles fail-open when AgentCat ingestion exhausts retries", async () => {
+      mockPublishEvent.mockRejectedValue(new Error("ingestion unavailable"));
+      (eventQueue as any).apiClient = mockApiClient;
+      const originalMaxRetries = (eventQueue as any).maxRetries;
+      (eventQueue as any).maxRetries = 0;
+
+      const registeredTasks: Promise<void>[] = [];
+      setBackgroundTaskRegistrar((task) => registeredTasks.push(task));
+
+      try {
+        publishEvent(makeMockServer(), {
+          sessionId: "test-session",
+          eventType: "mcp:tools/call",
+          resourceName: "failing_tool",
+          timestamp: new Date(),
+        });
+
+        await vi.waitFor(() => expect(registeredTasks).toHaveLength(1));
+        await expect(registeredTasks[0]).resolves.toBeUndefined();
+        expect(writeToLog).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "Failed to deliver AgentCat event after retries",
+          ),
+        );
+      } finally {
+        (eventQueue as any).maxRetries = originalMaxRetries;
+      }
+    });
+
+    it("does not register telemetry-only events", async () => {
+      const registrar = vi.fn();
+      setBackgroundTaskRegistrar(registrar);
+
+      eventQueue.add({
+        sessionId: "telemetry-session",
+        eventType: "mcp:tools/call",
+        timestamp: new Date(),
+      });
+
+      await vi.waitFor(() =>
+        expect(eventQueue.getStats().activeRequests).toBe(0),
+      );
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it("does not hold AgentCat delivery open for custom exporters", async () => {
+      let finishTelemetry: (() => void) | undefined;
+      let telemetryCompleted = false;
+      const telemetryExport = new Promise<void>((resolve) => {
+        finishTelemetry = () => {
+          telemetryCompleted = true;
+          resolve();
+        };
+      });
+      const originalTelemetryManager = (eventQueue as any).telemetryManager;
+      (eventQueue as any).telemetryManager = {
+        export: vi.fn(() => telemetryExport),
+      };
+      (eventQueue as any).apiClient = mockApiClient;
+
+      const registeredTasks: Promise<void>[] = [];
+      setBackgroundTaskRegistrar((task) => registeredTasks.push(task));
+
+      try {
+        publishEvent(makeMockServer(), {
+          sessionId: "test-session",
+          eventType: "mcp:tools/call",
+          timestamp: new Date(),
+        });
+
+        await vi.waitFor(() => expect(registeredTasks).toHaveLength(1));
+        await expect(registeredTasks[0]).resolves.toBeUndefined();
+        expect(telemetryCompleted).toBe(false);
+      } finally {
+        finishTelemetry?.();
+        (eventQueue as any).telemetryManager = originalTelemetryManager;
+      }
+    });
+
+    it("settles an event when queue overflow drops it", async () => {
+      const originalConcurrency = (eventQueue as any).concurrency;
+      const originalMaxQueueSize = (eventQueue as any).maxQueueSize;
+      (eventQueue as any).concurrency = 0;
+      (eventQueue as any).maxQueueSize = 1;
+      (eventQueue as any).apiClient = mockApiClient;
+
+      const registeredTasks: Promise<void>[] = [];
+      setBackgroundTaskRegistrar((task) => registeredTasks.push(task));
+
+      try {
+        eventQueue.add({
+          sessionId: "dropped-session",
+          projectId: "test-project",
+          eventType: "mcp:tools/call",
+          timestamp: new Date(),
+        });
+        eventQueue.add({
+          sessionId: "retained-session",
+          projectId: "test-project",
+          eventType: "mcp:tools/call",
+          timestamp: new Date(),
+        });
+
+        expect(registeredTasks).toHaveLength(2);
+        await expect(registeredTasks[0]).resolves.toBeUndefined();
+        expect(writeToLog).toHaveBeenCalledWith(
+          "Event queue full, dropping oldest event",
+        );
+      } finally {
+        (eventQueue as any).concurrency = originalConcurrency;
+        (eventQueue as any).maxQueueSize = originalMaxQueueSize;
+        void (eventQueue as any).process();
+        await registeredTasks[1];
+      }
+    });
+
+    it("continues delivery when runtime task registration throws", async () => {
+      (eventQueue as any).apiClient = mockApiClient;
+      setBackgroundTaskRegistrar(() => {
+        throw new Error("no active request context");
+      });
+
+      expect(() =>
+        publishEvent(makeMockServer(), {
+          sessionId: "test-session",
+          eventType: "mcp:tools/call",
+          timestamp: new Date(),
+        }),
+      ).not.toThrow();
+
+      await vi.waitFor(() => expect(mockPublishEvent).toHaveBeenCalled());
+      expect(writeToLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Failed to register AgentCat event delivery as a background task",
+        ),
+      );
     });
   });
 
@@ -220,7 +436,7 @@ describe("EventQueue", () => {
 
   describe("Integration tests", () => {
     it("should process events end-to-end through publishEvent", async () => {
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: Event = {
         sessionId: "test-session",
         tool: "test-tool",
@@ -235,7 +451,7 @@ describe("EventQueue", () => {
 
       // Verify the pipeline was called
       expect(getServerTrackingData).toHaveBeenCalledWith(mockServer);
-      expect(getSessionInfo).toHaveBeenCalled();
+      expect(buildSessionInfo).toHaveBeenCalled();
     });
 
     it("logs only event metadata on successful send, never the payload", async () => {
@@ -249,7 +465,7 @@ describe("EventQueue", () => {
       (eventQueue as any).apiClient = mockApiClient;
 
       const SECRET = "TOP_SECRET_PAYLOAD_abc123";
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
       const event: any = {
         sessionId: "test-session",
         eventType: "mcp:tools/call",
@@ -282,7 +498,7 @@ describe("EventQueue", () => {
     });
 
     it("should handle multiple events", async () => {
-      const mockServer: MCPServerLike = {} as any;
+      const mockServer = makeMockServer();
 
       // Add multiple events
       for (let i = 0; i < 5; i++) {
@@ -299,7 +515,7 @@ describe("EventQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Verify multiple calls were made
-      expect(getSessionInfo).toHaveBeenCalled();
+      expect(buildSessionInfo).toHaveBeenCalled();
       expect(getServerTrackingData).toHaveBeenCalled();
     });
   });
@@ -320,11 +536,10 @@ describe("EventQueue", () => {
       }));
       (getServerTrackingData as any).mockReturnValue({
         projectId: "test-project",
-        sessionId: "test-session",
         options: { enableTracing: true, redactEvent: hook },
       });
 
-      publishEvent({} as MCPServerLike, {
+      publishEvent(makeMockServer(), {
         sessionId: "test-session",
         eventType: "mcp:tools/call",
         resourceName: "do_thing",
@@ -346,11 +561,10 @@ describe("EventQueue", () => {
     it("should drop the event when the hook returns null", async () => {
       (getServerTrackingData as any).mockReturnValue({
         projectId: "test-project",
-        sessionId: "test-session",
         options: { enableTracing: true, redactEvent: () => null },
       });
 
-      publishEvent({} as MCPServerLike, {
+      publishEvent(makeMockServer(), {
         sessionId: "test-session",
         eventType: "mcp:tools/call",
         timestamp: new Date(),
@@ -366,7 +580,6 @@ describe("EventQueue", () => {
     it("should drop the event when the hook throws", async () => {
       (getServerTrackingData as any).mockReturnValue({
         projectId: "test-project",
-        sessionId: "test-session",
         options: {
           enableTracing: true,
           redactEvent: () => {
@@ -375,7 +588,7 @@ describe("EventQueue", () => {
         },
       });
 
-      publishEvent({} as MCPServerLike, {
+      publishEvent(makeMockServer(), {
         sessionId: "test-session",
         eventType: "mcp:tools/call",
         timestamp: new Date(),
@@ -392,7 +605,6 @@ describe("EventQueue", () => {
       const seenByEventHook: string[] = [];
       (getServerTrackingData as any).mockReturnValue({
         projectId: "test-project",
-        sessionId: "test-session",
         options: {
           enableTracing: true,
           redactEvent: (event: any) => {
@@ -402,7 +614,7 @@ describe("EventQueue", () => {
         },
       });
 
-      publishEvent({} as MCPServerLike, {
+      publishEvent(makeMockServer(), {
         sessionId: "test-session",
         eventType: "mcp:tools/call",
         userIntent: "raw secret",

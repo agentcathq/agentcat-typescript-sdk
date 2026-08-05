@@ -62,16 +62,10 @@ describe("EventQueue.configure()", () => {
 vi.mock("../modules/compatibility.js");
 vi.mock("../modules/session.js");
 vi.mock("../modules/internal.js");
-vi.mock("../modules/tools.js");
-vi.mock("../modules/tracing.js");
-vi.mock("../modules/tracingV2.js");
+vi.mock("../engine/index.js");
 vi.mock("../modules/telemetry.js");
 
-import {
-  isCompatibleServerType,
-  isHighLevelServer,
-} from "../modules/compatibility.js";
-import { getSessionInfo, newSessionId } from "../modules/session.js";
+import { isCompatibleServerType } from "../modules/compatibility.js";
 import {
   setServerTrackingData,
   getServerTrackingData,
@@ -107,13 +101,12 @@ describe("track() URL resolution", () => {
       return { publishEvent: vi.fn().mockResolvedValue({}) };
     });
 
-    // Setup compatibility mocks: return the server as-is (low-level server)
+    // Setup compatibility mock: return the server as-is (low-level server).
+    // detectServer runs for real against mockServer's v1-low shape; the
+    // engine install is mocked out (unit test scope is URL resolution).
     (isCompatibleServerType as any).mockReturnValue(mockServer);
-    (isHighLevelServer as any).mockReturnValue(false);
 
-    // Setup session/internal mocks
-    (getSessionInfo as any).mockReturnValue({});
-    (newSessionId as any).mockReturnValue("ses_test123");
+    // Setup internal mocks
     (getServerTrackingData as any).mockReturnValue(null); // Not yet tracked
     (setServerTrackingData as any).mockImplementation(() => {});
 

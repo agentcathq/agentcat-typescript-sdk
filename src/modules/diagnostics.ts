@@ -1,6 +1,6 @@
 // src/modules/diagnostics.ts
-import { createRequire } from "module";
 import { setDiagnosticsSink } from "./logging.js";
+import { loadNodeModule, getRuntimeVersions } from "./runtime-versions.js";
 import {
   DIAGNOSTICS_SCOPE_NAME,
   DEFAULT_DIAGNOSTICS_ENDPOINT,
@@ -62,14 +62,6 @@ function attr(key: string, value: string | undefined | null): OtlpAttribute[] {
   return value ? [{ key, value: { stringValue: String(value) } }] : [];
 }
 
-function loadNodeModule<T>(name: string): T | null {
-  try {
-    return createRequire(import.meta.url)(name) as T;
-  } catch {
-    return null;
-  }
-}
-
 function computeInstallId(): string | null {
   try {
     const os = loadNodeModule<typeof import("os")>("os");
@@ -96,11 +88,10 @@ function buildStaticAttributes(projectId: string | null): OtlpAttribute[] {
     out.push(...attr("agentcat.sdk.language", "typescript"));
     out.push(...attr("agentcat.sdk.version", packageJson.version));
 
-    // Best-effort: resolved @modelcontextprotocol/sdk (peer dep) version.
-    const mcpPkg = loadNodeModule<{ version?: string }>(
-      "@modelcontextprotocol/sdk/package.json",
-    );
-    out.push(...attr("agentcat.mcp_sdk.version", mcpPkg?.version));
+    // Best-effort: resolved MCP SDK versions (both majors are optional peers).
+    const versions = getRuntimeVersions();
+    out.push(...attr("agentcat.mcp_sdk.version", versions.mcpV1));
+    out.push(...attr("agentcat.mcp_sdk_v2.version", versions.mcpV2));
 
     // Runtime
     const proc = globalThis.process;
@@ -152,6 +143,24 @@ function inferSeverity(entry: string): { number: number; text: string } {
   return { number: 9, text: "INFO" };
 }
 
+// Version attributes ride on every record (not just the resource) so records
+// stay attributable after pipelines flatten them away from the resource
+// envelope. Built once: the versions cannot change within a process.
+let versionRecordAttributes: OtlpAttribute[] | null = null;
+
+function getVersionRecordAttributes(): OtlpAttribute[] {
+  if (!versionRecordAttributes) {
+    const versions = getRuntimeVersions();
+    versionRecordAttributes = [
+      ...attr("agentcat.sdk.version", versions.sdk),
+      ...attr("process.runtime.version", versions.node),
+      ...attr("agentcat.mcp_sdk.version", versions.mcpV1),
+      ...attr("agentcat.mcp_sdk_v2.version", versions.mcpV2),
+    ];
+  }
+  return versionRecordAttributes;
+}
+
 function buildRecord(entry: string): OtlpLogRecord {
   const sev = inferSeverity(entry);
   return {
@@ -159,7 +168,7 @@ function buildRecord(entry: string): OtlpLogRecord {
     severityNumber: sev.number,
     severityText: sev.text,
     body: { stringValue: entry },
-    attributes: [],
+    attributes: getVersionRecordAttributes(),
   };
 }
 
@@ -272,6 +281,7 @@ export function _resetDiagnosticsForTest(): void {
   enabled = false;
   initialized = false;
   staticAttributes = [];
+  versionRecordAttributes = null;
   buffer = [];
   if (flushTimer) {
     clearTimeout(flushTimer);

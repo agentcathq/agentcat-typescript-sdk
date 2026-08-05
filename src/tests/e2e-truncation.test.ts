@@ -5,7 +5,7 @@ import {
 } from "./test-utils/client-server-factory";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { EventCapture } from "./test-utils";
+import { EventCapture, sid } from "./test-utils";
 import { PublishEventRequestEventTypeEnum } from "agentcat-api";
 
 describe("E2E Truncation - real MCP tool calls", () => {
@@ -240,7 +240,13 @@ describe("E2E Truncation - real MCP tool calls", () => {
           method: "tools/call",
           params: {
             name: "get_annotated_screenshot",
-            arguments: { page: "dashboard" },
+            // Supplying both handles suppresses the mint-back block so the
+            // response shape stays exactly what the tool returned.
+            arguments: {
+              page: "dashboard",
+              session_id: sid("e2e"),
+              agent_id: "agt_e2e",
+            },
           },
         },
         CallToolResultSchema,
@@ -257,6 +263,7 @@ describe("E2E Truncation - real MCP tool calls", () => {
 
       expect(toolEvent).toBeDefined();
       const content = toolEvent!.response.content;
+      expect(content).toHaveLength(2);
 
       // Text block should be truncated
       expect(content[0].text.length).toBeLessThanOrEqual(32768 + 3);

@@ -2,62 +2,59 @@
 import {
   AgentCatOptions,
   AgentCatData,
-  UserIdentity,
   MCPServerLike,
-  HighLevelMCPServerLike,
   CustomEventData,
   UnredactedEvent,
 } from "./types.js";
 
 // Import from modules
-import {
-  isCompatibleServerType,
-  isHighLevelServer,
-} from "./modules/compatibility.js";
+import { detectServer, describeSignals } from "./detect.js";
+import { installEngine } from "./engine/index.js";
+import { isCompatibleServerType } from "./modules/compatibility.js";
 import { writeToLog } from "./modules/logging.js";
-import { setupAgentCatTools } from "./modules/tools.js";
-import { setupToolCallTracing } from "./modules/tracing.js";
-import {
-  getSessionInfo,
-  newSessionId,
-  deriveSessionIdFromMCPSession,
-} from "./modules/session.js";
 import {
   setServerTrackingData,
   getServerTrackingData,
 } from "./modules/internal.js";
-import { setupTracking } from "./modules/tracingV2.js";
 import { TelemetryManager } from "./modules/telemetry.js";
 import {
   setTelemetryManager,
+  getTelemetryManager,
   publishEvent as publishEventToQueue,
+  eventQueue,
 } from "./modules/eventQueue.js";
 import { AGENTCAT_CUSTOM_EVENT_TYPE } from "./modules/constants.js";
 import { validateTags } from "./modules/validation.js";
-import { eventQueue } from "./modules/eventQueue.js";
 import { initDiagnostics } from "./modules/diagnostics.js";
 
 /**
  * Integrates AgentCat analytics into an MCP server to track tool usage patterns and user interactions.
  *
  * @param server - The MCP server instance to track. Must be a compatible MCP server implementation.
+ *   Both TypeScript SDK majors are supported with the same call — `@modelcontextprotocol/sdk` >=1.11 <2
+ *   (v1 `Server`/`McpServer`) and `@modelcontextprotocol/server` >=2 <3 (v2 `McpServer`, including
+ *   instances built inside `createMcpHandler`/`serveStdio` factories). The SDK major is auto-detected
+ *   per server object.
  * @param projectId - Your AgentCat project ID obtained from agentcat.com when creating an account. Pass null for telemetry-only mode.
  * @param options - Optional configuration to customize tracking behavior.
  * @param options.enableReportMissing - Adds a "get_more_tools" tool that allows LLMs to automatically report missing functionality.
  * @param options.enableTracing - Enables tracking of tool calls and usage patterns.
- * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent.
+ * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent. The context parameter is appended after the injected `session_id`/`agent_id` parameters.
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
- * @param options.identify - Async function to identify users and attach custom data to their sessions.
+ * @param options.enableAgentTracking - Injects an optional `agent_id` parameter so each agent (including every spawned subagent) is individually identifiable. Agent IDs are minted by the server on an agent's first call and echoed back on subsequent calls. Defaults to false (opt-in). The agent ID rides on events as the `agentcat_agent_id` tag.
+ * @param options.resolveSessionId - Hook mode: supply your own session identifier per request (e.g. from your auth or workflow state) and AgentCat steps back — no `session_id` parameter is injected and no task instructions are prompted to the agent. The returned string is combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same task. Return null to mint silently (avoid: the agent can never learn a silently minted ID). Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.identify - Async function to identify the actor behind a tool call. Runs on every tool call; the result is stamped directly onto that call's event.
  * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
  * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
- * @param options.eventTags - Callback invoked on every auto-captured event (tool calls, tool lists, initialize) to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
- * @param options.eventProperties - Callback invoked on every auto-captured event to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.eventTags - Callback invoked on every auto-captured tool call to attach string key-value tags. Tags are intended to be indexed and queryable in the AgentCat dashboard — use them for structured metadata you'll want to filter or group by (e.g., trace IDs, environments, regions). Tags are validated client-side: keys must be ≤32 chars matching `[a-zA-Z0-9$_.:\- ]`, values must be strings ≤200 chars with no newlines, max 50 entries per event. Invalid entries are silently dropped with a warning logged to `~/agentcat.log`. If the callback throws or returns null, tags are omitted. Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.eventProperties - Callback invoked on every auto-captured tool call to attach flexible JSON metadata (device info, feature flags, nested context). No constraints beyond standard JSON types. If the callback throws or returns null, properties are omitted. Receives the same `(request, extra)` arguments as `identify`.
  * @param options.apiBaseUrl - Custom API base URL for sending events. Falls back to the `AGENTCAT_API_URL` environment variable if not set (then legacy `MCPCAT_API_URL`), then to the default `https://api.agentcat.com`.
  * @param options.disableDiagnostics - Disables AgentCat's internal SDK diagnostics (anonymous error/telemetry reporting used to monitor SDK setup failures). Diagnostics are on by default, automatically disabled in test environments (`VITEST`, `JEST_WORKER_ID`, or `NODE_ENV=test`), and can also be disabled with the `DISABLE_DIAGNOSTICS` environment variable. Local `~/agentcat.log` logging is unaffected.
  * @param options.exporters - Configure telemetry exporters to send events to external systems. Available exporters:
  *   - `otlp`: OpenTelemetry Protocol exporter (see {@link ../modules/exporters/otlp.OTLPExporter})
  *   - `datadog`: Datadog APM exporter (see {@link ../modules/exporters/datadog.DatadogExporter})
  *   - `sentry`: Sentry Monitoring exporter (see {@link ../modules/exporters/sentry.SentryExporter})
+ *   - `posthog`: PostHog analytics exporter (see {@link ../modules/exporters/posthog.PostHogExporter})
  *
  * @returns The tracked server instance.
  *
@@ -80,6 +77,41 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
  *   tools: [{ name: "my_tool", description: "Does something useful" }]
  * }));
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // MCP SDK v2 (@modelcontextprotocol/server) — same call, auto-detected
+ * import { McpServer } from "@modelcontextprotocol/server";
+ * import { z } from "zod";
+ * import * as agentcat from "agentcat";
+ *
+ * const server = new McpServer(
+ *   { name: "my-mcp-server", version: "1.0.0" },
+ *   { capabilities: { tools: {} } },
+ * );
+ *
+ * server.registerTool(
+ *   "my_tool",
+ *   { description: "Does something useful", inputSchema: z.object({ msg: z.string() }) },
+ *   async (args) => ({ content: [{ type: "text", text: args.msg }] }),
+ * );
+ *
+ * agentcat.track(server, "proj_abc123xyz");
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // MCP 2026-07-28 era (createMcpHandler / serveStdio): call track() inside
+ * // the factory so every per-request instance is tracked.
+ * import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+ * import * as agentcat from "agentcat";
+ *
+ * const handler = createMcpHandler(() => {
+ *   const server = new McpServer({ name: "my-server", version: "1.0.0" }, { capabilities: { tools: {} } });
+ *   // register tools...
+ *   return agentcat.track(server, "proj_abc123xyz"); // track every per-request instance
+ * });
  * ```
  *
  * @example
@@ -135,10 +167,12 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  *
  * @example
  * ```typescript
- * // With event tags and properties
+ * // With event tags and properties. The `extra` shape is SDK-version-specific:
+ * // on v2 it is the SDK's ServerContext ({ sessionId, mcpReq, http }) as shown
+ * // here; on v1 it is the SDK's RequestHandlerExtra.
  * agentcat.track(mcpServer, "proj_abc123xyz", {
  *   eventTags: async (request, extra) => ({
- *     trace_id: extra?.requestContext?.traceId,
+ *     request_id: String(extra?.mcpReq?.id ?? ""),
  *     env: process.env.NODE_ENV,
  *     region: "us-east-1",
  *   }),
@@ -183,45 +217,41 @@ function track(
   options: AgentCatOptions = {},
 ): any {
   try {
-    initDiagnostics({
-      projectId,
-      disabled: options.disableDiagnostics,
-    });
+    initDiagnostics({ projectId, disabled: options.disableDiagnostics });
 
-    const validatedServer = isCompatibleServerType(server);
+    // Throws the support-matrix message on unknown shapes (caught below →
+    // accurate warn + untracked return; never tells a too-new SDK to
+    // "upgrade to v1.11+"). On success detection is non-null by construction.
+    const validated = isCompatibleServerType(server);
+    const detection = detectServer(server)!;
+    const lowLevelServer = detection.lowLevel;
 
     // Resolve API base URL: option > AGENTCAT_API_URL > MCPCAT_API_URL (legacy) > default
     const apiBaseUrl =
       options.apiBaseUrl ||
       process.env.AGENTCAT_API_URL ||
       process.env.MCPCAT_API_URL;
-    if (apiBaseUrl) {
-      eventQueue.configure(apiBaseUrl);
-    }
+    if (apiBaseUrl) eventQueue.configure(apiBaseUrl);
 
-    // For high-level servers, we need to pass the underlying server to some functions
-    const isHighLevel = isHighLevelServer(validatedServer);
-    const lowLevelServer = (
-      isHighLevel ? (validatedServer as any).server : validatedServer
-    ) as MCPServerLike;
-
-    // Setup-started beacon. Guarantees every install emits at least one
-    // diagnostic tied to its project id, and anchors any later setup failure.
+    // Setup-started beacon — now carries the detection fingerprint. This
+    // line IS the fleet-level change-detection channel: writeToLog feeds the
+    // diagnostics sink (setDiagnosticsSink), so signal drift across SDK
+    // releases surfaces in the diagnostics pipeline without a separate API.
     writeToLog(
-      `AgentCat setup started | project ${projectId || "(telemetry-only)"} | server ${isHighLevel ? "high-level" : "low-level"}`,
+      `AgentCat setup started | project ${projectId || "(telemetry-only)"} | sdk v${detection.major}/${detection.flavor} | signals ${describeSignals(detection.signals)}`,
     );
 
-    // Check if server is already being tracked
     const existingData = getServerTrackingData(lowLevelServer);
     if (existingData) {
       writeToLog(
         "[SESSION DEBUG] track() - Server already being tracked, skipping initialization",
       );
-      return validatedServer;
+      return validated;
     }
 
-    // Initialize telemetry if exporters are configured
-    if (options.exporters) {
+    // First-wins: per-request factories call track() on every request;
+    // rebuilding exporters each time is waste.
+    if (options.exporters && !getTelemetryManager()) {
       const telemetryManager = new TelemetryManager(options.exporters);
       setTelemetryManager(telemetryManager);
       writeToLog(
@@ -236,49 +266,25 @@ function track(
       );
     }
 
-    const sessionInfo = getSessionInfo(lowLevelServer, undefined);
     const agentcatData: AgentCatData = {
       projectId: projectId || "", // Use empty string for null projectId
-      sessionId: newSessionId(),
-      lastActivity: new Date(),
-      identifiedSessions: new Map<string, UserIdentity>(),
-      sessionInfo,
       options: {
         enableReportMissing: options.enableReportMissing ?? true,
         enableTracing: options.enableTracing ?? true,
         enableToolCallContext: options.enableToolCallContext ?? true,
         customContextDescription: options.customContextDescription,
+        enableAgentTracking: options.enableAgentTracking ?? false,
+        resolveSessionId: options.resolveSessionId,
         identify: options.identify,
         redactSensitiveInformation: options.redactSensitiveInformation,
         redactEvent: options.redactEvent,
         eventTags: options.eventTags,
         eventProperties: options.eventProperties,
       },
-      sessionSource: "agentcat", // Initially AgentCat-generated, will change to "mcp" if MCP sessionId is provided in requests
     };
 
     setServerTrackingData(lowLevelServer, agentcatData);
-    if (isHighLevel) {
-      const highLevelServer = validatedServer as HighLevelMCPServerLike;
-      setupTracking(highLevelServer);
-    } else {
-      if (agentcatData.options.enableReportMissing) {
-        try {
-          setupAgentCatTools(lowLevelServer);
-        } catch (error) {
-          writeToLog(`Warning: Failed to setup report missing tool - ${error}`);
-        }
-      }
-
-      if (agentcatData.options.enableTracing) {
-        try {
-          // Pass the low-level server to the current tracing module
-          setupToolCallTracing(lowLevelServer);
-        } catch (error) {
-          writeToLog(`Warning: Failed to setup tool call tracing - ${error}`);
-        }
-      }
-    }
+    installEngine(detection);
 
     // Setup-completed beacon. Pairs with the start beacon: start + complete
     // means setup succeeded; start without complete (plus an error) localizes
@@ -290,7 +296,7 @@ function track(
       `AgentCat setup complete | project ${projectId || "(telemetry-only)"} | tracing=${agentcatData.options.enableTracing} context=${agentcatData.options.enableToolCallContext} reportMissing=${agentcatData.options.enableReportMissing} exporters=${exporterCount}`,
     );
 
-    return validatedServer;
+    return validated;
   } catch (error) {
     writeToLog(`Warning: Failed to track server - ${error}`);
     return server;
@@ -300,9 +306,13 @@ function track(
 /**
  * Publishes a custom event to AgentCat with flexible session management.
  *
- * @param serverOrSessionId - Either a tracked MCP server instance or a MCP session ID string
+ * @param serverOrSessionId - Either a tracked MCP server instance or a session ID string.
+ *   A session ID string is used verbatim as the event's session — it is never derived or hashed.
  * @param projectId - Your AgentCat project ID (required)
- * @param eventData - Optional event data to include with the custom event
+ * @param eventData - Optional event data to include with the custom event. Set `eventData.sessionId`
+ *   to attribute the event to a task; it takes precedence over a session ID string passed as the
+ *   first argument. When a tracked server is passed without `eventData.sessionId`, the event is
+ *   published without a session (the server assigns one).
  *
  * @returns Promise that resolves when the event is queued for publishing
  *
@@ -313,11 +323,12 @@ function track(
  *
  * @example
  * ```typescript
- * // With a tracked server
+ * // With a tracked server, attributed to a task
  * await agentcat.publishCustomEvent(
  *   server,
  *   "proj_abc123xyz",
  *   {
+ *     sessionId: "ses_abc123",
  *     resourceName: "custom-action",
  *     parameters: { action: "user-feedback", rating: 5 },
  *     message: "User provided feedback"
@@ -327,9 +338,9 @@ function track(
  *
  * @example
  * ```typescript
- * // With a MCP session ID
+ * // With a session ID string
  * await agentcat.publishCustomEvent(
- *   "user-session-12345",
+ *   "ses_abc123",
  *   "proj_abc123xyz",
  *   {
  *     isError: true,
@@ -340,6 +351,7 @@ function track(
  *
  * @example
  * ```typescript
+ * // With a tracked server and no session ID: published without a session
  * await agentcat.publishCustomEvent(
  *   server,
  *   "proj_abc123xyz",
@@ -367,24 +379,27 @@ export async function publishCustomEvent(
   let lowLevelServer: MCPServerLike | null = null;
 
   if (isServer) {
-    // Try to get tracking data for the server
     lowLevelServer = serverOrSessionId.server
       ? serverOrSessionId.server
       : serverOrSessionId;
     const trackingData = getServerTrackingData(lowLevelServer as MCPServerLike);
-
-    if (trackingData) {
-      // Use the tracked server's session ID and configuration
-      sessionId = trackingData.sessionId;
-    } else {
-      // Server is not tracked - treat it as an error
+    if (!trackingData) {
       throw new Error(
         "Server is not tracked. Please call agentcat.track() first or provide a session ID string.",
       );
     }
+    if (eventData?.sessionId) {
+      sessionId = eventData.sessionId;
+    } else {
+      // Handles are per-request now; a tracked server has no ambient session ID.
+      sessionId = ""; // wire: null ("stateless mode - server assigns session")
+      writeToLog(
+        "publishCustomEvent: no sessionId provided; event will be published without a session. Pass eventData.sessionId to attribute it to a task.",
+      );
+    }
   } else if (typeof serverOrSessionId === "string") {
-    // Custom session ID provided - derive a deterministic session ID
-    sessionId = deriveSessionIdFromMCPSession(serverOrSessionId, projectId);
+    // The string IS the session id — verbatim, no derivation.
+    sessionId = eventData?.sessionId || serverOrSessionId;
   } else {
     throw new Error(
       "First parameter must be either an MCP server object or a session ID string",
@@ -431,7 +446,7 @@ export async function publishCustomEvent(
   }
 
   writeToLog(
-    `Published custom event for session ${sessionId} with type 'agentcat:custom'`,
+    `Published custom event ${sessionId ? `for session ${sessionId}` : "without a session"} with type 'agentcat:custom'`,
   );
 }
 

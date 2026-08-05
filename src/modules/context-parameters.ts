@@ -1,5 +1,8 @@
 import { RegisteredTool } from "../types";
 import { DEFAULT_CONTEXT_PARAMETER_DESCRIPTION } from "./constants";
+// Type-only import: handle-injection.ts imports from tools.ts at runtime, so a
+// value import here would create a runtime cycle.
+import type { InjectedParamsRegistry } from "./handle-injection.js";
 import { writeToLog } from "./logging.js";
 
 /**
@@ -15,6 +18,7 @@ import { writeToLog } from "./logging.js";
 export function addContextParameterToTool(
   tool: RegisteredTool,
   customContextDescription?: string,
+  registry?: InjectedParamsRegistry,
 ): RegisteredTool {
   // Create a shallow copy of the tool to avoid modifying the original
   const modifiedTool = { ...tool };
@@ -74,6 +78,12 @@ export function addContextParameterToTool(
     description: contextDescription,
   };
 
+  if (registry) {
+    const existing = registry.get(toolName);
+    if (existing) existing.add("context");
+    else registry.set(toolName, new Set(["context"]));
+  }
+
   // Add context to required array
   if (Array.isArray(modifiedTool.inputSchema.required)) {
     if (!modifiedTool.inputSchema.required.includes("context")) {
@@ -89,12 +99,28 @@ export function addContextParameterToTool(
 export function addContextParameterToTools(
   tools: RegisteredTool[],
   customContextDescription?: string,
+  registry?: InjectedParamsRegistry,
 ): RegisteredTool[] {
   return tools.map((tool) => {
     // Skip get_more_tools - it has its own special context parameter
-    if ((tool as any).name === "get_more_tools") {
+    if ((tool as any)?.name === "get_more_tools") {
       return tool;
     }
-    return addContextParameterToTool(tool, customContextDescription);
+    try {
+      return addContextParameterToTool(
+        tool,
+        customContextDescription,
+        registry,
+      );
+    } catch (error) {
+      // One tool's schema must never poison the listing: serve it unmodified
+      // and roll back the registry record so stripping matches the schema.
+      const toolName = (tool as any)?.name || "unknown";
+      registry?.get(toolName)?.delete("context");
+      writeToLog(
+        `WARN: Context injection failed for tool "${toolName}"; listing it unmodified - ${error}`,
+      );
+      return tool;
+    }
   });
 }

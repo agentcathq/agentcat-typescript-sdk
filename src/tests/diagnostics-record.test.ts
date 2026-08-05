@@ -5,6 +5,11 @@ import {
   _buildRecordForTest,
   _resetDiagnosticsForTest,
 } from "../modules/diagnostics.js";
+import packageJson from "../../package.json" with { type: "json" };
+
+function asMap(attrs: { key: string; value: { stringValue: string } }[]) {
+  return Object.fromEntries(attrs.map((a) => [a.key, a.value.stringValue]));
+}
 
 describe("diagnostics record building", () => {
   beforeEach(() => {
@@ -45,5 +50,13 @@ describe("diagnostics record building", () => {
   it("sets a nanosecond timestamp string", () => {
     const rec = _buildRecordForTest("hello");
     expect(rec.timeUnixNano).toMatch(/^\d+$/);
+  });
+
+  it("attaches sdk, node, and mcp versions as record attributes", () => {
+    const m = asMap(_buildRecordForTest("hello").attributes);
+    expect(m["agentcat.sdk.version"]).toBe(packageJson.version);
+    expect(m["process.runtime.version"]).toBe(process.version);
+    expect(m["agentcat.mcp_sdk.version"]).toMatch(/^1\./); // devDep is ~1.30.0
+    expect(m["agentcat.mcp_sdk_v2.version"]).toMatch(/^2\./); // devDep is ^2
   });
 });
