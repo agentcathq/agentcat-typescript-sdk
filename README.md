@@ -1,4 +1,27 @@
-### [Getting Started](#getting-started) · [Features](#why-use-agentcat-) · [Docs](https://docs.agentcat.com) · [Website](https://agentcat.com) · [Open Source](#free-for-open-source) · [Schedule a Demo](https://meet.agentcat.com/meet)
+<div align="center">
+  <img alt="AgentCat — see exactly how agents experience your product" src="docs/static/og-image.png" width="80%">
+</div>
+<h3 align="center">
+    <a href="#getting-started">Getting Started</a>
+    <span> · </span>
+    <a href="#why-use-agentcat-">Features</a>
+    <span> · </span>
+    <a href="https://docs.agentcat.com">Docs</a>
+    <span> · </span>
+    <a href="https://agentcat.com">Website</a>
+    <span> · </span>
+    <a href="#free-for-open-source">Open Source</a>
+    <span> · </span>
+    <a href="https://meet.agentcat.com/meet">Schedule a Demo</a>
+</h3>
+<p align="center">
+  <a href="https://badge.fury.io/js/agentcat"><img src="https://badge.fury.io/js/agentcat.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/agentcat"><img src="https://img.shields.io/npm/dm/agentcat.svg" alt="npm downloads"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg" alt="TypeScript"></a>
+  <a href="https://github.com/agentcathq/agentcat-typescript-sdk/issues"><img src="https://img.shields.io/github/issues/agentcathq/agentcat-typescript-sdk.svg" alt="GitHub issues"></a>
+  <a href="https://github.com/agentcathq/agentcat-typescript-sdk/actions"><img src="https://github.com/agentcathq/agentcat-typescript-sdk/workflows/CI/badge.svg" alt="CI"></a>
+</p>
 
 > [!NOTE]
 > AgentCat v2 introduces compatibility with the [MCP Protocol "Stateless" 2026-07-28 Update](https://blog.modelcontextprotocol.io/posts/2026-07-28/) and the coinciding [MCP TypeScript SDK v2](https://github.com/modelcontextprotocol/typescript-sdk/releases#release-@modelcontextprotocol/server@2.0.0) release that puts it into effect. The stateless transition has a massive impact on analytics, as sessions were a built-in concept tying related tool calls together. AgentCat has now migrated its session tracking under guidance of the MCP core team's recommendations of using [explicit handles (SEP-2567)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2567).
@@ -26,6 +49,8 @@ Use AgentCat for:
 - **Agent session replay** 🎬. Follow alongside your users and their agents to understand why they're using your MCP servers, what functionality you're missing, and what clients they're coming from.
 - **Trace debugging** 🔍. See where your users are getting stuck, track and find when LLMs get confused by your API, and debug sessions across all deployments of your MCP server.
 - **Existing platform support** 📊. Get logging and tracing out of the box for your existing observability platforms (OpenTelemetry, Datadog, Sentry) — eliminating the tedious work of implementing telemetry yourself.
+
+<img alt="AgentCat architecture — the AgentCat SDK inside your MCP server sends analytics to your observability vendors and session replay to the AgentCat dashboard" src="docs/static/architecture.png" />
 
 ## How it works
 
