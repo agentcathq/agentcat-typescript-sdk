@@ -1,6 +1,6 @@
 {
   "name": "agentcat",
-  "version": "2.0.0-beta.12",
+  "version": "2.0.0",
   "description": "Analytics tool for MCP (Model Context Protocol) servers and AI agents - tracks tool usage patterns and provides insights",
   "type": "module",
   "main": "dist/index.cjs",
