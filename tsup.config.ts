@@ -8,6 +8,12 @@ export default defineConfig([
     splitting: false,
     sourcemap: true,
     clean: true,
+    // import.meta.url must survive the CJS transform: logging, diagnostics,
+    // and MCP-version detection all derive createRequire from it. Without
+    // the shim it compiles to undefined, createRequire throws, and the CJS
+    // build misdetects Node as an edge runtime — routing logs to stdout,
+    // which is the JSON-RPC wire on stdio transports.
+    shims: true,
     outExtension({ format }) {
       return {
         js: format === "esm" ? ".mjs" : ".cjs",

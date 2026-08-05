@@ -17,10 +17,15 @@ console.log("Building and packing agentcat...");
 sh("pnpm run build", root);
 const tarball = join(root, sh("npm pack --silent", root).split("\n").pop());
 
+// Both checks also trigger a log write (track() on an unsupported server
+// shape logs a warning) and the probe asserts stdout stays clean: on stdio
+// transports stdout is the JSON-RPC wire, so a build that misroutes logging
+// to console (e.g. the CJS import.meta shim regressing) must fail here.
 const IMPORT_CHECK = `
 import("agentcat")
   .then((m) => {
     if (typeof m.track !== "function") throw new Error("track missing");
+    try { m.track({}, "proj_probe", {}); } catch {}
     console.log("import OK");
   })
   .catch((e) => {
@@ -35,6 +40,7 @@ if (typeof m.track !== "function") {
   console.error("REQUIRE FAILED: track missing");
   process.exit(1);
 }
+try { m.track({}, "proj_probe", {}); } catch {}
 console.log("require OK");
 `;
 
@@ -60,8 +66,19 @@ function probe(name, installCmd) {
   writeFileSync(join(dir, "check.mjs"), IMPORT_CHECK);
   writeFileSync(join(dir, "check.cjs"), REQUIRE_CHECK);
   try {
-    console.log(`[${name}] ${sh("node check.mjs", dir)}`);
-    console.log(`[${name}] ${sh("node check.cjs", dir)}`);
+    for (const [script, expected] of [
+      ["check.mjs", "import OK"],
+      ["check.cjs", "require OK"],
+    ]) {
+      const out = sh(`DISABLE_DIAGNOSTICS=1 node ${script}`, dir);
+      if (out !== expected) {
+        console.error(
+          `[${name}] FAILED: unexpected stdout from ${script} — a log line leaked onto the wire?\n${out}`,
+        );
+        process.exit(1);
+      }
+      console.log(`[${name}] ${expected} (stdout clean)`);
+    }
   } catch (e) {
     console.error(`[${name}] FAILED`);
     console.error(e.stdout?.toString(), e.stderr?.toString());
