@@ -76,6 +76,10 @@ describe("redactEvent", () => {
       id: "evt_456",
       projectId: "proj_789",
       server: "my-server",
+      serverName: "my-mcp-server",
+      serverVersion: "1.2.3",
+      clientName: "my-mcp-client",
+      clientVersion: "4.5.6",
       identifyActorGivenId: "actor_123",
       identifyActorName: "John Doe",
       resourceName: "my-resource",
@@ -90,6 +94,10 @@ describe("redactEvent", () => {
     expect(redacted.id).toBe("evt_456");
     expect(redacted.projectId).toBe("proj_789");
     expect(redacted.server).toBe("my-server");
+    expect(redacted.serverName).toBe("my-mcp-server");
+    expect(redacted.serverVersion).toBe("1.2.3");
+    expect(redacted.clientName).toBe("my-mcp-client");
+    expect(redacted.clientVersion).toBe("4.5.6");
     expect(redacted.identifyActorGivenId).toBe("actor_123");
     expect(redacted.identifyActorName).toBe("John Doe");
     expect(redacted.resourceName).toBe("my-resource");
