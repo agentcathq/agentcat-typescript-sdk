@@ -4,15 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-    cooldown:
-      default-days: 7
-      semver-major-days: 30
+    open-pull-requests-limit: 0
     groups:
-      npm-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
@@ -20,14 +13,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-    cooldown:
-      default-days: 7
+    open-pull-requests-limit: 0
     groups:
-      github-actions-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
       github-actions-security:
         applies-to: security-updates
         patterns: ["*"]
