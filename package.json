@@ -98,7 +98,7 @@
     "typescript": "^5.8.3",
     "uuid": "^14.0.0",
     "vitest": "^4.0.14",
-    "zod": "^3.25",
+    "zod": "^4.4",
     "zod4": "npm:zod@^4.2.0"
   },
   "peerDependencies": {
