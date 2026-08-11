@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["18", "20", "22"]
+        node: ["20", "22"]
 
     steps:
       - name: Checkout code
@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["20", "22"] # v2 requires Node >= 20; Node 18 stays v1-only
+        node: ["20", "22"] # v2 requires Node >= 20
 
     steps:
       - name: Checkout code
@@ -185,7 +185,7 @@ jobs:
           echo "# MCP SDK Compatibility Report"
           echo ""
           echo "Tested on: $(date)"
-          echo "v1 leg (@modelcontextprotocol/sdk >=1.11 <2): Node 18, 20, 22"
+          echo "v1 leg (@modelcontextprotocol/sdk >=1.11 <2): Node 20, 22"
           echo "v2 leg (@modelcontextprotocol/server + client >=2.0.0): Node 20, 22"
           echo "Real-HTTP e2e matrix: Node 20, 22"
           echo "Packaging probes: install-topology import checks on Node 20"
