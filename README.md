@@ -40,6 +40,27 @@ npm install agentcat
 
 To learn more about us, check us out [here](https://agentcat.com). For detailed guides visit our [documentation](https://docs.agentcat.com).
 
+## SDKs for other languages 🌍
+
+AgentCat ships the same one-line integration across the MCP ecosystem. If your server
+isn't written in TypeScript, you're in the right family — just the wrong repo.
+
+| Language       | Package                                                                | Status            |
+| -------------- | ---------------------------------------------------------------------- | ----------------- |
+| **TypeScript** | [`agentcat`](https://www.npmjs.com/package/agentcat)                   | ✅ Available      |
+| **Python**     | [`agentcat`](https://pypi.org/project/agentcat/)                       | ✅ Available      |
+| **Go**         | [`go.agentcat.com/sdk`](https://github.com/agentcathq/agentcat-go-sdk) | ✅ Available      |
+| **Java**       | `com.agentcat:agentcat`                                                | 🚧 In development |
+| **Ruby**       | `agentcat`                                                             | 🚧 In development |
+| **.NET**       | `AgentCat`                                                             | 🔜 Coming soon    |
+| **Rust**       | `agentcat-sdk`                                                         | 🔜 Coming soon    |
+| **PHP**        | `agentcat/sdk`                                                         | 🔜 Coming soon    |
+
+Package names for the upcoming SDKs are reserved on their registries, but those releases are
+placeholders that intentionally do nothing — don't wire them into a real server yet. Want one
+of them sooner? Open an issue or [tell us directly](https://meet.agentcat.com/meet); demand
+moves the roadmap.
+
 ## Why use AgentCat? 🤔
 
 AgentCat helps builders of MCP servers, Claude Connectors, and ChatGPT Plugins learn how to improve them by capturing any agents goals and detecting when they get stuck.
