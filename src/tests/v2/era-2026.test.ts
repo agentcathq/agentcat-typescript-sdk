@@ -95,7 +95,7 @@ describe("2026-07-28 era via createMcpHandler", () => {
       name: "echo",
       arguments: { msg: "solo" },
     })) as any;
-    expect(result.content[0].text).toContain("solo");
+    expect(result.content[1].text).toContain("solo");
     const [event] = capture
       .getEvents()
       .filter((e) => e.resourceName === "echo");

@@ -48,6 +48,7 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
     expect((gmt.inputSchema as any).required).toContain("context");
     expect((gmt.inputSchema as any).properties).toHaveProperty("session_id");
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
+    expect((gmt.inputSchema as any).required).toContain("session_id");
     expect((gmt.inputSchema as any).required).toContain("agent_id");
     expect(gmt.annotations).toEqual({
       title: "Get More Tools",
@@ -66,8 +67,8 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
       name: "get_more_tools",
       arguments: { context: missingDescription },
     });
-    expect(result.content[0].text).toContain("Unfortunately");
-    expect(result.content[0].text).toContain(
+    expect(result.content[1].text).toContain("Unfortunately");
+    expect(result.content[1].text).toContain(
       "we have shown you the full tool list",
     );
 
@@ -93,7 +94,7 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
       },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
+    expect(block).toContain("[session_id issued");
     expect(block).not.toContain("agent_id");
     expect(handleFrom(block, "session_id")).toMatch(/^ses_/);
 
@@ -104,7 +105,7 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
       [AGENTCAT_TAG_AGENT_SOURCE]: "supplied",
     });
     // Mint-back is wire-only — never recorded on the event.
-    expect(JSON.stringify(event.response)).not.toContain("[MCP INSTRUCTIONS]");
+    expect(JSON.stringify(event.response)).not.toContain("[session_id");
     expect(JSON.stringify(event.response)).toContain(
       "we have shown you the full tool list",
     );

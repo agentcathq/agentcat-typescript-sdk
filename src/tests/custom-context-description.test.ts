@@ -154,7 +154,7 @@ describe("Custom Context Description", () => {
       CallToolResultSchema,
     );
 
-    expect(result.content[0].text).toContain("Added todo");
+    expect(result.content[1].text).toContain("Added todo");
 
     // Wait for events to be processed
     await new Promise((resolve) => setTimeout(resolve, 50));

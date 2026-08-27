@@ -202,7 +202,7 @@ describe("Basic Server Test", () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.content[0].text).toContain("test data");
+      expect(result.content[1].text).toContain("test data");
     } finally {
       await cleanup();
     }
@@ -273,7 +273,7 @@ describe("Basic Server Test", () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.content[0].text).toBe("8");
+      expect(result.content[1].text).toBe("8");
     } finally {
       await cleanup();
     }
@@ -517,7 +517,7 @@ describe("Basic Server Test", () => {
       );
 
       expect(addResult).toBeDefined();
-      expect(addResult.content[0].text).toBe("8");
+      expect(addResult.content[1].text).toBe("8");
 
       const calcResult = await client.request(
         {
@@ -536,7 +536,7 @@ describe("Basic Server Test", () => {
       );
 
       expect(calcResult).toBeDefined();
-      expect(calcResult.content[0].text).toBe("28");
+      expect(calcResult.content[1].text).toBe("28");
     } finally {
       await clientTransport.close?.();
       await serverTransport.close?.();

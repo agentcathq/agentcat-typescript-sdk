@@ -19,12 +19,18 @@ export async function connectClient(server: {
   return client;
 }
 
-/** Extracts the SDK-authored [MCP INSTRUCTIONS] text block from a result. */
-export const mintBackOf = (result: any): string | undefined =>
-  (result.content as any[]).find(
-    (c) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
-  )?.text;
+/**
+ * Extracts the SDK-authored [session_id …] text block from a result. The
+ * block is prepended as the FIRST content element; reading only content[0]
+ * makes every consumer of this helper assert the placement too.
+ */
+export const mintBackOf = (result: any): string | undefined => {
+  const first = (result.content as any[])[0];
+  return first?.type === "text" && first.text.startsWith("[session_id")
+    ? first.text
+    : undefined;
+};
 
-/** Reads `name=<value>` out of a mint-back block. */
+/** Reads `name: <value>` out of a mint-back block. */
 export const handleFrom = (text: string, name: string): string =>
-  new RegExp(`${name}=(\\S+)`).exec(text)![1];
+  new RegExp(`${name}: (\\S+)`).exec(text)![1];

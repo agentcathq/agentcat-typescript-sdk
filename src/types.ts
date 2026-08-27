@@ -6,7 +6,7 @@ export interface AgentCatOptions {
   /**
    * Default false. Set true to inject a required agent_id parameter into every
    * tool. Agents self-generate the value (model|harness|nonce, e.g.
-   * "opus-4.80-1m|claude-code|k3n9x"); it is echoed back in _mcp_instructions
+   * "opus-4.80-1m|claude-code|k3n9x"); it is echoed back in mcp_session
    * and stamped on events as tags. Omission never rejects a call server-side —
    * the event is simply published without agent identity. The intended
    * enforcement is client-side: a strict schema-validating MCP client will
@@ -15,7 +15,7 @@ export interface AgentCatOptions {
   enableAgentTracking?: boolean;
   /**
    * Hook mode: you manage task state. When configured, AgentCat injects no
-   * session_id parameter and prompts no task instructions; the returned value is
+   * session_id parameter and prepends no issuance text; the returned value is
    * combined with the project ID into a deterministic ses_ KSUID. Nullish
    * returns and throws mint silently — a configured hook should answer every
    * request.

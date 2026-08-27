@@ -42,6 +42,7 @@ import {
   AGENTCAT_TAG_AGENT_SOURCE,
   AGENTCAT_TAG_PROTOCOL_VERSION,
   DEFAULT_CONTEXT_PARAMETER_DESCRIPTION,
+  SESSION_ID_PARAM_PATTERN,
 } from "../../modules/constants.js";
 
 const lanes: Lane[] = [
@@ -67,8 +68,16 @@ const scenarios: Scenario[] = [
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties.context).toBeDefined();
       expect(echo.inputSchema.properties.session_id).toBeDefined();
+      // The injected session_id is schema-required and advertises the
+      // start|ses_ value contract as a pattern.
+      expect(echo.inputSchema.required).toContain("session_id");
+      expect(echo.inputSchema.properties.session_id.pattern).toBe(
+        SESSION_ID_PARAM_PATTERN,
+      );
 
-      // Call with context but no session_id → SDK mints and announces the handle.
+      // Omission tolerance: requiredness is enforced by schema-aware clients
+      // only, so a call without session_id still mints and announces the
+      // handle.
       const result = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "e2e smoke intent" },
@@ -185,8 +194,8 @@ const scenarios: Scenario[] = [
         name: "get_more_tools",
         arguments: { context: missing },
       });
-      expect(result.content[0].text).toContain("Unfortunately");
-      expect(result.content[0].text).toContain(
+      expect(result.content[1].text).toContain("Unfortunately");
+      expect(result.content[1].text).toContain(
         "we have shown you the full tool list",
       );
 
@@ -254,31 +263,36 @@ const scenarios: Scenario[] = [
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties).toHaveProperty("agent_id");
       expect(echo.inputSchema.properties).toHaveProperty("session_id");
-      // agent_id is self-chosen and required; session_id stays optional —
-      // omission is the task-minting signal.
+      // Both injected handles are schema-required with soft enforcement: a
+      // call that omits them still succeeds (minted task / unattributed).
       expect(echo.inputSchema.required).toContain("agent_id");
-      expect(echo.inputSchema.required ?? []).not.toContain("session_id");
+      expect(echo.inputSchema.required).toContain("session_id");
 
       // The structured tool carries the declared outputSchema, so the
       // mint-back mirrors into structuredContent (and the v2 client
       // validated the result against the injected outputSchema in transit).
       // agent_id is omitted here — there is no server-side agent minting, so
-      // the block and mirror carry the session_id only.
+      // the block and mirror carry the session_id only. First call sends
+      // start.
       const result = await client.callTool({
         name: "structured",
-        arguments: { msg: "mint", context: "agent minting" },
+        arguments: {
+          msg: "mint",
+          context: "agent minting",
+          session_id: "start",
+        },
       });
       const block = mintBackOf(result)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
+      expect(block).toContain("[session_id issued");
       expect(block).not.toContain("agent_id");
       const sessionId = handleFrom(block, "session_id");
       expect(sessionId).toMatch(/^ses_/);
 
       expect(result.structuredContent.echoed).toBe("mint");
-      const mirror = result.structuredContent._mcp_instructions;
+      const mirror = result.structuredContent.mcp_session;
       expect(mirror.session_id).toBe(sessionId);
       expect(mirror.agent_id).toBeUndefined();
-      expect(mirror.instructions).toContain("session_id issued");
+      expect(mirror.status).toBe("issued");
 
       const [event] = await waitForEvents(capture, 1);
       expect(event.sessionId).toBe(sessionId);
@@ -297,10 +311,14 @@ const scenarios: Scenario[] = [
       await client.listTools();
       const first = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "agent supplied — mint first" },
+        arguments: {
+          msg: "one",
+          context: "agent supplied — mint first",
+          session_id: "start",
+        },
       });
       const block = mintBackOf(first)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
+      expect(block).toContain("[session_id issued");
       expect(block).not.toContain("agent_id");
       const sessionId = handleFrom(block, "session_id");
 
@@ -443,9 +461,14 @@ const scenarios: Scenario[] = [
     ...scenarioConfig("task-supplied-continuity"),
     script: async ({ client, capture }) => {
       await client.listTools();
+      // First call of the task sends the start sentinel; the server mints.
       const first = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "continuity — mint" },
+        arguments: {
+          msg: "one",
+          context: "continuity — mint",
+          session_id: "start",
+        },
       });
       const sessionId = handleFrom(mintBackOf(first)!, "session_id");
       expect(sessionId).toMatch(/^ses_/);
@@ -477,31 +500,35 @@ const scenarios: Scenario[] = [
     ...scenarioConfig("mint-back-structured-mirror"),
     script: async ({ client, capture }) => {
       // List first so the typed v2 client validates the call result against
-      // the injected outputSchema (declaring _mcp_instructions) — a result
+      // the injected outputSchema (declaring mcp_session) — a result
       // that failed the declared schema would throw right here.
       await client.listTools();
       const result = await client.callTool({
         name: "structured",
-        arguments: { msg: "mirrored", context: "structured mirror" },
+        arguments: {
+          msg: "mirrored",
+          context: "structured mirror",
+          session_id: "start",
+        },
       });
 
       // Text block + structured mirror, consistent with each other.
       const block = mintBackOf(result)!;
-      expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued");
+      expect(block).toContain("[session_id issued");
       const sessionId = handleFrom(block, "session_id");
       expect(result.structuredContent.echoed).toBe("mirrored");
-      const mirror = result.structuredContent._mcp_instructions;
+      const mirror = result.structuredContent.mcp_session;
       expect(mirror.session_id).toBe(sessionId);
-      expect(mirror.instructions).toContain("session_id issued");
+      expect(mirror.status).toBe("issued");
       // Agent tracking is off → the mirror carries no agent_id.
       expect(mirror.agent_id).toBeUndefined();
+      // The mirror leads structuredContent so it survives truncation.
+      expect(Object.keys(result.structuredContent)[0]).toBe("mcp_session");
 
       const [event] = await waitForEvents(capture, 1);
       expect(event.sessionId).toBe(sessionId);
       // Mint-back is wire-only — never recorded on the event.
-      expect(JSON.stringify(event.response)).not.toContain(
-        "[MCP INSTRUCTIONS]",
-      );
+      expect(JSON.stringify(event.response)).not.toContain("[session_id");
     },
   },
 
@@ -586,7 +613,7 @@ const scenarios: Scenario[] = [
         arguments: { context: "error path intent" },
       });
       // v2 McpServer converts handler throws into isError results; the SDK
-      // still appends the mint-back to the failed result on the wire.
+      // still prepends the mint-back to the failed result on the wire.
       expect(result.isError).toBe(true);
       const block = mintBackOf(result)!;
       expect(handleFrom(block, "session_id")).toMatch(/^ses_/);
@@ -601,9 +628,7 @@ const scenarios: Scenario[] = [
         [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
       });
       // Mint-back stays wire-only even on errors.
-      expect(JSON.stringify(event.response)).not.toContain(
-        "[MCP INSTRUCTIONS]",
-      );
+      expect(JSON.stringify(event.response)).not.toContain("[session_id");
 
       // Follow-up echo on the same lane instance succeeds — the error left
       // no poisoned state behind.
@@ -769,7 +794,11 @@ const scenarios: Scenario[] = [
       await client.listTools();
       const first: any = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "stateful continuity" },
+        arguments: {
+          msg: "one",
+          context: "stateful continuity",
+          session_id: "start",
+        },
       });
       const sessionId = handleFrom(mintBackOf(first)!, "session_id");
       const second: any = await client.callTool({

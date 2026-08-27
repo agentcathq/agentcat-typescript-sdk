@@ -73,7 +73,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
       expect(identifyCalled).toBe(true);
 
       // Wait for events to be processed
@@ -261,7 +261,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain(
+      expect(result.content[1].text).toContain(
         "Processed message: Testing post-track identification",
       );
       expect(identifyCalled).toBe(true);
@@ -417,7 +417,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -656,7 +656,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
       // The identify hook is deferred: the call returns while the 100ms
       // lookup is still in flight — hooks never hold up the tool call.
       expect(asyncOperationCompleted).toBe(false);
@@ -713,7 +713,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -767,7 +767,7 @@ describe("Identify Feature", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));

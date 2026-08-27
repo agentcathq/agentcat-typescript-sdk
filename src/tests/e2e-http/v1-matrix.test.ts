@@ -41,7 +41,8 @@ import {
   AGENTCAT_TAG_SESSION_SOURCE,
   DEFAULT_CONTEXT_PARAMETER_DESCRIPTION,
   META_PROTOCOL_VERSION_KEY,
-  MINT_BACK_HEADER_SESSION,
+  MINT_BACK_HEADER_ISSUED,
+  SESSION_ID_PARAM_PATTERN,
 } from "../../modules/constants.js";
 
 const lanes: Lane[] = [laneById("v1-stateful"), laneById("v1-stateless")];
@@ -69,17 +70,23 @@ const scenarios: Scenario[] = [
         DEFAULT_CONTEXT_PARAMETER_DESCRIPTION,
       );
       expect(echo.inputSchema.properties.session_id).toBeDefined();
-      // Handles are never required — omission is the minting signal.
-      expect(echo.inputSchema.required ?? []).not.toContain("session_id");
+      // The injected session_id is schema-required and advertises the
+      // start|ses_ value contract as a pattern.
+      expect(echo.inputSchema.required).toContain("session_id");
+      expect(echo.inputSchema.properties.session_id.pattern).toBe(
+        SESSION_ID_PARAM_PATTERN,
+      );
 
-      // Call with context but no session_id → SDK mints and announces the handle.
+      // Omission tolerance: requiredness is enforced by schema-aware clients
+      // only, so a call without session_id still mints and announces the
+      // handle.
       const result = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "e2e smoke intent" },
       });
       const mintBack = mintBackOf(result);
       expect(mintBack).toBeDefined();
-      expect(mintBack).toContain(MINT_BACK_HEADER_SESSION);
+      expect(mintBack).toContain(MINT_BACK_HEADER_ISSUED);
       const sessionId = handleFrom(mintBack!, "session_id");
       expect(sessionId).toMatch(/^ses_/);
 
@@ -183,8 +190,8 @@ const scenarios: Scenario[] = [
         name: "get_more_tools",
         arguments: { context: missing },
       });
-      expect(result.content[0].text).toContain("Unfortunately");
-      expect(result.content[0].text).toContain(
+      expect(result.content[1].text).toContain("Unfortunately");
+      expect(result.content[1].text).toContain(
         "we have shown you the full tool list",
       );
       const block = mintBackOf(result)!;
@@ -197,9 +204,7 @@ const scenarios: Scenario[] = [
       expect(event.userIntent).toBe(missing);
       expect(event.sessionId).toBe(handleFrom(block, "session_id"));
       // Mint-back is wire-only — never recorded on the published event.
-      expect(JSON.stringify(event.response)).not.toContain(
-        "[MCP INSTRUCTIONS]",
-      );
+      expect(JSON.stringify(event.response)).not.toContain("[session_id");
     },
   },
 
@@ -264,26 +269,29 @@ const scenarios: Scenario[] = [
       expect(structured.inputSchema.properties.agent_id).toBeDefined();
       expect(structured.inputSchema.properties.session_id).toBeDefined();
       expect(structured.inputSchema.required).toContain("agent_id");
+      expect(structured.inputSchema.required).toContain("session_id");
       const gmt = findTool(tools, "get_more_tools")!;
       expect(gmt.inputSchema.properties.agent_id).toBeDefined();
       expect(gmt.inputSchema.required).toContain("agent_id");
+      expect(gmt.inputSchema.required).toContain("session_id");
 
       // structured declares an outputSchema, so the mirror rides
       // structuredContent — and the v1 client ajv-validates it against the
-      // injected outputSchema it just listed.
+      // injected outputSchema it just listed. First call sends start.
       const result = await client.callTool({
         name: "structured",
-        arguments: { msg: "hi", context: "agent minting" },
+        arguments: { msg: "hi", context: "agent minting", session_id: "start" },
       });
       const block = mintBackOf(result)!;
-      expect(block).toContain(MINT_BACK_HEADER_SESSION);
+      expect(block).toContain(MINT_BACK_HEADER_ISSUED);
       expect(block).not.toContain("agent_id");
       const sessionId = handleFrom(block, "session_id");
       expect(sessionId).toMatch(/^ses_/);
 
-      const mirror = result.structuredContent._mcp_instructions;
+      const mirror = result.structuredContent.mcp_session;
       expect(mirror.session_id).toBe(sessionId);
       expect(mirror.agent_id).toBeUndefined();
+      expect(mirror.status).toBe("issued");
       expect(result.structuredContent.echoed).toBe("hi");
 
       const [event] = await waitForEvents(capture, 1);
@@ -304,10 +312,14 @@ const scenarios: Scenario[] = [
       await client.listTools();
       const first = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "agent supplied 1" },
+        arguments: {
+          msg: "one",
+          context: "agent supplied 1",
+          session_id: "start",
+        },
       });
       const block = mintBackOf(first)!;
-      expect(block).toContain(MINT_BACK_HEADER_SESSION);
+      expect(block).toContain(MINT_BACK_HEADER_ISSUED);
       expect(block).not.toContain("agent_id");
       const sessionId = handleFrom(block, "session_id");
 
@@ -433,9 +445,10 @@ const scenarios: Scenario[] = [
     ...scenarioConfig("task-supplied-continuity"),
     script: async ({ client, capture }) => {
       await client.listTools();
+      // First call of the task sends the start sentinel; the server mints.
       const first = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "continuity 1" },
+        arguments: { msg: "one", context: "continuity 1", session_id: "start" },
       });
       const sessionId = handleFrom(mintBackOf(first)!, "session_id");
       expect(sessionId).toMatch(/^ses_/);
@@ -463,7 +476,7 @@ const scenarios: Scenario[] = [
     },
   },
 
-  // ── 14 ── structured mirror: text mint-back + _mcp_instructions, schema-valid
+  // ── 14 ── structured mirror: text mint-back + mcp_session, schema-valid
   {
     ...scenarioConfig("mint-back-structured-mirror"),
     script: async ({ client, capture }) => {
@@ -471,26 +484,32 @@ const scenarios: Scenario[] = [
       // The injected outputSchema declares the mirror field the client will
       // validate against.
       const listed = findTool(tools, "structured")!;
-      expect(listed.outputSchema.properties._mcp_instructions).toBeDefined();
+      expect(listed.outputSchema.properties.mcp_session).toBeDefined();
 
       // listTools above cached the outputSchema client-side, so this result
       // was ajv-validated against the injected declaration on the way in —
       // "passes declared outputSchema" is proven by the call not throwing.
       const result = await client.callTool({
         name: "structured",
-        arguments: { msg: "mirrored", context: "structured mirror" },
+        arguments: {
+          msg: "mirrored",
+          context: "structured mirror",
+          session_id: "start",
+        },
       });
       const block = mintBackOf(result)!;
       const sessionId = handleFrom(block, "session_id");
-      const mirror = result.structuredContent._mcp_instructions;
+      const mirror = result.structuredContent.mcp_session;
       expect(mirror.session_id).toBe(sessionId);
-      expect(mirror.instructions).toContain("session_id issued");
+      expect(mirror.status).toBe("issued");
       expect(result.structuredContent.echoed).toBe("mirrored");
+      // The mirror leads structuredContent so it survives truncation.
+      expect(Object.keys(result.structuredContent)[0]).toBe("mcp_session");
 
       const [event] = await waitForEvents(capture, 1);
       expect(event.sessionId).toBe(sessionId);
       // The mirror is wire-only: the published response never carries it.
-      expect(JSON.stringify(event.response)).not.toContain("_mcp_instructions");
+      expect(JSON.stringify(event.response)).not.toContain("mcp_session");
     },
   },
 
@@ -762,7 +781,11 @@ const scenarios: Scenario[] = [
       await client.listTools();
       const first = await client.callTool({
         name: "echo",
-        arguments: { msg: "one", context: "session continuity 1" },
+        arguments: {
+          msg: "one",
+          context: "session continuity 1",
+          session_id: "start",
+        },
       });
       const sessionId = handleFrom(mintBackOf(first)!, "session_id");
 

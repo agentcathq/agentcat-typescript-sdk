@@ -67,7 +67,7 @@ describe("v2 low-level server: explicit handles", () => {
     await capture.stop();
   });
 
-  it("injects optional handles into listed tool schemas in canonical order", async () => {
+  it("injects required handles into listed tool schemas in canonical order", async () => {
     const { client } = await setupLowLevel();
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
@@ -79,6 +79,7 @@ describe("v2 low-level server: explicit handles", () => {
     ]);
     expect((echo.inputSchema as any).required).toEqual([
       "text",
+      "session_id",
       "agent_id",
       "context",
     ]);
@@ -102,15 +103,15 @@ describe("v2 low-level server: explicit handles", () => {
     await client.close();
   });
 
-  it("first call mints session_id, appends the mint-back, and tags the task source", async () => {
+  it("first call sends start: mints session_id, prepends the mint-back, tags the source", async () => {
     const { client } = await setupLowLevel();
     await client.listTools();
     const result: any = await client.callTool({
       name: "echo",
-      arguments: { text: "hi", context: "testing intent" },
+      arguments: { text: "hi", context: "testing intent", session_id: "start" },
     });
     const block = mintBackOf(result)!;
-    expect(block).toContain("[MCP INSTRUCTIONS]: session_id issued.");
+    expect(block).toContain("[session_id issued");
     expect(block).not.toContain("agent_id");
     const sessionId = handleFrom(block, "session_id");
     expect(sessionId).toMatch(/^ses_/);
@@ -153,16 +154,14 @@ describe("v2 low-level server: explicit handles", () => {
       arguments: { text: "explode", context: "testing" },
     });
     expect(result.isError).toBe(true);
-    expect(mintBackOf(result)).toContain(
-      "[MCP INSTRUCTIONS]: session_id issued.",
-    );
+    expect(mintBackOf(result)).toContain("[session_id issued");
     expect(mintBackOf(result)).not.toContain("agent_id");
 
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(event.isError).toBe(true);
-    expect(JSON.stringify(event.response)).not.toContain("[MCP INSTRUCTIONS]");
+    expect(JSON.stringify(event.response)).not.toContain("[session_id");
     expect(event.error?.message).toContain("boom");
-    expect(event.error?.message).not.toContain("[MCP INSTRUCTIONS]");
+    expect(event.error?.message).not.toContain("[session_id");
     await client.close();
   });
 
@@ -195,13 +194,11 @@ describe("v2 low-level server: explicit handles", () => {
       name: "echo",
       arguments: { text: "hi", context: "testing intent" },
     });
-    expect(mintBackOf(result)).toContain(
-      "[MCP INSTRUCTIONS]: session_id issued.",
-    );
+    expect(mintBackOf(result)).toContain("[session_id issued");
     expect(mintBackOf(result)).not.toContain("agent_id");
 
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(JSON.stringify(event.response)).not.toContain("[MCP INSTRUCTIONS]");
+    expect(JSON.stringify(event.response)).not.toContain("[session_id");
     expect((event.response as any).content).toEqual([
       { type: "text", text: "echo: hi" },
     ]);
@@ -239,7 +236,7 @@ describe("v2 low-level server: explicit handles", () => {
       },
     });
 
-    expect(mintBackOf(result)).toContain("session_id not recognized");
+    expect(mintBackOf(result)).toContain("[session_id unrecognized");
 
     const event = capture.findEventByType("mcp:tools/call")!;
     expect(event.sessionId).toBe("");

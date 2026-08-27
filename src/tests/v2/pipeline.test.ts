@@ -140,7 +140,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     const mcp = await trackedServer();
 
     await agentcat.publishCustomEvent(mcp, "proj_test", {
-      sessionId: "ses_custom",
+      sessionId: "ses_custom000000000000000000000",
       resourceName: "custom-action",
       parameters: { action: "test" },
       message: "Testing custom event",
@@ -149,7 +149,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     const events = capture.getEvents();
     expect(events).toHaveLength(1);
     expect(events[0].eventType).toBe(AGENTCAT_CUSTOM_EVENT_TYPE);
-    expect(events[0].sessionId).toBe("ses_custom");
+    expect(events[0].sessionId).toBe("ses_custom000000000000000000000");
     expect(events[0].projectId).toBe("proj_test");
     expect(events[0].resourceName).toBe("custom-action");
     expect(events[0].parameters).toEqual({ action: "test" });
@@ -160,7 +160,7 @@ describe("v2 pipeline: publishCustomEvent", () => {
     const mcp = await trackedServer();
 
     await agentcat.publishCustomEvent(mcp, "proj_test", {
-      sessionId: "ses_custom",
+      sessionId: "ses_custom000000000000000000000",
       resourceName: "custom-action",
       tags: { valid: "value", "bad!key": "value" },
       properties: {},
@@ -211,11 +211,11 @@ describe("v2 pipeline: publishCustomEvent", () => {
 
   it("lets eventData.sessionId take precedence over the session ID string", async () => {
     await agentcat.publishCustomEvent("ignored-string", "proj_test", {
-      sessionId: "ses_wins",
+      sessionId: "ses_wins00000000000000000000000",
     });
 
     const [event] = capture.getEvents();
-    expect(event.sessionId).toBe("ses_wins");
+    expect(event.sessionId).toBe("ses_wins00000000000000000000000");
   });
 
   it("throws for an untracked v2 server", async () => {

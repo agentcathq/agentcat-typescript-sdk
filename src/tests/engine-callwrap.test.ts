@@ -166,7 +166,7 @@ describe("installCallWrap (synthetic seam)", () => {
       },
       {},
     );
-    expect(result.content[0].text).toContain("full tool list");
+    expect(result.content[1].text).toContain("full tool list");
     const [event] = capture.getEvents();
     expect(event.resourceName).toBe("get_more_tools");
     expect(event.userIntent).toBe("need csv export");

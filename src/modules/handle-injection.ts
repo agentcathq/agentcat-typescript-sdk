@@ -2,12 +2,14 @@ import { RegisteredTool } from "../types.js";
 import { SESSION_ID_PARAM, AGENT_ID_PARAM } from "./handles.js";
 import {
   SESSION_ID_PARAM_DESCRIPTION,
+  SESSION_ID_PARAM_PATTERN,
   AGENT_ID_PARAM_DESCRIPTION,
-  AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
-  MCP_INSTRUCTIONS_KEY,
-  MCP_INSTRUCTIONS_FIELD_DESCRIPTION,
-  MCP_INSTRUCTIONS_SESSION_ID_DESCRIPTION,
-  MCP_INSTRUCTIONS_AGENT_ID_DESCRIPTION,
+  MCP_SESSION_KEY,
+  MCP_SESSION_FIELD_DESCRIPTION,
+  MCP_SESSION_FIELD_DESCRIPTION_HOOK_MODE,
+  MCP_SESSION_SESSION_ID_DESCRIPTION,
+  MCP_SESSION_AGENT_ID_DESCRIPTION,
+  MCP_SESSION_STATUS_DESCRIPTION,
 } from "./constants.js";
 import { GET_MORE_TOOLS_NAME } from "./tools.js";
 import { writeToLog } from "./logging.js";
@@ -38,6 +40,23 @@ function recordInjected(
   else registry.set(toolName, new Set([param]));
 }
 
+/**
+ * Adds a param to the schema's required array: created if absent, appended
+ * without duplicating, customer entries never removed or reordered.
+ * Requiredness rides injection exactly — only a param AgentCat injected on
+ * this tool is ever added — and enforcement stays soft: callWrap tolerates
+ * omission (session minted / event without agent identity), so the flag
+ * drives schema-aware clients only.
+ */
+function addToRequired(schema: Record<string, any>, param: string): void {
+  const required = schema.required;
+  if (Array.isArray(required)) {
+    if (!required.includes(param)) required.push(param);
+  } else {
+    schema.required = [param];
+  }
+}
+
 export interface HandleInjectionOptions {
   injectSessionId: boolean; // false in hook mode
   injectAgentId: boolean; // false when enableAgentTracking is false
@@ -52,7 +71,8 @@ export interface HandleInjectionOptions {
 }
 
 /**
- * Injects optional session_id/agent_id into each tool's JSON Schema (post-Zod).
+ * Injects session_id/agent_id into each tool's JSON Schema (post-Zod), both
+ * schema-required with soft enforcement (see addToRequired).
  * Order: customer params, session_id, agent_id — context is appended afterwards
  * by addContextParameterToTools, so this MUST run first. Unlike the context
  * injector, get_more_tools is NOT exempt: its calls publish events, so it
@@ -140,8 +160,10 @@ function addHandleParametersToTool(
       properties[SESSION_ID_PARAM] = {
         type: "string",
         description: SESSION_ID_PARAM_DESCRIPTION,
+        pattern: SESSION_ID_PARAM_PATTERN,
       };
       recordInjected(registry, toolName, SESSION_ID_PARAM);
+      addToRequired(modifiedTool.inputSchema, SESSION_ID_PARAM);
     }
   }
 
@@ -153,45 +175,37 @@ function addHandleParametersToTool(
     } else {
       properties[AGENT_ID_PARAM] = {
         type: "string",
-        // Hook mode has no session_id param anywhere; never reference one the
-        // agent cannot see.
-        description: opts.injectSessionId
-          ? AGENT_ID_PARAM_DESCRIPTION
-          : AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
+        // One description for both modes: the copy never references the
+        // session_id parameter, so it reads the same with or without one.
+        description: AGENT_ID_PARAM_DESCRIPTION,
       };
       recordInjected(registry, toolName, AGENT_ID_PARAM);
-      // agent_id is self-chosen by the agent and schema-required. Enforcement
-      // is soft: callWrap tolerates omission (event published without agent
-      // identity) — the required flag drives client-side compliance only.
-      const required = modifiedTool.inputSchema.required;
-      if (Array.isArray(required)) {
-        if (!required.includes(AGENT_ID_PARAM)) required.push(AGENT_ID_PARAM);
-      } else {
-        modifiedTool.inputSchema.required = [AGENT_ID_PARAM];
-      }
+      // agent_id is self-chosen by the agent (no pattern to advertise), and
+      // schema-required like session_id above — see addToRequired for the
+      // soft-enforcement contract.
+      addToRequired(modifiedTool.inputSchema, AGENT_ID_PARAM);
     }
   }
 
-  // session_id is never required — omission is the minting signal. agent_id
-  // (self-chosen, injected above) is the exception.
   if (outputRegistry) {
-    addInstructionsToOutputSchema(modifiedTool, opts, outputRegistry, toolName);
+    addMcpSessionToOutputSchema(modifiedTool, opts, outputRegistry, toolName);
   }
   return modifiedTool;
 }
 
 /**
- * Injects the optional _mcp_instructions property into a declared plain-object
+ * Injects the optional mcp_session property into a declared plain-object
  * outputSchema so validating clients accept the mirrored field. The MCP TS
  * client ajv-validates structuredContent against the listed schema, and
  * zod-to-json-schema emits additionalProperties: false for plain z.object —
  * an undeclared key would fail the whole result, so declaration is what makes
  * mirroring safe. Composed schemas (oneOf/allOf/anyOf) have no single
  * properties bag to extend and are skipped, same policy as the input side.
- * Sub-properties mirror the modes: no session_id in hook mode, no agent_id when
- * tracking is off — copy never references a parameter the agent cannot see.
+ * Sub-properties mirror the modes: no session_id or status in hook mode, no
+ * agent_id when tracking is off — every response state the schema
+ * pre-announces is one the agent can actually receive.
  */
-function addInstructionsToOutputSchema(
+function addMcpSessionToOutputSchema(
   tool: RegisteredTool,
   opts: HandleInjectionOptions,
   outputRegistry: OutputInjectionRegistry,
@@ -201,15 +215,15 @@ function addInstructionsToOutputSchema(
   if (!schema) return;
   if (schema.oneOf || schema.allOf || schema.anyOf) {
     writeToLog(
-      `WARN: Tool "${toolName}" has complex outputSchema (oneOf/allOf/anyOf). Skipping ${MCP_INSTRUCTIONS_KEY} injection; mint-back stays content-only for this tool.`,
+      `WARN: Tool "${toolName}" has complex outputSchema (oneOf/allOf/anyOf). Skipping ${MCP_SESSION_KEY} injection; mint-back stays content-only for this tool.`,
     );
     return;
   }
   const copy = JSON.parse(JSON.stringify(schema));
   if (!copy.properties) copy.properties = {};
-  if (copy.properties[MCP_INSTRUCTIONS_KEY]) {
+  if (copy.properties[MCP_SESSION_KEY]) {
     writeToLog(
-      `WARN: Tool "${toolName}" already declares '${MCP_INSTRUCTIONS_KEY}' in outputSchema. Skipping injection.`,
+      `WARN: Tool "${toolName}" already declares '${MCP_SESSION_KEY}' in outputSchema. Skipping injection.`,
     );
     return;
   }
@@ -217,19 +231,27 @@ function addInstructionsToOutputSchema(
   if (opts.injectSessionId) {
     subProperties[SESSION_ID_PARAM] = {
       type: "string",
-      description: MCP_INSTRUCTIONS_SESSION_ID_DESCRIPTION,
+      description: MCP_SESSION_SESSION_ID_DESCRIPTION,
     };
   }
   if (opts.injectAgentId) {
     subProperties[AGENT_ID_PARAM] = {
       type: "string",
-      description: MCP_INSTRUCTIONS_AGENT_ID_DESCRIPTION,
+      description: MCP_SESSION_AGENT_ID_DESCRIPTION,
     };
   }
-  subProperties.instructions = { type: "string" };
-  copy.properties[MCP_INSTRUCTIONS_KEY] = {
+  if (opts.injectSessionId) {
+    subProperties.status = {
+      type: "string",
+      enum: ["issued", "active", "unrecognized"],
+      description: MCP_SESSION_STATUS_DESCRIPTION,
+    };
+  }
+  copy.properties[MCP_SESSION_KEY] = {
     type: "object",
-    description: MCP_INSTRUCTIONS_FIELD_DESCRIPTION,
+    description: opts.injectSessionId
+      ? MCP_SESSION_FIELD_DESCRIPTION
+      : MCP_SESSION_FIELD_DESCRIPTION_HOOK_MODE,
     properties: subProperties,
   };
   (tool as any).outputSchema = copy;

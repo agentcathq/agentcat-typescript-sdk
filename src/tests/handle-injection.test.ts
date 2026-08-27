@@ -13,10 +13,12 @@ import {
 import { addContextParameterToTools } from "../modules/context-parameters.js";
 import {
   SESSION_ID_PARAM_DESCRIPTION,
+  SESSION_ID_PARAM_PATTERN,
   AGENT_ID_PARAM_DESCRIPTION,
-  AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
-  MCP_INSTRUCTIONS_KEY,
-  MCP_INSTRUCTIONS_FIELD_DESCRIPTION,
+  MCP_SESSION_KEY,
+  MCP_SESSION_FIELD_DESCRIPTION,
+  MCP_SESSION_FIELD_DESCRIPTION_HOOK_MODE,
+  MCP_SESSION_STATUS_DESCRIPTION,
 } from "../modules/constants.js";
 
 const makeTool = (name: string, schema?: any) =>
@@ -33,7 +35,7 @@ const customerSchema = () => ({
 });
 
 describe("addHandleParametersToTools", () => {
-  it("injects optional session_id and required agent_id after customer params", () => {
+  it("injects session_id and agent_id after customer params, both required", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
@@ -42,15 +44,26 @@ describe("addHandleParametersToTools", () => {
     );
     const keys = Object.keys(tool.inputSchema.properties);
     expect(keys).toEqual(["text", "session_id", "agent_id"]);
-    // session_id is never required — omission is the minting signal. agent_id is
-    // self-chosen and required when injected.
-    expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
+    // Requiredness rides injection: both injected params join required, and
+    // the customer's own entries stay first and untouched. Enforcement is
+    // soft — a call that still omits them succeeds (minted / unattributed).
+    expect(tool.inputSchema.required).toEqual([
+      "text",
+      "session_id",
+      "agent_id",
+    ]);
     expect(tool.inputSchema.properties.session_id.description).toBe(
       SESSION_ID_PARAM_DESCRIPTION,
+    );
+    // The injected session_id advertises the start|ses_ value contract as a
+    // JSON Schema pattern; self-chosen agent_id has no pattern in any mode.
+    expect(tool.inputSchema.properties.session_id.pattern).toBe(
+      SESSION_ID_PARAM_PATTERN,
     );
     expect(tool.inputSchema.properties.agent_id.description).toBe(
       AGENT_ID_PARAM_DESCRIPTION,
     );
+    expect(tool.inputSchema.properties.agent_id.pattern).toBeUndefined();
     expect(registry.get("add_todo")).toEqual(
       new Set(["session_id", "agent_id"]),
     );
@@ -67,7 +80,25 @@ describe("addHandleParametersToTools", () => {
       { injectSessionId: true, injectAgentId: true },
       registry,
     );
-    expect(out.inputSchema.required).toEqual(["agent_id"]);
+    expect(out.inputSchema.required).toEqual(["session_id", "agent_id"]);
+  });
+
+  it("does not duplicate session_id in an existing required array", () => {
+    const tool: any = {
+      name: "weird_session",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: ["session_id"],
+      },
+    };
+    const registry = new Map();
+    const [out]: any[] = addHandleParametersToTools(
+      [tool],
+      { injectSessionId: true, injectAgentId: false },
+      registry,
+    );
+    expect(out.inputSchema.required).toEqual(["session_id"]);
   });
 
   it("does not duplicate agent_id in an existing required array", () => {
@@ -123,12 +154,18 @@ describe("addHandleParametersToTools", () => {
       "agent_id",
       "context",
     ]);
+    expect(tools[0].inputSchema.required).toEqual([
+      "text",
+      "session_id",
+      "agent_id",
+      "context",
+    ]);
     expect(registry.get("add_todo")).toEqual(
       new Set(["session_id", "agent_id", "context"]),
     );
   });
 
-  it("hook mode: no session_id, agent_id uses the standalone description", () => {
+  it("hook mode: no session_id, agent_id uses the same single description", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
@@ -137,7 +174,7 @@ describe("addHandleParametersToTools", () => {
     );
     expect(tool.inputSchema.properties.session_id).toBeUndefined();
     expect(tool.inputSchema.properties.agent_id.description).toBe(
-      AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
+      AGENT_ID_PARAM_DESCRIPTION,
     );
     expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
     expect(registry.get("add_todo")).toEqual(new Set(["agent_id"]));
@@ -155,9 +192,14 @@ describe("addHandleParametersToTools", () => {
       { injectSessionId: true, injectAgentId: true },
       registry,
     );
+    // The customer's foreign session_id is completely untouched: no pattern,
+    // and never added to required — requiredness rides injection only.
+    // agent_id WAS injected on this tool, so it alone joins required.
     expect(tool.inputSchema.properties.session_id.description).toBe(
       "customer's own",
     );
+    expect(tool.inputSchema.properties.session_id.pattern).toBeUndefined();
+    expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
     expect(registry.get("deploy")).toEqual(new Set(["agent_id"]));
   });
 
@@ -169,6 +211,8 @@ describe("addHandleParametersToTools", () => {
       registry,
     );
     expect(tool.inputSchema.properties).toBeUndefined();
+    // Composed schemas get no required changes either — fully untouched.
+    expect(tool.inputSchema.required).toBeUndefined();
     expect(registry.has("odd")).toBe(false);
   });
 
@@ -185,6 +229,7 @@ describe("addHandleParametersToTools", () => {
       "session_id",
       "agent_id",
     ]);
+    expect(tools[1].inputSchema.required).toEqual(["session_id", "agent_id"]);
   });
 
   it("does NOT skip get_more_tools (handles are injected; context stays bespoke)", () => {
@@ -206,28 +251,30 @@ describe("addHandleParametersToTools", () => {
       "agent_id",
     ]);
     expect(tools[0].inputSchema.properties.context.description).toBe("bespoke");
+    // Its own required context leads; the injected handles append after it.
+    expect(tools[0].inputSchema.required).toEqual([
+      "context",
+      "session_id",
+      "agent_id",
+    ]);
     expect(registry.get("get_more_tools")).toEqual(
       new Set(["session_id", "agent_id"]),
     );
   });
 
   it("agent_id copy prescribes the self-chosen model|harness|nonce format", () => {
-    for (const copy of [
-      AGENT_ID_PARAM_DESCRIPTION,
-      AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE,
-    ]) {
-      expect(copy).toContain("REQUIRED on every call, including your first");
-      expect(copy).toContain("opus-4.80-1m|claude-code|k3n9x");
-      expect(copy).toContain("generate its own");
-      // The old mint-back protocol must be gone from the copy.
-      expect(copy).not.toContain("the server will issue one");
-      expect(copy).not.toContain("Omit it");
-    }
-    // Only the standard variant ties the agent to the task wording.
-    expect(AGENT_ID_PARAM_DESCRIPTION).toContain("working this task");
-    expect(AGENT_ID_PARAM_DESCRIPTION_HOOK_MODE).not.toContain(
-      "working this task",
+    expect(AGENT_ID_PARAM_DESCRIPTION).toContain(
+      "required on every call including your first",
     );
+    expect(AGENT_ID_PARAM_DESCRIPTION).toContain(
+      "opus-4.80-1m|claude-code|k3n9x",
+    );
+    expect(AGENT_ID_PARAM_DESCRIPTION).toContain("never inherited");
+    // agent_id is self-chosen: the copy never promises server issuance.
+    expect(AGENT_ID_PARAM_DESCRIPTION).not.toContain("the server will issue");
+    // Single constant in both modes: the copy never references the session_id
+    // parameter, so it reads the same with or without one.
+    expect(AGENT_ID_PARAM_DESCRIPTION).not.toContain("session_id");
   });
 });
 
@@ -335,7 +382,7 @@ const objectOutputSchema = () => ({
 });
 
 describe("outputSchema injection", () => {
-  it("injects _mcp_instructions into a plain object outputSchema and registers the tool", () => {
+  it("injects mcp_session into a plain object outputSchema and registers the tool", () => {
     const output: OutputInjectionRegistry = new Set();
     const [tool] = addHandleParametersToTools(
       [structuredTool("get_stats", objectOutputSchema())],
@@ -343,14 +390,20 @@ describe("outputSchema injection", () => {
       new Map(),
       output,
     );
-    const prop = tool.outputSchema.properties[MCP_INSTRUCTIONS_KEY];
+    const prop = tool.outputSchema.properties[MCP_SESSION_KEY];
     expect(prop.type).toBe("object");
-    expect(prop.description).toBe(MCP_INSTRUCTIONS_FIELD_DESCRIPTION);
+    expect(prop.description).toBe(MCP_SESSION_FIELD_DESCRIPTION);
     expect(Object.keys(prop.properties)).toEqual([
       "session_id",
       "agent_id",
-      "instructions",
+      "status",
     ]);
+    // status is the machine-readable session state, pre-announced as an enum.
+    expect(prop.properties.status).toEqual({
+      type: "string",
+      enum: ["issued", "active", "unrecognized"],
+      description: MCP_SESSION_STATUS_DESCRIPTION,
+    });
     // The customer's declared contract is otherwise untouched — including
     // additionalProperties: false, which stays (our property is declared).
     expect(tool.outputSchema.required).toEqual(["count"]);
@@ -359,7 +412,7 @@ describe("outputSchema injection", () => {
     expect(output.has("get_stats")).toBe(true);
   });
 
-  it("sub-properties track modes: hook mode drops session_id, tracking off drops agent_id", () => {
+  it("sub-properties track modes: hook mode drops session_id and status, tracking off drops agent_id", () => {
     const o1: OutputInjectionRegistry = new Set();
     const [hookTool] = addHandleParametersToTools(
       [structuredTool("t", objectOutputSchema())],
@@ -367,11 +420,10 @@ describe("outputSchema injection", () => {
       new Map(),
       o1,
     );
-    expect(
-      Object.keys(
-        hookTool.outputSchema.properties[MCP_INSTRUCTIONS_KEY].properties,
-      ),
-    ).toEqual(["agent_id", "instructions"]);
+    const hookProp = hookTool.outputSchema.properties[MCP_SESSION_KEY];
+    expect(Object.keys(hookProp.properties)).toEqual(["agent_id"]);
+    // Hook mode has no session continuity to describe.
+    expect(hookProp.description).toBe(MCP_SESSION_FIELD_DESCRIPTION_HOOK_MODE);
 
     const o2: OutputInjectionRegistry = new Set();
     const [sessionOnlyTool] = addHandleParametersToTools(
@@ -380,12 +432,13 @@ describe("outputSchema injection", () => {
       new Map(),
       o2,
     );
-    expect(
-      Object.keys(
-        sessionOnlyTool.outputSchema.properties[MCP_INSTRUCTIONS_KEY]
-          .properties,
-      ),
-    ).toEqual(["session_id", "instructions"]);
+    const sessionProp =
+      sessionOnlyTool.outputSchema.properties[MCP_SESSION_KEY];
+    expect(Object.keys(sessionProp.properties)).toEqual([
+      "session_id",
+      "status",
+    ]);
+    expect(sessionProp.description).toBe(MCP_SESSION_FIELD_DESCRIPTION);
   });
 
   it("does not mutate the customer's outputSchema object", () => {
@@ -396,7 +449,7 @@ describe("outputSchema injection", () => {
       new Map(),
       new Set(),
     );
-    expect(schema.properties).not.toHaveProperty(MCP_INSTRUCTIONS_KEY);
+    expect(schema.properties).not.toHaveProperty(MCP_SESSION_KEY);
   });
 
   it("skips complex outputSchema (oneOf/allOf/anyOf) and does not register", () => {
@@ -429,17 +482,15 @@ describe("outputSchema injection", () => {
       output,
     );
     expect(result.outputSchema).toEqual(objectOutputSchema());
-    expect(result.outputSchema.properties).not.toHaveProperty(
-      MCP_INSTRUCTIONS_KEY,
-    );
+    expect(result.outputSchema.properties).not.toHaveProperty(MCP_SESSION_KEY);
     expect(output.size).toBe(0);
   });
 
-  it("collision: a customer-declared _mcp_instructions is never clobbered", () => {
+  it("collision: a customer-declared mcp_session is never clobbered", () => {
     const output: OutputInjectionRegistry = new Set();
     const schema = {
       type: "object",
-      properties: { [MCP_INSTRUCTIONS_KEY]: { type: "string" } },
+      properties: { [MCP_SESSION_KEY]: { type: "string" } },
     };
     const [tool] = addHandleParametersToTools(
       [structuredTool("t", schema)],
@@ -447,7 +498,7 @@ describe("outputSchema injection", () => {
       new Map(),
       output,
     );
-    expect(tool.outputSchema.properties[MCP_INSTRUCTIONS_KEY]).toEqual({
+    expect(tool.outputSchema.properties[MCP_SESSION_KEY]).toEqual({
       type: "string",
     });
     expect(output.size).toBe(0);
@@ -473,9 +524,7 @@ describe("outputSchema injection", () => {
       new Map(),
       output,
     );
-    expect(tool.outputSchema.properties).not.toHaveProperty(
-      MCP_INSTRUCTIONS_KEY,
-    );
+    expect(tool.outputSchema.properties).not.toHaveProperty(MCP_SESSION_KEY);
     expect(output.size).toBe(0);
   });
 

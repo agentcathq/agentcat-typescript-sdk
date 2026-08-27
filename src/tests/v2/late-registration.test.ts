@@ -166,7 +166,7 @@ describe("v2 late registration: registerTool AFTER track()", () => {
         context: "verifying identify on dynamically added tools",
       },
     });
-    expect(result.content[0].text).toContain("post-track identification");
+    expect(result.content[1].text).toContain("post-track identification");
     expect(identifyCalled).toBe(true);
 
     const [event] = capture.getEvents();

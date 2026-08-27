@@ -46,13 +46,11 @@ describe("track() on v2 McpServer", () => {
     const echo = tools.find((t) => t.name === "echo")!;
     expect((echo.inputSchema as any).properties.session_id).toBeDefined();
     expect((echo.inputSchema as any).properties.context).toBeDefined();
-    expect(
-      (echo.outputSchema as any).properties._mcp_instructions,
-    ).toBeDefined();
+    expect((echo.outputSchema as any).properties.mcp_session).toBeDefined();
     await client.close();
   });
 
-  it("captures events, strips injected args (loose schema), appends mint-back, mirrors structuredContent", async () => {
+  it("captures events, strips injected args (loose schema), prepends mint-back, mirrors structuredContent", async () => {
     const mcp = new McpServer(
       { name: "v2-high", version: "1.0.0" },
       { capabilities: { tools: {} } },
@@ -87,14 +85,12 @@ describe("track() on v2 McpServer", () => {
     expect(lastSeenArgs!.context).toBeUndefined();
     expect(lastSeenArgs!.msg).toBe("hi");
 
-    // Mint-back: trailing text block announces the minted session_id, and the
-    // structured mirror rides structuredContent (validates against the
+    // Mint-back: the FIRST text block announces the minted session_id, and
+    // the structured mirror rides structuredContent (validates against the
     // injected outputSchema — the client checked it).
-    const lastBlock = result.content[result.content.length - 1];
-    expect(lastBlock.text).toContain("[MCP INSTRUCTIONS]");
-    expect(result.structuredContent._mcp_instructions.session_id).toMatch(
-      /^ses_/,
-    );
+    const firstBlock = result.content[0];
+    expect(firstBlock.text).toContain("[session_id issued");
+    expect(result.structuredContent.mcp_session.session_id).toMatch(/^ses_/);
 
     // Event: minted session, userIntent from context, raw args preserved.
     const events = capture.getEvents();
