@@ -35,7 +35,7 @@ describe("publishCustomEvent", () => {
     // Mock KSUID
     mockKSUID = {
       random: vi.fn().mockResolvedValue("evt_test123"),
-      randomSync: vi.fn().mockReturnValue("ses_test123"),
+      randomSync: vi.fn().mockReturnValue("ses_test12300000000000000000000"),
     };
     (KSUID.withPrefix as any) = vi.fn().mockReturnValue(mockKSUID);
 
@@ -69,14 +69,14 @@ describe("publishCustomEvent", () => {
       // Mock server tracking data
       (getServerTrackingData as any).mockReturnValue({
         projectId: "proj_tracked",
-        sessionId: "ses_tracked123",
+        sessionId: "ses_tracked12300000000000000000",
         options: {},
       });
     });
 
     it("should publish custom event with tracked server", async () => {
       const eventData: CustomEventData = {
-        sessionId: "ses_srv",
+        sessionId: "ses_srv000000000000000000000000",
         resourceName: "custom-action",
         parameters: { action: "test" },
         message: "Testing custom event",
@@ -88,7 +88,7 @@ describe("publishCustomEvent", () => {
       expect(publishEventToQueue).toHaveBeenCalledWith(
         mockServer,
         expect.objectContaining({
-          sessionId: "ses_srv",
+          sessionId: "ses_srv000000000000000000000000",
           projectId,
           eventType: "agentcat:custom",
           resourceName: "custom-action",
@@ -103,12 +103,14 @@ describe("publishCustomEvent", () => {
 
     it("should use eventData.sessionId as the session id, not any ambient server session", async () => {
       await publishCustomEvent(mockServer, projectId, {
-        sessionId: "ses_srv",
+        sessionId: "ses_srv000000000000000000000000",
       });
 
       expect(publishEventToQueue).toHaveBeenCalledWith(
         mockServer,
-        expect.objectContaining({ sessionId: "ses_srv" }),
+        expect.objectContaining({
+          sessionId: "ses_srv000000000000000000000000",
+        }),
       );
     });
 
@@ -191,12 +193,12 @@ describe("publishCustomEvent", () => {
 
     it("should let eventData.sessionId take precedence over the string", async () => {
       await publishCustomEvent("ignored-string", "proj", {
-        sessionId: "ses_wins",
+        sessionId: "ses_wins00000000000000000000000",
       });
 
       expect(mockEventQueue.add).toHaveBeenCalledWith(
         expect.objectContaining({
-          sessionId: "ses_wins",
+          sessionId: "ses_wins00000000000000000000000",
           projectId: "proj",
         }),
       );

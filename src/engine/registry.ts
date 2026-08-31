@@ -19,7 +19,7 @@ export function getInjectedParamsRegistry(
   return registries.get(server);
 }
 
-/** toolName set: tools whose declared outputSchema received _mcp_instructions. */
+/** toolName set: tools whose declared outputSchema received mcp_session. */
 export type OutputInjectionRegistry = Set<string>;
 
 const outputRegistries = new WeakMap<object, OutputInjectionRegistry>();

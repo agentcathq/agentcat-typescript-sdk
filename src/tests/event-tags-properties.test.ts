@@ -157,7 +157,7 @@ describe("Event Tags & Properties", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
 
       await new Promise((resolve) => setTimeout(resolve, 50));
       const events = eventCapture.getEvents();
@@ -281,7 +281,7 @@ describe("Event Tags & Properties", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
     });
 
     it("should handle null return from callback", async () => {

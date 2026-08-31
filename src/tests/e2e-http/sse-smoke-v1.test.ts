@@ -26,7 +26,7 @@ import { scenarioConfig } from "./scenario-types.js";
 import { buildV1Toolkit, type ToolSink } from "./toolkit.js";
 import {
   AGENTCAT_TAG_SESSION_SOURCE,
-  MINT_BACK_HEADER_SESSION,
+  MINT_BACK_HEADER_ISSUED,
 } from "../../modules/constants.js";
 
 interface SseInstance {
@@ -134,7 +134,7 @@ describe("e2e-http v1 SSE smoke (stateful, enableJsonResponse: false)", () => {
       });
       const mintBack = mintBackOf(result);
       expect(mintBack).toBeDefined();
-      expect(mintBack).toContain(MINT_BACK_HEADER_SESSION);
+      expect(mintBack).toContain(MINT_BACK_HEADER_ISSUED);
       const sessionId = handleFrom(mintBack!, "session_id");
       expect(sessionId).toMatch(/^ses_/);
 

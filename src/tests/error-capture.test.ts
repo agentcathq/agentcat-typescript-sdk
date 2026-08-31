@@ -325,7 +325,7 @@ describe("Error Capture Integration Tests", () => {
 
       // MCP returns errors as tool results with isError: true
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("not found");
+      expect(result.content[1].text).toContain("not found");
     } finally {
       await cleanup();
     }

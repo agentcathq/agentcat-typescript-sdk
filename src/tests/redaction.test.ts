@@ -27,7 +27,7 @@ describe("redactEvent", () => {
 
   it("should redact basic string fields", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       userIntent: "sensitive user intent",
       timestamp: new Date("2024-01-01"),
     };
@@ -72,7 +72,7 @@ describe("redactEvent", () => {
 
   it("should not redact protected fields", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       id: "evt_456",
       projectId: "proj_789",
       server: "my-server",
@@ -90,7 +90,7 @@ describe("redactEvent", () => {
     const redacted = await redactEvent(event, mockRedactFn);
 
     // All protected fields should remain unchanged
-    expect(redacted.sessionId).toBe("ses_123");
+    expect(redacted.sessionId).toBe("ses_123000000000000000000000000");
     expect(redacted.id).toBe("evt_456");
     expect(redacted.projectId).toBe("proj_789");
     expect(redacted.server).toBe("my-server");
@@ -110,7 +110,7 @@ describe("redactEvent", () => {
 
   it("should redact nested string fields", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         query: "sensitive query",
         options: {
@@ -137,7 +137,7 @@ describe("redactEvent", () => {
 
   it("should handle arrays of strings", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         tags: ["sensitive1", "sensitive2", "sensitive3"],
         numbers: [1, 2, 3],
@@ -156,7 +156,7 @@ describe("redactEvent", () => {
 
   it("should handle mixed nested structures", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         users: [
           { name: "John", age: 30, email: "john@example.com" },
@@ -177,7 +177,7 @@ describe("redactEvent", () => {
 
   it("should preserve null and undefined values", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         nullValue: null,
         undefinedValue: undefined,
@@ -195,7 +195,7 @@ describe("redactEvent", () => {
   it("should preserve Date objects", async () => {
     const testDate = new Date("2024-01-01T12:00:00Z");
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       timestamp: testDate,
       parameters: {
         createdAt: new Date("2024-01-02T12:00:00Z"),
@@ -213,7 +213,7 @@ describe("redactEvent", () => {
 
   it("should skip functions in objects", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         callback: () => console.log("test"),
         data: "sensitive data",
@@ -228,7 +228,7 @@ describe("redactEvent", () => {
 
   it("should handle complex identifyData object without redacting it", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       identifyData: {
         email: "user@example.com",
         preferences: {
@@ -260,7 +260,7 @@ describe("redactEvent", () => {
 
   it("should handle error objects", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       isError: true,
       error: {
         message: "Sensitive error message",
@@ -280,7 +280,7 @@ describe("redactEvent", () => {
 
   it("should handle deeply nested protected fields correctly", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       parameters: {
         nested: {
           deeply: {
@@ -293,7 +293,7 @@ describe("redactEvent", () => {
 
     const redacted = await redactEvent(event, mockRedactFn);
 
-    expect(redacted.sessionId).toBe("ses_123"); // Top-level protected
+    expect(redacted.sessionId).toBe("ses_123000000000000000000000000"); // Top-level protected
     expect(redacted.parameters.nested.deeply.sessionId).toBe("[REDACTED-23]"); // Nested not protected
     expect(redacted.parameters.nested.deeply.data).toBe("[REDACTED-14]");
   });
@@ -304,7 +304,7 @@ describe("redactEvent", () => {
     });
 
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       userIntent: "sensitive data",
     };
 
@@ -315,7 +315,7 @@ describe("redactEvent", () => {
 
   it("should not redact nested fields within any protected field", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       // Test nested data in identifyData
       identifyData: {
         nested: {
@@ -362,7 +362,7 @@ describe("redactEvent", () => {
 
   it("should create a new object without modifying the original", async () => {
     const event: UnredactedEvent = {
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       userIntent: "sensitive data",
       parameters: {
         query: "sensitive query",
@@ -384,7 +384,7 @@ describe("redactEvent", () => {
     const event: UnredactedEvent = {
       id: "evt_123",
       projectId: "proj_123",
-      sessionId: "ses_123",
+      sessionId: "ses_123000000000000000000000000",
       actorId: "actor_123",
       eventId: "custom_evt_123",
       eventType: "mcp:tools/call",
@@ -407,7 +407,7 @@ describe("redactEvent", () => {
     // Protected fields
     expect(redacted.id).toBe("evt_123");
     expect(redacted.projectId).toBe("proj_123");
-    expect(redacted.sessionId).toBe("ses_123");
+    expect(redacted.sessionId).toBe("ses_123000000000000000000000000");
     expect(redacted.actorId).toBe("actor_123");
     expect(redacted.eventType).toBe("mcp:tools/call");
     expect(redacted.resourceName).toBe("resource_123");
@@ -434,7 +434,7 @@ describe("redactEvent", () => {
 describe("applyEventRedaction", () => {
   const baseEvent = (): UnredactedEvent => ({
     id: "evt_original",
-    sessionId: "ses_123",
+    sessionId: "ses_123000000000000000000000000",
     projectId: "proj_789",
     eventType: "mcp:tools/call",
     timestamp: new Date("2024-01-01"),
@@ -514,7 +514,7 @@ describe("applyEventRedaction", () => {
     const hook: RedactEventFunction = (event) => {
       const copy = { ...event };
       copy.id = "evt_forged";
-      copy.sessionId = "ses_forged";
+      copy.sessionId = "ses_forged000000000000000000000";
       copy.projectId = "proj_forged";
       copy.eventType = "forged:event";
       delete copy.timestamp;
@@ -525,7 +525,7 @@ describe("applyEventRedaction", () => {
     await applyEventRedaction(event, hook);
 
     expect(event.id).toBe("evt_original");
-    expect(event.sessionId).toBe("ses_123");
+    expect(event.sessionId).toBe("ses_123000000000000000000000000");
     expect(event.projectId).toBe("proj_789");
     expect(event.eventType).toBe("mcp:tools/call");
     expect(event.timestamp).toEqual(new Date("2024-01-01"));

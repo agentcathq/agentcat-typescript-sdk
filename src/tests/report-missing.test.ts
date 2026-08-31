@@ -163,7 +163,7 @@ describe("Report Missing Tool", () => {
       );
 
       // Verify response
-      expect(result.content[0].text).toContain("Unfortunately");
+      expect(result.content[1].text).toContain("Unfortunately");
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -212,7 +212,7 @@ describe("Report Missing Tool", () => {
       );
 
       // Verify response acknowledges the feedback
-      expect(result.content[0].text).toContain("Unfortunately");
+      expect(result.content[1].text).toContain("Unfortunately");
 
       // Wait for events
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -258,7 +258,7 @@ describe("Report Missing Tool", () => {
       );
 
       // The function handles undefined gracefully
-      expect(result.content[0].text).toContain("Unfortunately");
+      expect(result.content[1].text).toContain("Unfortunately");
 
       await eventCapture.stop();
     });

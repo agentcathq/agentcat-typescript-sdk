@@ -17,7 +17,7 @@ import {
   StructuredMintBack,
   isValidSessionId,
 } from "../modules/handles.js";
-import { MCP_INSTRUCTIONS_KEY } from "../modules/constants.js";
+import { MCP_SESSION_KEY } from "../modules/constants.js";
 import { sid } from "./test-utils.js";
 
 describe("handle primitives", () => {
@@ -95,8 +95,13 @@ describe("handle primitives", () => {
   });
 });
 
-const T = "ses_2xF9kQm3rTvB8nL";
+const T = "ses_2xF9kQm3rTvB8nLpYw7ZcHd4Ke1";
 const A = "opus-4.80-1m|claude-code|k3n9x";
+
+const MINTED_BLOCK = (id: string): string =>
+  "[session_id issued — see this tool's session_id parameter description]\n" +
+  `session_id: ${id}\n` +
+  "This is the first-call issuance described in this tool's session_id parameter description.";
 
 describe("buildMintBackText", () => {
   it("task minted: task-only block, no agent mention even when agent supplied", () => {
@@ -107,11 +112,7 @@ describe("buildMintBackText", () => {
       agentId: A,
       agentSource: "supplied",
     };
-    expect(buildMintBackText(res)).toBe(
-      "[MCP INSTRUCTIONS]: session_id issued.\n" +
-        `  session_id=${T} — required on every subsequent tool call\n` +
-        "Without session_id, this server does not function as intended.",
-    );
+    expect(buildMintBackText(res)).toBe(MINTED_BLOCK(T));
   });
 
   it("task minted without agent tracking: same task-only block", () => {
@@ -120,11 +121,7 @@ describe("buildMintBackText", () => {
       sessionSource: "minted",
       hookMode: false,
     };
-    expect(buildMintBackText(res)).toBe(
-      "[MCP INSTRUCTIONS]: session_id issued.\n" +
-        `  session_id=${T} — required on every subsequent tool call\n` +
-        "Without session_id, this server does not function as intended.",
-    );
+    expect(buildMintBackText(res)).toBe(MINTED_BLOCK(T));
   });
 
   it("task supplied -> null (nothing to announce, agent never mints)", () => {
@@ -151,21 +148,23 @@ describe("buildMintBackText", () => {
 });
 
 describe("appendMintBack", () => {
-  it("appends a text block to array content", () => {
+  it("prepends a text block as the first content element", () => {
     const out = appendMintBack(
       { content: [{ type: "text", text: "hi" }] },
       "BLOCK",
     );
     expect(out.content).toHaveLength(2);
-    expect(out.content[1]).toEqual({ type: "text", text: "BLOCK" });
+    expect(out.content[0]).toEqual({ type: "text", text: "BLOCK" });
+    expect(out.content[1]).toEqual({ type: "text", text: "hi" });
   });
 
-  it("appends on isError results too", () => {
+  it("prepends on isError results too", () => {
     const out = appendMintBack(
       { isError: true, content: [{ type: "text", text: "boom" }] },
       "BLOCK",
     );
     expect(out.content).toHaveLength(2);
+    expect(out.content[0]).toEqual({ type: "text", text: "BLOCK" });
   });
 
   it("leaves non-array content untouched", () => {
@@ -387,6 +386,60 @@ describe("resolveHandles — prompted mode", () => {
     expect(res.sessionSource).toBe("minted");
     expect(res.sessionId).toMatch(/^ses_/);
   });
+
+  it("start sentinel resolves exactly like omission: fresh mint, source minted", async () => {
+    const res = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: "start" }),
+    );
+    expect(res.sessionSource).toBe("minted");
+    expect(res.sessionId).toMatch(/^ses_/);
+    // A fresh, unrelated task per start — never a shared or echoed value.
+    const again = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: "start" }),
+    );
+    expect(again.sessionId).not.toBe(res.sessionId);
+  });
+
+  it.each([["START"], ["Start"], ["sTaRt"], ["  start  "], [" START\t"]])(
+    "start sentinel is case-insensitive and whitespace-tolerant: %j mints",
+    async (value) => {
+      const res = await resolveHandles(
+        {},
+        "proj_1",
+        req({ session_id: value }),
+      );
+      expect(res.sessionSource).toBe("minted");
+      expect(res.sessionId).toMatch(/^ses_/);
+    },
+  );
+
+  it("near-sentinel values stay on the invalid path", async () => {
+    for (const value of ["restart", "start now", "starts", "star t"]) {
+      const res = await resolveHandles(
+        {},
+        "proj_1",
+        req({ session_id: value }),
+      );
+      expect(res.sessionSource).toBe("invalid");
+      expect(res.sessionId).toBe("");
+    }
+  });
+
+  it("foreign param: start is the customer's value, never a sentinel", async () => {
+    const res = await resolveHandles(
+      {},
+      "proj_1",
+      req({ session_id: "start" }),
+      undefined,
+      false,
+    );
+    expect(res.sessionSource).toBe("foreign");
+    expect(res.sessionId).toBe("");
+  });
 });
 
 describe("resolveHandles — hook mode", () => {
@@ -532,7 +585,7 @@ describe("sessionFromHookValue", () => {
 });
 
 describe("buildStructuredMintBack", () => {
-  it("task minted + agent supplied: both ids, task-issued instructions", () => {
+  it("task minted + agent supplied: both ids, status issued", () => {
     const res: HandleResolution = {
       sessionId: T,
       sessionSource: "minted",
@@ -543,11 +596,11 @@ describe("buildStructuredMintBack", () => {
     const mint = buildStructuredMintBack(res)!;
     expect(mint.session_id).toBe(T);
     expect(mint.agent_id).toBe(A);
-    expect(mint.instructions).toContain("session_id issued");
-    expect(mint.instructions).not.toContain("agent_id issued");
+    expect(mint.status).toBe("issued");
+    expect(Object.keys(mint)).toEqual(["session_id", "agent_id", "status"]);
   });
 
-  it("steady state (both supplied): ids plus confirmed copy", () => {
+  it("steady state (both supplied): ids plus status active", () => {
     const res: HandleResolution = {
       sessionId: T,
       sessionSource: "supplied",
@@ -558,11 +611,10 @@ describe("buildStructuredMintBack", () => {
     const mint = buildStructuredMintBack(res)!;
     expect(mint.session_id).toBe(T);
     expect(mint.agent_id).toBe(A);
-    expect(mint.instructions).toContain("session_id and agent_id confirmed");
-    expect(mint.instructions).toContain("these exact values");
+    expect(mint.status).toBe("active");
   });
 
-  it("agent tracking off: task only, singular confirmed copy", () => {
+  it("agent tracking off: task only, status active", () => {
     const res: HandleResolution = {
       sessionId: T,
       sessionSource: "supplied",
@@ -571,11 +623,11 @@ describe("buildStructuredMintBack", () => {
     const mint = buildStructuredMintBack(res)!;
     expect(mint.session_id).toBe(T);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("session_id confirmed");
-    expect(mint.instructions).toContain("this exact value");
+    expect(mint.status).toBe("active");
+    expect(Object.keys(mint)).toEqual(["session_id", "status"]);
   });
 
-  it("hook mode never exposes session_id; supplied agent is confirmed", () => {
+  it("hook mode never exposes session_id or status; supplied agent is echoed", () => {
     const res: HandleResolution = {
       sessionId: T,
       sessionSource: "minted",
@@ -585,8 +637,9 @@ describe("buildStructuredMintBack", () => {
     };
     const mint = buildStructuredMintBack(res)!;
     expect(mint).not.toHaveProperty("session_id");
+    expect(mint).not.toHaveProperty("status");
     expect(mint.agent_id).toBe(A);
-    expect(mint.instructions).toContain("agent_id confirmed");
+    expect(Object.keys(mint)).toEqual(["agent_id"]);
   });
 
   it("hook mode with agent tracking off: nothing echoable -> null", () => {
@@ -600,13 +653,15 @@ describe("buildStructuredMintBack", () => {
 });
 
 describe("mirrorStructuredMintBack", () => {
-  const mint: StructuredMintBack = { session_id: T, instructions: "TEXT" };
+  const mint: StructuredMintBack = { session_id: T, status: "issued" };
 
-  it("adds the field to plain-object structuredContent without mutating", () => {
+  it("adds the field as the FIRST key of structuredContent without mutating", () => {
     const original = { content: [], structuredContent: { a: 1 } };
     const out = mirrorStructuredMintBack(original, mint);
-    expect(out.structuredContent[MCP_INSTRUCTIONS_KEY]).toEqual(mint);
+    expect(out.structuredContent[MCP_SESSION_KEY]).toEqual(mint);
     expect(out.structuredContent.a).toBe(1);
+    // The mirror leads so it survives client-side truncation of long results.
+    expect(Object.keys(out.structuredContent)).toEqual([MCP_SESSION_KEY, "a"]);
     // non-mutation of the customer's objects
     expect(original.structuredContent).toEqual({ a: 1 });
     expect(out).not.toBe(original);
@@ -624,7 +679,7 @@ describe("mirrorStructuredMintBack", () => {
 
   it("never clobbers an existing key (customer data wins)", () => {
     const r = {
-      structuredContent: { [MCP_INSTRUCTIONS_KEY]: "customer-owned" },
+      structuredContent: { [MCP_SESSION_KEY]: "customer-owned" },
     };
     expect(mirrorStructuredMintBack(r, mint)).toBe(r);
   });
@@ -632,7 +687,11 @@ describe("mirrorStructuredMintBack", () => {
   it("applies to isError results that carry structuredContent", () => {
     const r = { isError: true, structuredContent: { msg: "boom" } };
     const out = mirrorStructuredMintBack(r, mint);
-    expect(out.structuredContent[MCP_INSTRUCTIONS_KEY]).toEqual(mint);
+    expect(out.structuredContent[MCP_SESSION_KEY]).toEqual(mint);
+    expect(Object.keys(out.structuredContent)).toEqual([
+      MCP_SESSION_KEY,
+      "msg",
+    ]);
   });
 });
 
@@ -675,8 +734,10 @@ describe("invalid and foreign mint-back", () => {
 
   it("invalid: corrects the agent without issuing a replacement", () => {
     const text = buildMintBackText(invalidRes)!;
-    expect(text).toContain("[MCP INSTRUCTIONS]: session_id not recognized.");
-    expect(text).toContain("Re-send the exact session_id");
+    expect(text).toBe(
+      "[session_id unrecognized — see this tool's session_id parameter description]\n" +
+        "The value sent was not issued by this server. Re-send the session_id issued earlier for this task; if none was issued yet, send start and one will be issued.",
+    );
     // No value handed out: nothing that looks like an ID appears.
     expect(text).not.toMatch(/ses_[0-9A-Za-z]{27}/);
   });
@@ -685,17 +746,30 @@ describe("invalid and foreign mint-back", () => {
     // Without this, an agent that hallucinated a session_id on its first call
     // — or a client that auto-filled a param named session_id — is deadlocked:
     // it is told to re-send a value it never received, and this branch never
-    // mints. Omitting the parameter is the only way back to a real session.
+    // mints. Sending start is the way back to a real session.
     const text = buildMintBackText(invalidRes)!;
     expect(text).toContain(
-      "If this server has not issued you a session_id yet, omit the parameter and one will be issued.",
+      "if none was issued yet, send start and one will be issued.",
     );
   });
 
-  it("invalid: structured mirror carries instructions but no session_id", () => {
+  it("invalid: structured mirror carries status unrecognized but no session_id", () => {
     const mint = buildStructuredMintBack(invalidRes)!;
-    expect(mint.instructions).toContain("not recognized");
+    expect(mint.status).toBe("unrecognized");
     expect(mint.session_id).toBeUndefined();
+    expect(Object.keys(mint)).toEqual(["status"]);
+  });
+
+  it("invalid + agent supplied: agent_id rides along with the unrecognized status", () => {
+    const mint = buildStructuredMintBack({
+      ...invalidRes,
+      agentId: "opus|cc|k3n9x",
+      agentSource: "supplied" as const,
+    })!;
+    expect(mint.status).toBe("unrecognized");
+    expect(mint.session_id).toBeUndefined();
+    expect(mint.agent_id).toBe("opus|cc|k3n9x");
+    expect(Object.keys(mint)).toEqual(["agent_id", "status"]);
   });
 
   it("foreign: says nothing when agent_id is not in play either", () => {
@@ -703,17 +777,18 @@ describe("invalid and foreign mint-back", () => {
     expect(buildStructuredMintBack(foreignRes)).toBeNull();
   });
 
-  it("foreign: never confirms the session_id, which is the customer's", () => {
+  it("foreign: never echoes session state, which is the customer's", () => {
     const mint = buildStructuredMintBack({
       ...foreignRes,
       agentId: "opus|cc|k3n9x",
       agentSource: "supplied" as const,
     });
     expect(mint!.session_id).toBeUndefined();
-    expect(mint!.instructions).not.toContain(SESSION_ID_PARAM);
+    expect(mint).not.toHaveProperty(SESSION_ID_PARAM);
+    expect(mint).not.toHaveProperty("status");
   });
 
-  it("foreign: still confirms agent_id, which AgentCat did inject", () => {
+  it("foreign: still echoes agent_id, which AgentCat did inject", () => {
     // A session_id collision skips only session_id injection; agent_id is a
     // separate branch and still ends up in the tool's schema. Suppressing the
     // whole mirror would drop a handle that is ours purely because a
@@ -723,7 +798,7 @@ describe("invalid and foreign mint-back", () => {
       agentId: "opus|cc|k3n9x",
       agentSource: "supplied" as const,
     });
-    expect(mint!.agent_id).toBe("opus|cc|k3n9x");
-    expect(mint!.instructions).toContain(AGENT_ID_PARAM);
+    expect(mint![AGENT_ID_PARAM]).toBe("opus|cc|k3n9x");
+    expect(Object.keys(mint!)).toEqual(["agent_id"]);
   });
 });

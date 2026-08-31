@@ -30,7 +30,7 @@ describe("PostHogExporter", () => {
   function makeEvent(overrides: Partial<Event> = {}): Event {
     return {
       id: "evt_test123",
-      sessionId: "ses_session456",
+      sessionId: "ses_session45600000000000000000",
       projectId: "proj_1",
       eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
       timestamp: new Date("2025-01-15T10:00:00Z"),
@@ -67,7 +67,7 @@ describe("PostHogExporter", () => {
     const event = body.batch[0];
     expect(event.event).toBe("mcp_tool_call");
     expect(event.type).toBe("capture");
-    expect(event.distinct_id).toBe("ses_session456");
+    expect(event.distinct_id).toBe("ses_session45600000000000000000");
     expect(event.timestamp).toBe("2025-01-15T10:00:00.000Z");
 
     // Verify properties
@@ -130,7 +130,7 @@ describe("PostHogExporter", () => {
     await exporter.export(makeEvent({ identifyActorGivenId: undefined }));
 
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    expect(body.batch[0].distinct_id).toBe("ses_session456");
+    expect(body.batch[0].distinct_id).toBe("ses_session45600000000000000000");
   });
 
   it("should omit $session_id entirely for sessionless events (empty sessionId)", async () => {
@@ -192,7 +192,7 @@ describe("PostHogExporter", () => {
     // Second event: $exception
     const exceptionEvent = body.batch[1];
     expect(exceptionEvent.event).toBe("$exception");
-    expect(exceptionEvent.distinct_id).toBe("ses_session456");
+    expect(exceptionEvent.distinct_id).toBe("ses_session45600000000000000000");
     expect(exceptionEvent.properties.$exception_message).toBe(
       "Connection timeout",
     );
@@ -473,11 +473,13 @@ describe("PostHogExporter", () => {
     const span = body.batch[1];
     expect(span.event).toBe("$ai_span");
     expect(span.type).toBe("capture");
-    expect(span.distinct_id).toBe("ses_session456");
+    expect(span.distinct_id).toBe("ses_session45600000000000000000");
     expect(span.timestamp).toBe("2025-01-15T10:00:00.000Z");
 
     // Core $ai_* properties — full property schema verification
-    expect(span.properties.$ai_session_id).toBe("agentcat_ses_session456");
+    expect(span.properties.$ai_session_id).toBe(
+      "agentcat_ses_session45600000000000000000",
+    );
     expect(span.properties.$ai_trace_id).toBeDefined();
     expect(span.properties.$ai_span_id).toBeDefined();
     expect(span.properties.$ai_trace_id).not.toBe(span.properties.$ai_span_id); // trace from session, span from event

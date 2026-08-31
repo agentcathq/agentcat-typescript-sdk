@@ -110,32 +110,34 @@ describe("structured mint-back: high-level (V2) path", () => {
       arguments: { context: "checking stats" },
     });
     const sc = result.structuredContent;
-    const mint = sc._mcp_instructions;
+    const mint = sc.mcp_session;
     expect(mint.session_id).toMatch(/^ses_/);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("session_id issued");
+    expect(mint.status).toBe("issued");
     expect(sc.count).toBe(0); // customer payload intact
+    // The mirror leads so it survives client-side truncation of long results.
+    expect(Object.keys(sc)[0]).toBe("mcp_session");
     await cleanup();
   });
 
-  it("tools/list declares _mcp_instructions on get_stats; schema-less tools untouched", async () => {
+  it("tools/list declares mcp_session on get_stats; schema-less tools untouched", async () => {
     const { server, client, cleanup } = await setupTestServerAndClient();
     track(server, "proj_test", { enableAgentTracking: true });
     const { tools } = await client.listTools();
     const stats = tools.find((t) => t.name === "get_stats")!;
-    const prop = (stats.outputSchema as any).properties._mcp_instructions;
+    const prop = (stats.outputSchema as any).properties.mcp_session;
     expect(prop.type).toBe("object");
     expect(Object.keys(prop.properties)).toEqual([
       "session_id",
       "agent_id",
-      "instructions",
+      "status",
     ]);
     const addTodo = tools.find((t) => t.name === "add_todo")!;
     expect(addTodo.outputSchema).toBeUndefined();
     await cleanup();
   });
 
-  it("steady state: supplied handles are re-confirmed on every response; footer stays mint-only", async () => {
+  it("steady state: supplied handles are re-echoed on every response; text block stays mint-only", async () => {
     const { server, client, cleanup } = await setupTestServerAndClient();
     track(server, "proj_test", { enableAgentTracking: true });
     await client.listTools();
@@ -147,19 +149,19 @@ describe("structured mint-back: high-level (V2) path", () => {
         agent_id: "opus-4.80-1m|claude-code|k3n9x",
       },
     });
-    const mint = result.structuredContent._mcp_instructions;
+    const mint = result.structuredContent.mcp_session;
     expect(mint.session_id).toBe(sid("fixed"));
     expect(mint.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
-    expect(mint.instructions).toContain("confirmed");
-    // content footer is a mint-time announcement only — none in steady state
-    const footer = (result.content as any[]).find(
-      (c: any) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
+    expect(mint.status).toBe("active");
+    // the text block is a mint-time announcement only — none in steady state
+    const block = (result.content as any[]).find(
+      (c: any) => c.type === "text" && c.text.startsWith("[session_id"),
     );
-    expect(footer).toBeUndefined();
+    expect(block).toBeUndefined();
     await cleanup();
   });
 
-  it("wire-only: published event.response never contains _mcp_instructions", async () => {
+  it("wire-only: published event.response never contains mcp_session", async () => {
     const { server, client, cleanup } = await setupTestServerAndClient();
     track(server, "proj_test", { enableAgentTracking: true });
     await client.listTools();
@@ -169,13 +171,13 @@ describe("structured mint-back: high-level (V2) path", () => {
     });
     const event = capture.findEventByType("mcp:tools/call")!;
     const published = JSON.stringify(event.response);
-    expect(published).not.toContain("_mcp_instructions");
-    expect(published).not.toContain("[MCP INSTRUCTIONS]");
+    expect(published).not.toContain("mcp_session");
+    expect(published).not.toContain("[session_id");
     expect((event.response as any).structuredContent).toEqual({ count: 0 });
     await cleanup();
   });
 
-  it("content-only tools are unaffected: footer present, no structuredContent conjured", async () => {
+  it("content-only tools are unaffected: block leads content, no structuredContent conjured", async () => {
     const { server, client, cleanup } = await setupTestServerAndClient();
     track(server, "proj_test", { enableAgentTracking: true });
     await client.listTools();
@@ -184,10 +186,10 @@ describe("structured mint-back: high-level (V2) path", () => {
       arguments: { text: "buy milk", context: "testing" },
     });
     expect(result.structuredContent).toBeUndefined();
-    const footer = (result.content as any[]).find(
-      (c: any) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
-    );
-    expect(footer).toBeDefined();
+    // Prepended as the FIRST content element so it survives truncation.
+    const first = (result.content as any[])[0];
+    expect(first.type).toBe("text");
+    expect(first.text).toMatch(/^\[session_id issued/);
     await cleanup();
   });
 });
@@ -206,34 +208,32 @@ describe("structured mint-back: low-level (V1) path", () => {
     const { client, cleanup } = await setupLowLevelStructured();
     await client.listTools();
     const result: any = await client.callTool({ name: "stats", arguments: {} });
-    const mint = result.structuredContent._mcp_instructions;
+    const mint = result.structuredContent.mcp_session;
     expect(mint.session_id).toMatch(/^ses_/);
     expect(mint).not.toHaveProperty("agent_id");
-    expect(mint.instructions).toContain("session_id issued");
+    expect(mint.status).toBe("issued");
     expect(result.structuredContent.count).toBe(42);
+    expect(Object.keys(result.structuredContent)[0]).toBe("mcp_session");
     const event = capture.findEventByType("mcp:tools/call")!;
-    expect(JSON.stringify(event.response)).not.toContain("_mcp_instructions");
+    expect(JSON.stringify(event.response)).not.toContain("mcp_session");
     await cleanup();
   });
 
-  it("composed outputSchema: schema untouched, no mirror, footer still delivers", async () => {
+  it("composed outputSchema: schema untouched, no mirror, text block still delivers", async () => {
     const { client, cleanup } = await setupLowLevelStructured();
     const { tools } = await client.listTools();
     const poly = tools.find((t) => t.name === "poly")!;
-    expect(JSON.stringify(poly.outputSchema)).not.toContain(
-      "_mcp_instructions",
-    );
+    expect(JSON.stringify(poly.outputSchema)).not.toContain("mcp_session");
     const result: any = await client.callTool({ name: "poly", arguments: {} });
-    expect(result.structuredContent._mcp_instructions).toBeUndefined();
+    expect(result.structuredContent.mcp_session).toBeUndefined();
     expect(result.structuredContent.a).toBe("x");
-    const footer = (result.content as any[]).find(
-      (c: any) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
-    );
-    expect(footer).toBeDefined();
+    const first = (result.content as any[])[0];
+    expect(first.type).toBe("text");
+    expect(first.text).toMatch(/^\[session_id issued/);
     await cleanup();
   });
 
-  it("hook mode: mirrored payload carries agent_id but never session_id", async () => {
+  it("hook mode: mirrored payload carries agent_id but never session_id or status", async () => {
     const { client, cleanup } = await setupLowLevelStructured({
       resolveSessionId: () => "corr-1",
     });
@@ -242,10 +242,10 @@ describe("structured mint-back: low-level (V1) path", () => {
       name: "stats",
       arguments: { agent_id: "opus-4.80-1m|claude-code|k3n9x" },
     });
-    const mint = result.structuredContent._mcp_instructions;
+    const mint = result.structuredContent.mcp_session;
     expect(mint).not.toHaveProperty("session_id");
+    expect(mint).not.toHaveProperty("status");
     expect(mint.agent_id).toBe("opus-4.80-1m|claude-code|k3n9x");
-    expect(mint.instructions).toContain("agent_id confirmed");
     await cleanup();
   });
 
@@ -257,9 +257,7 @@ describe("structured mint-back: low-level (V1) path", () => {
       { method: "tools/call", params: { name: "stats", arguments: {} } },
       {},
     );
-    expect(result.structuredContent._mcp_instructions.session_id).toMatch(
-      /^ses_/,
-    );
+    expect(result.structuredContent.mcp_session.session_id).toMatch(/^ses_/);
     await cleanup();
   });
 });

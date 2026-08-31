@@ -42,7 +42,7 @@ import { initDiagnostics } from "./modules/diagnostics.js";
  * @param options.enableToolCallContext - Injects a "context" parameter to existing tools to capture user intent. The context parameter is appended after the injected `session_id`/`agent_id` parameters.
  * @param options.customContextDescription - Custom description for the injected context parameter. Only applies when enableToolCallContext is true. Use this to provide domain-specific guidance to LLMs about what context they should provide.
  * @param options.enableAgentTracking - Injects an optional `agent_id` parameter so each agent (including every spawned subagent) is individually identifiable. Agent IDs are minted by the server on an agent's first call and echoed back on subsequent calls. Defaults to false (opt-in). The agent ID rides on events as the `agentcat_agent_id` tag.
- * @param options.resolveSessionId - Hook mode: supply your own session identifier per request (e.g. from your auth or workflow state) and AgentCat steps back — no `session_id` parameter is injected and no task instructions are prompted to the agent. The returned string is combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same task. Return null to mint silently (avoid: the agent can never learn a silently minted ID). Receives the same `(request, extra)` arguments as `identify`.
+ * @param options.resolveSessionId - Hook mode: supply your own session identifier per request (e.g. from your auth or workflow state) and AgentCat steps back — no `session_id` parameter is injected and no issuance text is prepended to results. The returned string is combined with your project ID into a deterministic KSUID, so the same identifier always maps to the same task. Return null to mint silently (avoid: the agent can never learn a silently minted ID). Receives the same `(request, extra)` arguments as `identify`.
  * @param options.identify - Async function to identify the actor behind a tool call. Runs on every tool call; the result is stamped directly onto that call's event.
  * @param options.redactSensitiveInformation - Function to redact sensitive data before sending to AgentCat.
  * @param options.redactEvent - Event-level redaction hook invoked with the full event (inspect `resourceName`, `eventType`, `parameters`, `response`, etc.) before it is published. Return a modified event, or null to drop the event entirely. May be sync or async. Runs before `redactSensitiveInformation`, so it sees raw, unredacted values; the string-level hook, sanitization, and truncation still run on its output. The system-managed fields `id`, `sessionId`, `projectId`, `eventType`, and `timestamp` cannot be changed (`id` is assigned after redaction and is empty at hook time). If the hook throws, the event is dropped and the error is logged to `~/agentcat.log`.
@@ -328,7 +328,7 @@ function track(
  *   server,
  *   "proj_abc123xyz",
  *   {
- *     sessionId: "ses_abc123",
+ *     sessionId: "ses_2cOHEO0LYGADMzRvWTXXVbbgxgm",
  *     resourceName: "custom-action",
  *     parameters: { action: "user-feedback", rating: 5 },
  *     message: "User provided feedback"
@@ -340,7 +340,7 @@ function track(
  * ```typescript
  * // With a session ID string
  * await agentcat.publishCustomEvent(
- *   "ses_abc123",
+ *   "ses_2cOHEO0LYGADMzRvWTXXVbbgxgm",
  *   "proj_abc123xyz",
  *   {
  *     isError: true,

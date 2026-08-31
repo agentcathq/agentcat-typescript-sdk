@@ -1,13 +1,13 @@
 import { createHash } from "crypto";
 import KSUID from "../thirdparty/ksuid/index.js";
 import {
-  MINT_BACK_HEADER_SESSION,
-  MINT_BACK_HEADER_INVALID,
-  MINT_BACK_CLOSER,
-  MINT_BACK_INVALID_LINE,
+  MINT_BACK_HEADER_ISSUED,
+  MINT_BACK_ISSUED_BODY,
+  MINT_BACK_HEADER_UNRECOGNIZED,
+  MINT_BACK_UNRECOGNIZED_BODY,
   mintBackSessionLine,
-  MCP_INSTRUCTIONS_KEY,
-  mintBackConfirmed,
+  SESSION_START_SENTINEL,
+  MCP_SESSION_KEY,
   AGENTCAT_TAG_AGENT_ID,
   AGENTCAT_TAG_SESSION_SOURCE,
   AGENTCAT_TAG_AGENT_SOURCE,
@@ -88,69 +88,71 @@ export interface HandleResolution {
 }
 
 /**
- * Builds the [MCP INSTRUCTIONS] block for a task minted on this call, or the
- * correction block when the agent sent a session_id this server never
- * issued. Returns null when nothing needs announcing. Task instructions
- * never appear in hook mode — even when a hook-null forced a silent mint.
- * agent_id is self-chosen by the agent and never announced here.
+ * Builds the issuance block for a task minted on this call, or the
+ * unrecognized-value block when the agent sent a session_id this server never
+ * issued. Returns null when nothing needs announcing. The block never appears
+ * in hook mode — even when a hook-null forced a silent mint. agent_id is
+ * self-chosen by the agent and never announced here.
  *
  * @param res - The resolved handles for this call
- * @returns The instruction block, or null when nothing needs saying
+ * @returns The text block, or null when nothing needs saying
  */
 export function buildMintBackText(res: HandleResolution): string | null {
   if (res.hookMode) return null;
   if (res.sessionSource === "minted") {
     return [
-      MINT_BACK_HEADER_SESSION,
+      MINT_BACK_HEADER_ISSUED,
       mintBackSessionLine(res.sessionId),
-      MINT_BACK_CLOSER,
+      MINT_BACK_ISSUED_BODY,
     ].join("\n");
   }
   if (res.sessionSource === "invalid") {
-    return [
-      MINT_BACK_HEADER_INVALID,
-      MINT_BACK_INVALID_LINE,
-      MINT_BACK_CLOSER,
-    ].join("\n");
+    return [MINT_BACK_HEADER_UNRECOGNIZED, MINT_BACK_UNRECOGNIZED_BODY].join(
+      "\n",
+    );
   }
   return null;
 }
 
 /**
- * Appends the mint-back block to a CallToolResult. Applies to isError results
- * too (the retry after an error must carry the same task). Only requirement:
- * an array `content`. Never mutates the input.
+ * Prepends the mint-back block to a CallToolResult as the first content
+ * element — IDs at the end of long responses can be truncated away by
+ * clients. Applies to isError results too (the retry after an error must
+ * carry the same task). Only requirement: an array `content`. Never mutates
+ * the input.
  *
- * @param result - The tool result to append to
- * @param text - The mint-back block to append as a text content block
+ * @param result - The tool result to prepend to
+ * @param text - The mint-back block to prepend as a text content block
  * @returns A shallow copy carrying the extra block, or the input untouched
  */
 export function appendMintBack(result: any, text: string): any {
   if (!result || typeof result !== "object" || !Array.isArray(result.content)) {
     return result;
   }
-  return { ...result, content: [...result.content, { type: "text", text }] };
+  return { ...result, content: [{ type: "text", text }, ...result.content] };
 }
 
 export interface StructuredMintBack {
   session_id?: string;
   agent_id?: string;
-  instructions: string;
+  status?: "issued" | "active" | "unrecognized";
 }
 
 /**
  * Builds the structured mint-back mirrored into structuredContent. Unlike
- * buildMintBackText (task-mint announcements only), this is persistent handle
- * state, present on EVERY response — supplied handles are re-confirmed, so an
- * agent can re-read its own session_id/agent_id mid-conversation. Handles the
- * agent cannot echo are never named: no session_id in hook mode, none for
- * "invalid" (correcting, not confirming — no replacement is issued), none for
- * "foreign" (that parameter is the customer's, not ours to speak about), and
- * no agent_id when the agent didn't supply one. Returns null when nothing is
- * echoable.
+ * buildMintBackText (issuance announcements only), this is persistent handle
+ * state, present on every response with something to report — supplied
+ * handles are re-echoed, so an agent can re-read its own session_id/agent_id
+ * mid-conversation. In prompted mode the session state is a machine-readable
+ * status: "issued" (just created, session_id alongside), "active" (the value
+ * sent was accepted, session_id alongside), or "unrecognized" (no session_id
+ * — no replacement is issued). Handles the agent cannot echo are never named:
+ * no session_id or status in hook mode, none for "foreign" (that parameter is
+ * the customer's, not ours to speak about), and no agent_id when the agent
+ * didn't supply one. Returns null when the payload would be empty.
  *
  * Suppression is per-handle, not per-response: on a foreign tool AgentCat
- * still injected agent_id, so that half stays ours to confirm even though
+ * still injected agent_id, so that half stays ours to echo even though
  * session_id is not.
  *
  * @param res - The resolved handles for this call
@@ -159,28 +161,28 @@ export interface StructuredMintBack {
 export function buildStructuredMintBack(
   res: HandleResolution,
 ): StructuredMintBack | null {
-  const sessionEchoable =
-    !res.hookMode &&
-    res.sessionSource !== "invalid" &&
-    res.sessionSource !== "foreign";
-  const names: string[] = [];
-  if (sessionEchoable) names.push(SESSION_ID_PARAM);
-  if (res.agentId) names.push(AGENT_ID_PARAM);
-
-  const text = buildMintBackText(res);
-  if (names.length === 0 && !text) return null;
-
-  return {
-    ...(sessionEchoable ? { [SESSION_ID_PARAM]: res.sessionId } : {}),
-    ...(res.agentId ? { [AGENT_ID_PARAM]: res.agentId } : {}),
-    instructions: text ?? mintBackConfirmed(names),
-  };
+  const sessionOurs = !res.hookMode && res.sessionSource !== "foreign";
+  const mint: StructuredMintBack = {};
+  if (sessionOurs && res.sessionSource !== "invalid") {
+    mint[SESSION_ID_PARAM] = res.sessionId;
+  }
+  if (res.agentId) mint[AGENT_ID_PARAM] = res.agentId;
+  if (sessionOurs) {
+    mint.status =
+      res.sessionSource === "minted"
+        ? "issued"
+        : res.sessionSource === "invalid"
+          ? "unrecognized"
+          : "active";
+  }
+  return Object.keys(mint).length > 0 ? mint : null;
 }
 
 /**
- * Mirrors the structured mint-back into result.structuredContent. Requires a
- * plain-object structuredContent to extend; an already-present key is customer
- * data and always wins. Never mutates the input.
+ * Mirrors the structured mint-back into result.structuredContent as its FIRST
+ * key, so the handle state survives client-side truncation of long results.
+ * Requires a plain-object structuredContent to extend; an already-present key
+ * is customer data and always wins. Never mutates the input.
  *
  * @param result - The tool result to mirror into
  * @param mint - The structured mint-back payload
@@ -192,10 +194,10 @@ export function mirrorStructuredMintBack(
 ): any {
   const sc = result?.structuredContent;
   if (!sc || typeof sc !== "object" || Array.isArray(sc)) return result;
-  if (MCP_INSTRUCTIONS_KEY in sc) return result;
+  if (MCP_SESSION_KEY in sc) return result;
   return {
     ...result,
-    structuredContent: { ...sc, [MCP_INSTRUCTIONS_KEY]: mint },
+    structuredContent: { [MCP_SESSION_KEY]: mint, ...sc },
   };
 }
 
@@ -270,8 +272,11 @@ export function resolveHandles(
     sessionId = "";
     sessionSource = "foreign";
   } else {
+    // The start sentinel is checked before shape validation, and only here —
+    // on the path where the session param is ours. A foreign customer-owned
+    // value is never interpreted as a sentinel.
     const supplied = extractHandle(args, SESSION_ID_PARAM);
-    if (supplied) {
+    if (supplied && supplied.toLowerCase() !== SESSION_START_SENTINEL) {
       if (isValidSessionId(supplied)) {
         sessionId = supplied;
         sessionSource = "supplied";
@@ -282,6 +287,9 @@ export function resolveHandles(
         sessionSource = "invalid";
       }
     } else {
+      // Absent, empty, or the explicit start sentinel: begin a new task.
+      // Omission keeps minting so stale schemas and scripted callers that
+      // never learned the parameter cannot error.
       sessionId = newSessionId();
       sessionSource = "minted";
     }

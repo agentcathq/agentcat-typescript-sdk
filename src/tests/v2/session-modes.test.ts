@@ -51,6 +51,10 @@ describe("v2 session modes: resolveSessionId hook", () => {
     );
     expect((echo.inputSchema as any).properties).toHaveProperty("agent_id");
     expect((echo.inputSchema as any).required).toContain("agent_id");
+    // No session_id injection in hook mode → no session_id requiredness.
+    expect((echo.inputSchema as any).required ?? []).not.toContain(
+      "session_id",
+    );
     // get_more_tools follows the same policy — it publishes events too.
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
     expect((gmt.inputSchema as any).properties).not.toHaveProperty(
@@ -208,6 +212,8 @@ describe("v2 session modes: supplied vs minted (no hook)", () => {
   });
 
   it("mints on omission, announces the id, and tags the source as minted", async () => {
+    // Omission tolerance: a stale schema or scripted caller that never
+    // learned the (now required) parameter must keep working unchanged.
     const { client } = await setupHighLevel();
     const result: any = await client.callTool({
       name: "echo",
@@ -221,6 +227,35 @@ describe("v2 session modes: supplied vs minted (no hook)", () => {
     expect(event.tags).toMatchObject({
       [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
     });
+    await client.close();
+  });
+
+  it("start begins a new task exactly like omission, case-insensitively", async () => {
+    const { client } = await setupHighLevel();
+    const first: any = await client.callTool({
+      name: "echo",
+      arguments: { msg: "one", context: "start task", session_id: "start" },
+    });
+    const firstId = handleFrom(mintBackOf(first)!, "session_id");
+    expect(firstId).toMatch(/^ses_/);
+
+    const second: any = await client.callTool({
+      name: "echo",
+      arguments: { msg: "two", context: "start task", session_id: " START " },
+    });
+    const secondId = handleFrom(mintBackOf(second)!, "session_id");
+    expect(secondId).toMatch(/^ses_/);
+    // start always begins a new, unrelated task — never a shared session.
+    expect(secondId).not.toBe(firstId);
+
+    const events = capture.getEvents();
+    expect(events[0].sessionId).toBe(firstId);
+    expect(events[1].sessionId).toBe(secondId);
+    for (const event of events) {
+      expect(event.tags).toMatchObject({
+        [AGENTCAT_TAG_SESSION_SOURCE]: "minted",
+      });
+    }
     await client.close();
   });
 });

@@ -162,7 +162,7 @@ describe("Context Parameters", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Added todo");
+      expect(result.content[1].text).toContain("Added todo");
 
       // Wait a bit for the event to be processed
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -223,7 +223,7 @@ describe("Context Parameters", () => {
         CallToolResultSchema,
       );
 
-      expect(result.content[0].text).toContain("Completed todo");
+      expect(result.content[1].text).toContain("Completed todo");
 
       // Wait for events to be processed
       await new Promise((resolve) => setTimeout(resolve, 50));

@@ -102,7 +102,7 @@ describe("v2 hooks: identify", () => {
       name: "add_note",
       arguments: { text: "hello", context: "identification test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
     expect(identifyCalled).toBe(true);
 
     // No separate identify event exists — the resolved identity is stamped
@@ -192,7 +192,7 @@ describe("v2 hooks: identify", () => {
       name: "add_note",
       arguments: { text: "anon", context: "null identity test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
 
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent).toBeDefined();
@@ -213,7 +213,7 @@ describe("v2 hooks: identify", () => {
       name: "add_note",
       arguments: { text: "err", context: "identify error test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
 
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent).toBeDefined();
@@ -233,7 +233,7 @@ describe("v2 hooks: identify", () => {
       name: "add_note",
       arguments: { text: "invalid", context: "invalid identity test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
 
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(toolCallEvent.identifyActorGivenId).toBeUndefined();
@@ -256,7 +256,7 @@ describe("v2 hooks: identify", () => {
       name: "add_note",
       arguments: { text: "async", context: "async identify test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
     // Deferred hooks: the 100ms lookup never held the call open.
     expect(asyncOperationCompleted).toBe(false);
 
@@ -364,7 +364,7 @@ describe("v2 hooks: eventTags", () => {
       name: "add_note",
       arguments: { text: "throw", context: "tag test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
 
     const [toolCallEvent] = toolCallEventsOf(capture);
     expect(customerTags(toolCallEvent.tags)).toEqual({});
@@ -452,7 +452,7 @@ describe("v2 hooks: eventProperties", () => {
       name: "add_note",
       arguments: { text: "throw", context: "props test" },
     });
-    expect(result.content[0].text).toContain("Added note");
+    expect(result.content[1].text).toContain("Added note");
     await client.close();
   });
 

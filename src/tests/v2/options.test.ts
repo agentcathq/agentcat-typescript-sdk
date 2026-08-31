@@ -194,7 +194,7 @@ describe("v2 options: track() edge paths", () => {
       arguments: { msg: "hi", context: "double-track" },
     });
     const blocks = (result.content as any[]).filter(
-      (c) => c.type === "text" && c.text.startsWith("[MCP INSTRUCTIONS]"),
+      (c) => c.type === "text" && c.text.startsWith("[session_id"),
     );
     expect(blocks).toHaveLength(1); // mint-back never doubles
     expect(capture.getEvents()).toHaveLength(1);
