@@ -128,14 +128,16 @@
       "vite": ">=7.3.5",
       "body-parser": ">=2.2.1",
       "brace-expansion": "2.1.2",
-      "undici": ">=7.29.0 <8"
+      "undici": ">=7.29.0 <8",
+      "sharp": ">=0.35.4"
     },
     "overridesComments": {
       "js-yaml": "Fixes GHSA-mh29-5h37-fv8m (prototype pollution in merge) - via eslint",
       "vite": "Fixes GHSA-fx2h-pf6j-xcff, GHSA-v2wj-q39q-566r, GHSA-p9ff-h696-f583 (server.fs.deny bypasses, dev server file read) and earlier vite security issues - via vitest",
       "body-parser": "Fixes GHSA-wqch-xfxh-vrr4 (DoS via url encoding) - via @modelcontextprotocol/sdk",
       "brace-expansion": "Fixes GHSA-v6h2-p8h4-qcjw (ReDoS vulnerability) and GHSA-3jxr-9vmj-r5cp (exponential expansion DoS) - via eslint",
-      "undici": "Fixes GHSA-4cwx-7wf7-3272 (cache poisoning info disclosure) - miniflare pins undici exactly, capped <8 to stay on its undici 7 line"
+      "undici": "Fixes GHSA-4cwx-7wf7-3272 (cache poisoning info disclosure) - miniflare pins undici exactly, capped <8 to stay on its undici 7 line",
+      "sharp": "Fixes GHSA-rgj7-g3m4-5g8c (libheif vulnerabilities in bundled libvips) - miniflare pins sharp exactly at 0.35.2"
     }
   },
   "dependencies": {
