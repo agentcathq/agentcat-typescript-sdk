@@ -96,6 +96,15 @@ export function estimateOutputTokens(response: unknown): number | undefined {
       const bytes = compactJsonBytes(response);
       return bytes === undefined ? undefined : estimateTokens(bytes);
     }
+    if (content.length === 0) {
+      const structured = (response as { structuredContent?: unknown })
+        .structuredContent;
+      if (structured !== undefined && structured !== null) {
+        const bytes = compactJsonBytes(structured);
+        return bytes === undefined ? undefined : estimateTokens(bytes);
+      }
+      return 0;
+    }
     let bytes = 0;
     for (const block of content) {
       bytes += contentBlockBytes(block);

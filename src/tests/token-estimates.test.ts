@@ -65,6 +65,38 @@ describe("token estimates on tool-call events", () => {
     }
   });
 
+  it("counts the structured content when the content list is empty", async () => {
+    resetTodos();
+    const { server, client, cleanup } = await setupTestServerAndClient();
+    const capture = new EventCapture();
+    await capture.start();
+    try {
+      await track(server, "test-tokens", {
+        enableToolCallContext: false,
+        enableTracing: true,
+      });
+      server.tool(
+        "structured_only",
+        "structured-only reply",
+        { text: z.string() },
+        async () => ({
+          content: [],
+          structuredContent: { result: "ok" },
+        }),
+      );
+
+      await callTool(client, "structured_only", { text: "hi there" });
+      await capture.flush();
+
+      const event = toolEvent(capture, "structured_only")!;
+      expect(event).toBeDefined();
+      expect(event.outputTokens).toBe(5); // {"result":"ok"} = 15 bytes
+    } finally {
+      await capture.stop();
+      await cleanup();
+    }
+  });
+
   it("counts an error result's content, including a throw the SDK turns into one", async () => {
     resetTodos();
     const { server, client, cleanup } = await setupTestServerAndClient();

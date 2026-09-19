@@ -108,6 +108,16 @@ describe("estimateOutputTokens (content blocks)", () => {
     ],
     [{ content: [text("x".repeat(4096))] }, 1171],
     [{ content: [text("hi")], isError: true }, 1],
+    [{ content: [], structuredContent: { result: "ok" } }, 5],
+    [{ content: [] }, 0],
+    [{ content: [], structuredContent: null }, 0],
+    [
+      {
+        content: [{ type: "image", data: "QUJD", mimeType: "image/png" }],
+        structuredContent: { result: "ok" },
+      },
+      0,
+    ],
   ])("%j -> %i", (response, tokens) => {
     expect(estimateOutputTokens(response)).toBe(tokens);
   });
