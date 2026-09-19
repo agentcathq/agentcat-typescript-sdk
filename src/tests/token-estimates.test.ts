@@ -121,7 +121,10 @@ describe("token estimates on tool-call events", () => {
       await track(server, "test-tokens", {
         enableToolCallContext: false,
         enableTracing: true,
-        redactSensitiveInformation: async () => "[REDACTED]",
+        // Only the secret string is rewritten: a hook that replaced every
+        // string would also clobber the content block's `type` discriminator.
+        redactSensitiveInformation: async (text) =>
+          text.includes("secret") ? "[REDACTED]" : text,
       });
       server.tool(
         "secret_echo",
