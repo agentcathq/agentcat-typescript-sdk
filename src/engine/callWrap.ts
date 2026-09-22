@@ -41,6 +41,10 @@ import {
   setOutputInjectionRegistry,
 } from "./registry.js";
 import { buildInjectedList } from "./listWrap.js";
+import {
+  estimateInputTokens,
+  estimateOutputTokens,
+} from "../modules/tokenEstimate.js";
 
 function isToolResultError(result: any): boolean {
   return result && typeof result === "object" && result.isError === true;
@@ -232,6 +236,9 @@ export function installCallWrap(server: MCPServerLike): void {
           // traverse — headers would otherwise flatten to {}. Contract: the
           // redactEvent hook sees this projection, i.e. what ships.
           parameters: { request, extra: projectExtraForEvent(extra) },
+          // Estimated on the raw arguments here, before the queue's redaction
+          // hooks run; the queue never recomputes it.
+          inputTokens: estimateInputTokens(request?.params?.arguments),
           eventType: PublishEventRequestEventTypeEnum.mcpToolsCall,
           timestamp: startTime,
           redactionFn: data.options.redactSensitiveInformation,
@@ -310,6 +317,8 @@ export function installCallWrap(server: MCPServerLike): void {
         }
         // Mint-back is wire-only: the event records the customer's original result.
         event.response = result;
+        // Estimated on the customer's original result, before redaction.
+        event.outputTokens = estimateOutputTokens(result);
         event.duration = new Date().getTime() - startTime.getTime();
         publishEvent(server, event, { clientInfo });
         return finalResult;

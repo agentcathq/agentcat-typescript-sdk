@@ -197,6 +197,41 @@ describe("EventQueue", () => {
         addSpy.mockRestore();
       }
     });
+
+    it("should send inputTokens and outputTokens on the wire request", async () => {
+      (eventQueue as any).apiClient = mockApiClient;
+
+      publishEvent(makeMockServer(), {
+        eventType: "mcp:tools/call",
+        resourceName: "do_thing",
+        timestamp: new Date(),
+        inputTokens: 6,
+        outputTokens: 4,
+      } as any);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockPublishEvent).toHaveBeenCalledTimes(1);
+      const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+      expect(sent.inputTokens).toBe(6);
+      expect(sent.outputTokens).toBe(4);
+    });
+
+    it("should leave the token fields undefined when the event has none", async () => {
+      (eventQueue as any).apiClient = mockApiClient;
+
+      publishEvent(makeMockServer(), {
+        eventType: "mcp:tools/call",
+        resourceName: "do_thing",
+        timestamp: new Date(),
+      } as any);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+      expect(sent.inputTokens).toBeUndefined();
+      expect(sent.outputTokens).toBeUndefined();
+    });
   });
 
   describe("background delivery lifecycle", () => {

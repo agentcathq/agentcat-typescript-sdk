@@ -174,6 +174,8 @@ class EventQueue {
       sessionId: event.sessionId || null,
       timestamp: event.timestamp,
       duration: event.duration,
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
 
       // Event data
       eventType: event.eventType as PublishEventRequestEventTypeEnum,
@@ -391,6 +393,8 @@ export function publishEvent(
     eventType: eventInput.eventType || "",
     timestamp: eventInput.timestamp || new Date(),
     duration: duration,
+    inputTokens: eventInput.inputTokens,
+    outputTokens: eventInput.outputTokens,
 
     // Session context from sessionInfo
     ipAddress: sessionInfo.ipAddress,

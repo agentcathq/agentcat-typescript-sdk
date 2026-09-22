@@ -169,6 +169,14 @@ agentcat.track(mcpServer, "proj_0000000", {
 });
 ```
 
+Tool-call events also carry `input_tokens` and `output_tokens`: estimates
+(`ceil(utf8_bytes / 3.5)`) of the raw tool arguments and of the text in the
+result's content blocks (or of the structured content, when a result has no
+content blocks). They are computed before your redaction hooks run,
+so they describe the original payload size even when the stored strings are
+redacted. Drop the two fields in `redactEvent` if that size must not leave
+your server.
+
 ### Vendor Support
 
 AgentCat seamlessly integrates with your existing observability stack, providing automatic logging and tracing without the tedious setup typically required. Export telemetry data to multiple platforms simultaneously:

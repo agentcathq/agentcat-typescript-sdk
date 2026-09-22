@@ -17,8 +17,8 @@ importers:
   .:
     dependencies:
       agentcat-api:
-        specifier: 1.0.1
-        version: 1.0.1
+        specifier: 1.0.3
+        version: 1.0.3
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.19.0
@@ -1050,8 +1050,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  agentcat-api@1.0.1:
-    resolution: {integrity: sha512-1OeMru3nQGMtazs44ZtzP9UgeEq8+eEG+Hgj6B12qZnOneH56NmULthYv0YT3MAZ3EAAzh4lEtWFA3OzcY8XnQ==}
+  agentcat-api@1.0.3:
+    resolution: {integrity: sha512-gjVQ3BXwOW79uzhSIemW2XEdRP2H1OMtvJ1/h7PC6Hkrs95NQ7K+DeEwdYrsEXKEkU18NyMctnY6926g7gWq2w==}
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -3065,7 +3065,7 @@ snapshots:
 
   acorn@8.15.0: {}
 
-  agentcat-api@1.0.1: {}
+  agentcat-api@1.0.3: {}
 
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:
