@@ -141,6 +141,6 @@
     }
   },
   "dependencies": {
-    "agentcat-api": "1.0.1"
+    "agentcat-api": "1.0.3"
   }
 }
