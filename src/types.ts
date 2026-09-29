@@ -101,6 +101,11 @@ export interface Event {
   timestamp: Date;
   duration?: number;
 
+  // Token estimates, set at capture time on the raw payloads (before any
+  // redaction) by src/engine/callWrap.ts; see src/modules/tokenEstimate.ts.
+  inputTokens?: number;
+  outputTokens?: number;
+
   // Session context (from SessionInfo)
   ipAddress?: string;
   sdkLanguage?: string;
