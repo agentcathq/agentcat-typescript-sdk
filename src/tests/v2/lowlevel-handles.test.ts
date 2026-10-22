@@ -67,7 +67,7 @@ describe("v2 low-level server: explicit handles", () => {
     await capture.stop();
   });
 
-  it("injects required handles into listed tool schemas in canonical order", async () => {
+  it("injects optional handles into listed tool schemas in canonical order", async () => {
     const { client } = await setupLowLevel();
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
@@ -77,12 +77,7 @@ describe("v2 low-level server: explicit handles", () => {
       "agent_id",
       "context",
     ]);
-    expect((echo.inputSchema as any).required).toEqual([
-      "text",
-      "session_id",
-      "agent_id",
-      "context",
-    ]);
+    expect((echo.inputSchema as any).required).toEqual(["text"]);
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
     expect((gmt.inputSchema as any).properties).toHaveProperty("session_id");
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");

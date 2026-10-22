@@ -35,7 +35,7 @@ const customerSchema = () => ({
 });
 
 describe("addHandleParametersToTools", () => {
-  it("injects session_id and agent_id after customer params, both required", () => {
+  it("injects optional session_id and agent_id after customer params", () => {
     const registry: InjectedParamsRegistry = new Map();
     const [tool] = addHandleParametersToTools(
       [makeTool("add_todo", customerSchema())],
@@ -44,14 +44,9 @@ describe("addHandleParametersToTools", () => {
     );
     const keys = Object.keys(tool.inputSchema.properties);
     expect(keys).toEqual(["text", "session_id", "agent_id"]);
-    // Requiredness rides injection: both injected params join required, and
-    // the customer's own entries stay first and untouched. Enforcement is
-    // soft — a call that still omits them succeeds (minted / unattributed).
-    expect(tool.inputSchema.required).toEqual([
-      "text",
-      "session_id",
-      "agent_id",
-    ]);
+    // SDK-owned fields stay optional so host-initiated MCP App calls can omit
+    // them. The customer's own required entries stay untouched.
+    expect(tool.inputSchema.required).toEqual(["text"]);
     expect(tool.inputSchema.properties.session_id.description).toBe(
       SESSION_ID_PARAM_DESCRIPTION,
     );
@@ -69,7 +64,7 @@ describe("addHandleParametersToTools", () => {
     );
   });
 
-  it("creates the required array when the schema has none", () => {
+  it("does not add a required array when the schema has none", () => {
     const tool: any = {
       name: "bare",
       inputSchema: { type: "object", properties: {} },
@@ -80,7 +75,7 @@ describe("addHandleParametersToTools", () => {
       { injectSessionId: true, injectAgentId: true },
       registry,
     );
-    expect(out.inputSchema.required).toEqual(["session_id", "agent_id"]);
+    expect(out.inputSchema.required).toBeUndefined();
   });
 
   it("does not duplicate session_id in an existing required array", () => {
@@ -154,12 +149,7 @@ describe("addHandleParametersToTools", () => {
       "agent_id",
       "context",
     ]);
-    expect(tools[0].inputSchema.required).toEqual([
-      "text",
-      "session_id",
-      "agent_id",
-      "context",
-    ]);
+    expect(tools[0].inputSchema.required).toEqual(["text"]);
     expect(registry.get("add_todo")).toEqual(
       new Set(["session_id", "agent_id", "context"]),
     );
@@ -176,7 +166,7 @@ describe("addHandleParametersToTools", () => {
     expect(tool.inputSchema.properties.agent_id.description).toBe(
       AGENT_ID_PARAM_DESCRIPTION,
     );
-    expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
+    expect(tool.inputSchema.required).toEqual(["text"]);
     expect(registry.get("add_todo")).toEqual(new Set(["agent_id"]));
   });
 
@@ -193,13 +183,12 @@ describe("addHandleParametersToTools", () => {
       registry,
     );
     // The customer's foreign session_id is completely untouched: no pattern,
-    // and never added to required — requiredness rides injection only.
-    // agent_id WAS injected on this tool, so it alone joins required.
+    // and its required semantics are preserved. Injected agent_id stays optional.
     expect(tool.inputSchema.properties.session_id.description).toBe(
       "customer's own",
     );
     expect(tool.inputSchema.properties.session_id.pattern).toBeUndefined();
-    expect(tool.inputSchema.required).toEqual(["text", "agent_id"]);
+    expect(tool.inputSchema.required).toEqual(["text"]);
     expect(registry.get("deploy")).toEqual(new Set(["agent_id"]));
   });
 
@@ -229,7 +218,7 @@ describe("addHandleParametersToTools", () => {
       "session_id",
       "agent_id",
     ]);
-    expect(tools[1].inputSchema.required).toEqual(["session_id", "agent_id"]);
+    expect(tools[1].inputSchema.required).toEqual([]);
   });
 
   it("does NOT skip get_more_tools (handles are injected; context stays bespoke)", () => {
@@ -251,12 +240,8 @@ describe("addHandleParametersToTools", () => {
       "agent_id",
     ]);
     expect(tools[0].inputSchema.properties.context.description).toBe("bespoke");
-    // Its own required context leads; the injected handles append after it.
-    expect(tools[0].inputSchema.required).toEqual([
-      "context",
-      "session_id",
-      "agent_id",
-    ]);
+    // Its bespoke context remains required; injected handles are optional.
+    expect(tools[0].inputSchema.required).toEqual(["context"]);
     expect(registry.get("get_more_tools")).toEqual(
       new Set(["session_id", "agent_id"]),
     );
@@ -275,6 +260,39 @@ describe("addHandleParametersToTools", () => {
     // Single constant in both modes: the copy never references the session_id
     // parameter, so it reads the same with or without one.
     expect(AGENT_ID_PARAM_DESCRIPTION).not.toContain("session_id");
+  });
+});
+
+describe("MCP App tool schema compatibility", () => {
+  it("keeps injected handles and context optional for host-initiated calls", () => {
+    const metadata = {
+      "openai/ui": { entrypoints: [{ type: "global" }] },
+    };
+    const tool = Object.assign(
+      makeTool("widget_entrypoint", {
+        type: "object",
+        properties: {},
+        required: [],
+      }),
+      { _meta: metadata },
+    );
+    const registry: InjectedParamsRegistry = new Map();
+    const [withHandles] = addHandleParametersToTools(
+      [tool],
+      { injectSessionId: true, injectAgentId: false },
+      registry,
+    );
+    const [advertised] = addContextParameterToTools(
+      [withHandles],
+      undefined,
+      registry,
+    );
+
+    expect(advertised._meta).toEqual(metadata);
+    expect(advertised.inputSchema.properties.session_id).toBeDefined();
+    expect(advertised.inputSchema.properties.context).toBeDefined();
+    expect(advertised.inputSchema.required ?? []).not.toContain("session_id");
+    expect(advertised.inputSchema.required ?? []).not.toContain("context");
   });
 });
 

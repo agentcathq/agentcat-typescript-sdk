@@ -119,7 +119,7 @@ describe("Report Missing Tool", () => {
         (tool: any) => tool.name === "get_more_tools",
       );
 
-      // Verify context is NOT required
+      // Its bespoke context stays required; generic context injection skips it.
       expect(reportMissingTool.inputSchema.required).toContain("context");
 
       // Check that other tools DO have injected context
@@ -130,7 +130,7 @@ describe("Report Missing Tool", () => {
         type: "string",
         description: DEFAULT_CONTEXT_PARAMETER_DESCRIPTION,
       });
-      expect(addTodoTool.inputSchema.required).toContain("context");
+      expect(addTodoTool.inputSchema.required ?? []).not.toContain("context");
     });
   });
 

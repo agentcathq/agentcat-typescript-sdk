@@ -39,7 +39,7 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
     await capture.stop();
   });
 
-  it("advertises the tool with required bespoke context, handles, and honest annotations", async () => {
+  it("advertises bespoke required context, optional handles, and annotations", async () => {
     const { client } = await setupHighLevel({ enableAgentTracking: true });
     const { tools } = await client.listTools();
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
@@ -48,8 +48,8 @@ describe("v2 get_more_tools on a tracked high-level server", () => {
     expect((gmt.inputSchema as any).required).toContain("context");
     expect((gmt.inputSchema as any).properties).toHaveProperty("session_id");
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
-    expect((gmt.inputSchema as any).required).toContain("session_id");
-    expect((gmt.inputSchema as any).required).toContain("agent_id");
+    expect((gmt.inputSchema as any).required ?? []).not.toContain("session_id");
+    expect((gmt.inputSchema as any).required ?? []).not.toContain("agent_id");
     expect(gmt.annotations).toEqual({
       title: "Get More Tools",
       readOnlyHint: true,

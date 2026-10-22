@@ -6,7 +6,7 @@ import type { InjectedParamsRegistry } from "./handle-injection.js";
 import { writeToLog } from "./logging.js";
 
 /**
- * Adds a context parameter to a tool's JSON Schema.
+ * Adds an optional context parameter to a tool's JSON Schema.
  * This function is called AFTER the MCP SDK has converted Zod schemas to JSON Schema,
  * so we only need to handle JSON Schema format.
  *
@@ -82,15 +82,6 @@ export function addContextParameterToTool(
     const existing = registry.get(toolName);
     if (existing) existing.add("context");
     else registry.set(toolName, new Set(["context"]));
-  }
-
-  // Add context to required array
-  if (Array.isArray(modifiedTool.inputSchema.required)) {
-    if (!modifiedTool.inputSchema.required.includes("context")) {
-      modifiedTool.inputSchema.required.push("context");
-    }
-  } else {
-    modifiedTool.inputSchema.required = ["context"];
   }
 
   return modifiedTool;

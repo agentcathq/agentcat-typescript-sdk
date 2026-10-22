@@ -189,7 +189,7 @@ describe("low-level server: explicit handles", () => {
     await capture.stop();
   });
 
-  it("injects required handles into listed tool schemas", async () => {
+  it("injects optional handles into listed tool schemas", async () => {
     const { client, cleanup } = await setupLowLevel();
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
@@ -199,12 +199,7 @@ describe("low-level server: explicit handles", () => {
       "agent_id",
       "context",
     ]);
-    expect(echo.inputSchema.required).toEqual([
-      "text",
-      "session_id",
-      "agent_id",
-      "context",
-    ]);
+    expect(echo.inputSchema.required).toEqual(["text"]);
     // The injected session_id advertises the start|ses_ value contract.
     expect((echo.inputSchema.properties as any).session_id.pattern).toBe(
       SESSION_ID_PARAM_PATTERN,
@@ -430,7 +425,7 @@ describe("low-level server: explicit handles", () => {
     const echo = tools.find((t) => t.name === "echo")!;
     expect(echo.inputSchema.properties).not.toHaveProperty("session_id");
     expect(echo.inputSchema.properties).toHaveProperty("agent_id");
-    expect(echo.inputSchema.required).toContain("agent_id");
+    expect(echo.inputSchema.required ?? []).not.toContain("agent_id");
     // No session_id injection in hook mode means no requiredness either.
     expect(echo.inputSchema.required ?? []).not.toContain("session_id");
 
@@ -502,8 +497,8 @@ describe("low-level server: explicit handles", () => {
     const echo = tools.find((t) => t.name === "echo")!;
     expect(echo.inputSchema.properties).toHaveProperty("session_id");
     expect(echo.inputSchema.properties).toHaveProperty("agent_id");
-    expect(echo.inputSchema.required).toContain("session_id");
-    expect(echo.inputSchema.required).toContain("agent_id");
+    expect(echo.inputSchema.required ?? []).not.toContain("session_id");
+    expect(echo.inputSchema.required ?? []).not.toContain("agent_id");
     await cleanup();
   });
 
