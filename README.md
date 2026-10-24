@@ -12,7 +12,7 @@
     <span> · </span>
     <a href="#free-for-open-source">Open Source</a>
     <span> · </span>
-    <a href="https://meet.agentcat.com/meet">Schedule a Demo</a>
+    <a href="https://book.agentcat.com/meet">Schedule a Demo</a>
 </h3>
 <p align="center">
   <a href="https://badge.fury.io/js/agentcat"><img src="https://badge.fury.io/js/agentcat.svg" alt="npm version"></a>
