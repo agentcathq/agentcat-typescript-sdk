@@ -50,7 +50,7 @@ describe("v2 session modes: resolveSessionId hook", () => {
       "session_id",
     );
     expect((echo.inputSchema as any).properties).toHaveProperty("agent_id");
-    expect((echo.inputSchema as any).required).toContain("agent_id");
+    expect((echo.inputSchema as any).required ?? []).not.toContain("agent_id");
     // No session_id injection in hook mode → no session_id requiredness.
     expect((echo.inputSchema as any).required ?? []).not.toContain(
       "session_id",
@@ -212,8 +212,7 @@ describe("v2 session modes: supplied vs minted (no hook)", () => {
   });
 
   it("mints on omission, announces the id, and tags the source as minted", async () => {
-    // Omission tolerance: a stale schema or scripted caller that never
-    // learned the (now required) parameter must keep working unchanged.
+    // Omission tolerance: host-initiated calls may omit this optional field.
     const { client } = await setupHighLevel();
     const result: any = await client.callTool({
       name: "echo",

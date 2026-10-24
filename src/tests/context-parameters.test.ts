@@ -47,7 +47,9 @@ describe("Context Parameters", () => {
       expect(modifiedTools[0].inputSchema.properties.context.type).toBe(
         "string",
       );
-      expect(modifiedTools[0].inputSchema.required).toContain("context");
+      expect(modifiedTools[0].inputSchema.required ?? []).not.toContain(
+        "context",
+      );
     });
 
     it("should add context parameter to tools with existing inputSchema", () => {
@@ -76,7 +78,9 @@ describe("Context Parameters", () => {
         "string",
       );
       expect(modifiedTools[0].inputSchema.required).toContain("text");
-      expect(modifiedTools[0].inputSchema.required).toContain("context");
+      expect(modifiedTools[0].inputSchema.required ?? []).not.toContain(
+        "context",
+      );
     });
 
     it("should not duplicate context parameter if already exists", () => {
@@ -128,8 +132,7 @@ describe("Context Parameters", () => {
 
       const modifiedTools = addContextParameterToTools(tools);
 
-      expect(modifiedTools[0].inputSchema.required).toContain("context");
-      expect(modifiedTools[0].inputSchema.required).toHaveLength(1);
+      expect(modifiedTools[0].inputSchema.required).toEqual([]);
     });
   });
 
@@ -253,8 +256,7 @@ describe("Context Parameters", () => {
       });
 
       // Call list_todos without context - should succeed but have no userIntent
-      // Note: Context is advertised as required in JSON Schema (for client/LLM),
-      // but not enforced at SDK validation level (Zod schema is not modified)
+      // Context is optional in the published schema and not enforced by the SDK.
       const result1 = await client.request(
         {
           method: "tools/call",

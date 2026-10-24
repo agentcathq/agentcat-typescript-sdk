@@ -26,7 +26,7 @@ Upgrading takes no configuration, but it does change what your MCP server publis
 
 `additionalProperties: false` **is removed** from tracked input schemas. If you declared it deliberately to reject unknown parameters, that constraint no longer appears in the schema AgentCat publishes.
 
-**With** `enableAgentTracking: true`**,** `agent_id` **is added to the schema's** `required` **array.** This is the one addition a strict client will enforce — a schema-validating MCP client refuses to send a call that omits it. Server-side enforcement is soft: a call without `agent_id` still succeeds, and the event is simply published without agent identity. This is why agent tracking is off by default.
+**With** `enableAgentTracking: true`**,** an optional `agent_id` property is added.** Its description asks model-driven callers to supply a stable self-chosen value, but the schema leaves it optional so host-initiated MCP App calls can omit SDK-specific fields. Calls without `agent_id` still succeed and are published without agent identity.
 
 **Tools with a plain-object** `outputSchema` **gain an optional** `_mcp_instructions` **property**, so validating clients accept the handle mirrored into `structuredContent`. Schemas built from `oneOf` / `allOf` / `anyOf` have no single properties bag to extend and are skipped — mint-back stays content-only there.
 

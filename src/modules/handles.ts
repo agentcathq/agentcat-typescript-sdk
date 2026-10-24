@@ -301,9 +301,9 @@ export function resolveHandles(
     hookMode,
   };
 
-  // agent_id is self-chosen by the agent (schema-required when tracking is
-  // on). Soft enforcement: an omitted agent_id never rejects the call — the
-  // event is simply published without agent identity.
+  // agent_id is self-chosen by the agent (optional in the advertised schema).
+  // An omitted value never rejects the call — the event is simply published
+  // without agent identity.
   if (options.enableAgentTracking === true) {
     const suppliedAgent = extractHandle(args, AGENT_ID_PARAM);
     if (suppliedAgent) {

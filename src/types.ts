@@ -4,13 +4,12 @@ export interface AgentCatOptions {
   enableToolCallContext?: boolean;
   customContextDescription?: string;
   /**
-   * Default false. Set true to inject a required agent_id parameter into every
+   * Default false. Set true to inject an optional agent_id parameter into every
    * tool. Agents self-generate the value (model|harness|nonce, e.g.
    * "opus-4.80-1m|claude-code|k3n9x"); it is echoed back in mcp_session
-   * and stamped on events as tags. Omission never rejects a call server-side —
-   * the event is simply published without agent identity. The intended
-   * enforcement is client-side: a strict schema-validating MCP client will
-   * refuse to send a call that omits a required agent_id in the first place.
+   * and stamped on events as tags. Calls without it remain valid and are
+   * published without agent identity. Optional schema fields also allow
+   * host-initiated MCP App calls that cannot supply AgentCat-specific values.
    */
   enableAgentTracking?: boolean;
   /**
