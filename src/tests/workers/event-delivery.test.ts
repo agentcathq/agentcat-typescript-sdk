@@ -54,9 +54,10 @@ describe("Cloudflare Workers event delivery", () => {
       // request. The workerd entrypoint has registered that request with
       // waitUntil so it can safely continue after this response.
       const result = await resultPromise;
-      expect((result.content as Array<{ text?: string }>)[0].text).toBe(
-        "hello from Workers",
-      );
+      expect(result.content).toContainEqual({
+        type: "text",
+        text: "hello from Workers",
+      });
       expect(ingestionCompleted).toBe(false);
 
       releaseIngestion!();
