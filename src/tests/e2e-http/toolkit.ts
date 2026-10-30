@@ -1,11 +1,13 @@
 // Shared logical toolkit for the real-HTTP e2e matrix. Both majors expose the
-// SAME five tools so scenario expectations are lane-uniform:
+// SAME six tools so scenario expectations are lane-uniform:
 //
-//   echo       {msg: string}                    — plain happy path
-//   loose      passthrough / looseObject        — unknown keys reach the handler
-//   strict     .strict() / strictObject         — additionalProperties: false
-//   structured input {msg} + outputSchema       — returns structuredContent
-//   boom       throws new Error("boom")         — error path
+//   echo          {msg: string}                 — plain happy path
+//   loose         passthrough / looseObject     — unknown keys reach the handler
+//   strict        .strict() / strictObject      — additionalProperties: false
+//   structured    input {msg} + outputSchema    — returns structuredContent
+//   boom          throws new Error("boom")      — error path
+//   complete_task {task: string}                — publishes a custom event
+//                                                 (server form, no sessionId)
 //
 // EVERY handler pushes { tool, args } into the provided sink — the sink is the
 // strip-proof channel: it shows exactly what the customer handler received
@@ -14,6 +16,12 @@ import { McpServer as V1McpServer } from "@modelcontextprotocol/sdk/server/mcp.j
 import { McpServer as V2McpServer } from "@modelcontextprotocol/server";
 import { z as z3 } from "zod";
 import { z as z4 } from "zod4";
+import * as agentcat from "../../index.js";
+
+export const E2E_PROJECT_ID = "proj_test";
+
+/** resourceName of the custom event the complete_task tool publishes. */
+export const TASK_COMPLETED_EVENT = "task_completed";
 
 export interface SinkEntry {
   tool: string;
@@ -96,6 +104,21 @@ export function buildV1Toolkit(sink: ToolSink): V1McpServer {
     },
   );
 
+  server.registerTool(
+    "complete_task",
+    {
+      description: "Completes a task and records it as a custom event",
+      inputSchema: { task: z3.string() },
+    },
+    async (args) => {
+      record(sink, "complete_task")(args);
+      await agentcat.publishCustomEvent(server, E2E_PROJECT_ID, {
+        resourceName: TASK_COMPLETED_EVENT,
+      });
+      return { content: [{ type: "text", text: `completed ${args.task}` }] };
+    },
+  );
+
   return server;
 }
 
@@ -171,6 +194,23 @@ export function buildV2Toolkit(sink: ToolSink): V2McpServer {
     async (args: Record<string, unknown>) => {
       record(sink, "boom")(args);
       throw new Error("boom");
+    },
+  );
+
+  server.registerTool(
+    "complete_task",
+    {
+      description: "Completes a task and records it as a custom event",
+      inputSchema: z4.object({ task: z4.string() }),
+    },
+    async (args: { task: string }) => {
+      record(sink, "complete_task")(args);
+      await agentcat.publishCustomEvent(server, E2E_PROJECT_ID, {
+        resourceName: TASK_COMPLETED_EVENT,
+      });
+      return {
+        content: [{ type: "text" as const, text: `completed ${args.task}` }],
+      };
     },
   );
 

@@ -1,4 +1,5 @@
 import {
+  HookSessionFinalizer,
   MCPServerLike,
   PendingEventFields,
   UnredactedEvent,
@@ -45,6 +46,8 @@ import {
   estimateInputTokens,
   estimateOutputTokens,
 } from "../modules/tokenEstimate.js";
+import { createHookSessionFinalizer } from "../modules/pendingEvent.js";
+import { runInToolCallScope } from "../modules/toolCallScope.js";
 
 function isToolResultError(result: any): boolean {
   return result && typeof result === "object" && result.isError === true;
@@ -171,6 +174,7 @@ export function installCallWrap(server: MCPServerLike): void {
       event: UnredactedEvent;
       resolution: HandleResolution;
       clientInfo: ServerClientInfoLike | undefined;
+      hookSession: HookSessionFinalizer | undefined;
     } | null = null;
 
     if (!data) {
@@ -208,13 +212,15 @@ export function installCallWrap(server: MCPServerLike): void {
         // with its rejection handler attached at creation), so leaving them
         // un-awaited cannot surface an unhandled rejection. Hooks receive the
         // raw request: injected params are visible to them by contract.
+        // The hook-mode session is finalized once per call and shared with
+        // every custom event published inside the call.
         const pending: PendingEventFields = {};
         if (resolution.hookMode) {
-          pending.sessionHookValue = invokeSessionHook(
-            data.options,
-            request,
-            extra,
+          pending.hookSession = createHookSessionFinalizer(
+            invokeSessionHook(data.options, request, extra),
+            data.projectId || undefined,
           );
+          pending.tagSessionSource = true;
         }
         if (data.options.identify) {
           pending.identity = resolveIdentity(data, request, extra);
@@ -262,7 +268,12 @@ export function installCallWrap(server: MCPServerLike): void {
           event.userIntent = request.params.arguments.context;
         }
 
-        tracing = { event, resolution, clientInfo };
+        tracing = {
+          event,
+          resolution,
+          clientInfo,
+          hookSession: pending.hookSession,
+        };
       } catch (error) {
         writeToLog(
           `Warning: AgentCat tracing failed for tool ${request?.params?.name}, falling back to original handler - ${error}`,
@@ -280,7 +291,7 @@ export function installCallWrap(server: MCPServerLike): void {
       return originalHandler(request, extra);
     }
 
-    const { event, resolution, clientInfo } = tracing;
+    const { event, resolution, clientInfo, hookSession } = tracing;
 
     const finish = (result: any) => {
       // The handler has already succeeded: nothing in this stage may reach
@@ -345,7 +356,14 @@ export function installCallWrap(server: MCPServerLike): void {
         request,
         getInjectedParamsRegistry(server),
       );
-      return finish(await originalHandler(strippedRequest, extra));
+      // Only the customer's handler runs in the call's scope: custom events it
+      // publishes, also from async work it starts, join this call's session.
+      return finish(
+        await runInToolCallScope(
+          { server, sessionId: resolution.sessionId, hookSession },
+          () => originalHandler(strippedRequest, extra),
+        ),
+      );
     } catch (error) {
       event.isError = true;
       event.error = captureException(error);

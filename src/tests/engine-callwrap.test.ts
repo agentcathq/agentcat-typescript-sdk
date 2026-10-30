@@ -19,6 +19,10 @@ import {
 } from "../engine/registry.js";
 import { v2Adapter } from "../adapters/v2.js";
 import { setServerTrackingData } from "../modules/internal.js";
+import {
+  getEnclosingToolCall,
+  _setScopeStorageForTest,
+} from "../modules/toolCallScope.js";
 import { EventCapture, sid } from "./test-utils.js";
 
 describe("MRTR helpers", () => {
@@ -242,6 +246,64 @@ describe("installCallWrap (synthetic seam)", () => {
     );
     expect(result.content[0].text).toContain("full tool list");
     expect(capture.getEvents()).toHaveLength(0);
+  });
+
+  it("runs the customer handler inside the scope of the call's session", async () => {
+    let seen: any;
+    const server = fakeServer(async () => {
+      await Promise.resolve();
+      seen = getEnclosingToolCall(server);
+      return { content: [{ type: "text", text: "ok" }] };
+    });
+    const wrapped = trackFake(server);
+    await wrapped(
+      {
+        method: "tools/call",
+        params: {
+          name: "echo",
+          arguments: { msg: "hi", session_id: sid("scoped") },
+        },
+      },
+      {},
+    );
+    expect(seen?.sessionId).toBe(sid("scoped"));
+    expect(getEnclosingToolCall(server)).toBeUndefined();
+  });
+
+  it("runs the customer handler once and still publishes when the scope cannot be entered", async () => {
+    _setScopeStorageForTest({
+      run: () => {
+        throw new Error("scope boom");
+      },
+      getStore: () => undefined,
+    });
+    try {
+      let calls = 0;
+      const server = fakeServer(async () => {
+        calls++;
+        return { content: [{ type: "text", text: "ok" }] };
+      });
+      const wrapped = trackFake(server);
+      const result = await wrapped(
+        {
+          method: "tools/call",
+          params: {
+            name: "echo",
+            arguments: { msg: "hi", session_id: sid("unscoped") },
+          },
+        },
+        {},
+      );
+      expect(calls).toBe(1);
+      expect(result.content).toEqual([{ type: "text", text: "ok" }]);
+      const [event] = capture.getEvents();
+      expect(event.sessionId).toBe(sid("unscoped"));
+      expect(writeToLog).toHaveBeenCalledWith(
+        expect.stringContaining("scope boom"),
+      );
+    } finally {
+      _setScopeStorageForTest(undefined);
+    }
   });
 
   it("publishes an error event and rethrows when the original handler throws", async () => {

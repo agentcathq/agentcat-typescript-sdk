@@ -4,6 +4,7 @@ import {
   AgentCatData,
   MCPServerLike,
   CustomEventData,
+  HookSessionFinalizer,
   UnredactedEvent,
 } from "./types.js";
 
@@ -26,6 +27,7 @@ import {
 import { AGENTCAT_CUSTOM_EVENT_TYPE } from "./modules/constants.js";
 import { validateTags } from "./modules/validation.js";
 import { initDiagnostics } from "./modules/diagnostics.js";
+import { getEnclosingToolCall } from "./modules/toolCallScope.js";
 
 /**
  * Integrates AgentCat analytics into an MCP server to track tool usage patterns and user interactions.
@@ -311,8 +313,9 @@ function track(
  * @param projectId - Your AgentCat project ID (required)
  * @param eventData - Optional event data to include with the custom event. Set `eventData.sessionId`
  *   to attribute the event to a task; it takes precedence over a session ID string passed as the
- *   first argument. When a tracked server is passed without `eventData.sessionId`, the event is
- *   published without a session (the server assigns one).
+ *   first argument. When a tracked server is passed without `eventData.sessionId`, the event joins
+ *   the session of the tool call it is published from (the tool handler or async work it starts,
+ *   on the same server); outside such a call it is published without a session.
  *
  * @returns Promise that resolves when the event is queued for publishing
  *
@@ -320,6 +323,18 @@ function track(
  * When a tracked server is passed, the `redactEvent` hook configured via `track()`
  * is applied to the custom event before it is published. Events published with a
  * bare session ID string bypass redaction, since no tracked configuration exists.
+ *
+ * @example
+ * ```typescript
+ * // Inside a tool handler: the event joins the session of this tool call
+ * server.registerTool("complete_task", { inputSchema: { taskId: z.string() } }, async (args) => {
+ *   await agentcat.publishCustomEvent(server, "proj_abc123xyz", {
+ *     resourceName: "task_completed",
+ *     parameters: { taskId: args.taskId },
+ *   });
+ *   return { content: [{ type: "text", text: "done" }] };
+ * });
+ * ```
  *
  * @example
  * ```typescript
@@ -351,7 +366,7 @@ function track(
  *
  * @example
  * ```typescript
- * // With a tracked server and no session ID: published without a session
+ * // With a tracked server and no session ID, outside any tool call: published without a session
  * await agentcat.publishCustomEvent(
  *   server,
  *   "proj_abc123xyz",
@@ -372,6 +387,9 @@ export async function publishCustomEvent(
   }
 
   let sessionId: string;
+  // Hook mode: the session of the enclosing tool call, finalized in the
+  // background pipeline.
+  let callHookSession: HookSessionFinalizer | undefined;
 
   // Determine if the first parameter is a tracked server or a session ID string
   const isServer =
@@ -391,11 +409,20 @@ export async function publishCustomEvent(
     if (eventData?.sessionId) {
       sessionId = eventData.sessionId;
     } else {
-      // Handles are per-request now; a tracked server has no ambient session ID.
-      sessionId = ""; // wire: null ("stateless mode - server assigns session")
-      writeToLog(
-        "publishCustomEvent: no sessionId provided; event will be published without a session. Pass eventData.sessionId to attribute it to a task.",
+      const enclosingCall = getEnclosingToolCall(
+        lowLevelServer as MCPServerLike,
       );
+      if (enclosingCall) {
+        // Exactly the session the enclosing call's tool-call event publishes.
+        sessionId = enclosingCall.sessionId;
+        callHookSession = enclosingCall.hookSession;
+      } else {
+        // Outside a traced tool call a tracked server has no session to offer.
+        sessionId = ""; // wire: null ("stateless mode - server assigns session")
+        writeToLog(
+          "publishCustomEvent: no sessionId provided; event will be published without a session. Pass eventData.sessionId to attribute it to a task.",
+        );
+      }
     }
   } else if (typeof serverOrSessionId === "string") {
     // The string IS the session id — verbatim, no derivation.
@@ -435,6 +462,9 @@ export async function publishCustomEvent(
   if (eventData?.properties && Object.keys(eventData.properties).length > 0) {
     event.properties = eventData.properties;
   }
+  if (callHookSession) {
+    event.pending = { hookSession: callHookSession };
+  }
 
   // If we have a tracked server, use the publishEvent function
   // Otherwise, add directly to the event queue
@@ -445,8 +475,13 @@ export async function publishCustomEvent(
     eventQueue.add(event);
   }
 
+  const sessionLabel = callHookSession
+    ? "for the session of the current tool call"
+    : sessionId
+      ? `for session ${sessionId}`
+      : "without a session";
   writeToLog(
-    `Published custom event ${sessionId ? `for session ${sessionId}` : "without a session"} with type 'agentcat:custom'`,
+    `Published custom event ${sessionLabel} with type 'agentcat:custom'`,
   );
 }
 

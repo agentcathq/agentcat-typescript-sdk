@@ -1,14 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MCPServerLike, CustomEventData } from "../types.js";
-import { setupTestHooks } from "./test-utils.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { z } from "zod";
+import { MCPServerLike, CustomEventData, AgentCatOptions } from "../types.js";
+import { EventCapture, setupTestHooks, sid } from "./test-utils.js";
+import { mintBackOf, handleFrom } from "./v2/harness.js";
 
-// Mock external dependencies
-vi.mock("../modules/logging.js");
-vi.mock("../modules/internal.js");
-vi.mock("../modules/session.js");
-vi.mock("../modules/eventQueue.js");
-vi.mock("../modules/constants.js");
-vi.mock("../thirdparty/ksuid/index.js");
+// Partial mocks: each mocked function runs the real implementation unless a
+// test overrides it, so the same file drives both stubbed unit tests and real
+// tracked servers.
+vi.mock("../modules/logging.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../modules/logging.js")>()),
+  writeToLog: vi.fn(),
+}));
+vi.mock("../modules/internal.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../modules/internal.js")>();
+  return {
+    ...actual,
+    getServerTrackingData: vi.fn(actual.getServerTrackingData),
+  };
+});
+vi.mock("../modules/eventQueue.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../modules/eventQueue.js")>();
+  return { ...actual, publishEvent: vi.fn(actual.publishEvent) };
+});
 
 // Import mocked modules
 import { writeToLog } from "../modules/logging.js";
@@ -17,46 +35,38 @@ import {
   publishEvent as publishEventToQueue,
   eventQueue,
 } from "../modules/eventQueue.js";
-import { AGENTCAT_CUSTOM_EVENT_TYPE } from "../modules/constants.js";
-import KSUID from "../thirdparty/ksuid/index.js";
+import { deriveSessionId } from "../modules/handles.js";
+import { AGENTCAT_TAG_SESSION_SOURCE } from "../modules/constants.js";
 
 // Import the function under test
-import { publishCustomEvent } from "../index.js";
+import { publishCustomEvent, track } from "../index.js";
+
+const NO_SESSION_WARNING =
+  "publishCustomEvent: no sessionId provided; event will be published without a session. Pass eventData.sessionId to attribute it to a task.";
 
 describe("publishCustomEvent", () => {
   setupTestHooks();
 
-  let mockKSUID: any;
   let mockEventQueue: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Mock KSUID
-    mockKSUID = {
-      random: vi.fn().mockResolvedValue("evt_test123"),
-      randomSync: vi.fn().mockReturnValue("ses_test12300000000000000000000"),
-    };
-    (KSUID.withPrefix as any) = vi.fn().mockReturnValue(mockKSUID);
 
     // Mock logging
     (writeToLog as any).mockImplementation(() => {});
 
     // Mock event queue
     mockEventQueue = {
-      add: vi.fn(),
+      add: vi.spyOn(eventQueue, "add").mockImplementation(() => {}),
     };
-    (eventQueue as any).add = mockEventQueue.add;
 
     // Mock publishEventToQueue
     (publishEventToQueue as any).mockImplementation(() => {});
-
-    // Mock AGENTCAT_CUSTOM_EVENT_TYPE
-    (AGENTCAT_CUSTOM_EVENT_TYPE as any) = "agentcat:custom";
   });
 
   afterEach(() => {
     vi.resetAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe("with tracked server", () => {
@@ -114,7 +124,7 @@ describe("publishCustomEvent", () => {
       );
     });
 
-    it("should publish with an empty session id and warn when no sessionId is provided", async () => {
+    it("publishes without a session outside any tool call", async () => {
       await publishCustomEvent(mockServer, projectId, {
         resourceName: "custom-action",
       });
@@ -127,8 +137,9 @@ describe("publishCustomEvent", () => {
           resourceName: "custom-action",
         }),
       );
+      expect(writeToLog).toHaveBeenCalledWith(NO_SESSION_WARNING);
       expect(writeToLog).toHaveBeenCalledWith(
-        expect.stringContaining("no sessionId provided"),
+        "Published custom event without a session with type 'agentcat:custom'",
       );
     });
 
@@ -338,5 +349,286 @@ describe("publishCustomEvent", () => {
         }),
       );
     });
+  });
+});
+
+describe("publishCustomEvent inside a tool call", () => {
+  setupTestHooks();
+
+  const PROJECT_ID = "proj_custom_events";
+  const TOOL = "complete_task";
+  const CUSTOM = "task_completed";
+  const cleanups: Array<() => Promise<void>> = [];
+  let capture: EventCapture;
+
+  beforeEach(async () => {
+    vi.mocked(writeToLog).mockClear();
+    capture = new EventCapture();
+    await capture.start();
+  });
+
+  afterEach(async () => {
+    while (cleanups.length > 0) await cleanups.pop()!();
+    await capture.stop();
+  });
+
+  /**
+   * A real tracked server with one tool, `complete_task`, whose body is
+   * `onCall` (it receives the server the tool belongs to), connected to a
+   * real client over an in-memory pair.
+   */
+  async function setupTaskServer(
+    onCall: (server: McpServer) => unknown,
+    options: AgentCatOptions = {},
+  ) {
+    const server = new McpServer({ name: "task server", version: "1.0" });
+    server.registerTool(
+      TOOL,
+      {
+        description: "Completes a task",
+        inputSchema: { task: z.string() },
+      },
+      async (args) => {
+        await onCall(server);
+        return { content: [{ type: "text", text: `completed ${args.task}` }] };
+      },
+    );
+    track(server, PROJECT_ID, options);
+
+    const client = new Client({ name: "test client", version: "1.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      client.connect(clientTransport),
+      server.connect(serverTransport),
+    ]);
+    cleanups.push(async () => {
+      await clientTransport.close();
+      await serverTransport.close();
+    });
+    return { server, client };
+  }
+
+  const publishFromTool = (
+    server: McpServer,
+    eventData: CustomEventData = {},
+  ) =>
+    publishCustomEvent(server, PROJECT_ID, {
+      resourceName: CUSTOM,
+      ...eventData,
+    });
+
+  /** The tool-call event and the custom event, after the pipeline ran. */
+  async function publishedPair() {
+    await vi.waitFor(() => {
+      expect(capture.findEventsByResourceName(TOOL)).toHaveLength(1);
+      expect(capture.findEventsByResourceName(CUSTOM)).toHaveLength(1);
+    });
+    await capture.flush();
+    return {
+      toolEvent: capture.findEventsByResourceName(TOOL)[0],
+      customEvent: capture.findEventsByResourceName(CUSTOM)[0],
+    };
+  }
+
+  const logLines = () => vi.mocked(writeToLog).mock.calls.map((c) => c[0]);
+
+  it("joins the session of the enclosing tool call when no sessionId is given", async () => {
+    const { client } = await setupTaskServer(
+      (server) => publishFromTool(server),
+      {
+        identify: async () => ({ userId: "actor-1" }),
+        eventTags: () => ({ team: "billing" }),
+        eventProperties: () => ({ plan: "pro" }),
+      },
+    );
+    const issued = sid("issuedtask");
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: issued },
+    });
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(issued);
+    expect(customEvent.sessionId).toBe(toolEvent.sessionId);
+    expect(logLines()).not.toContain(NO_SESSION_WARNING);
+    expect(logLines()).toContain(
+      `Published custom event for session ${issued} with type 'agentcat:custom'`,
+    );
+
+    // Only the session joins: identity, tags and properties stay the tool call's.
+    expect(toolEvent.identifyActorGivenId).toBe("actor-1");
+    expect(toolEvent.tags).toMatchObject({ team: "billing" });
+    expect(toolEvent.properties).toEqual({ plan: "pro" });
+    expect(customEvent.identifyActorGivenId).toBeUndefined();
+    expect(customEvent.tags).toBeUndefined();
+    expect(customEvent.properties).toBeUndefined();
+  });
+
+  it("joins the minted session when the tool call starts a new task", async () => {
+    const { client } = await setupTaskServer((server) =>
+      publishFromTool(server),
+    );
+
+    const result: any = await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: "start" },
+    });
+
+    const minted = handleFrom(mintBackOf(result)!, "session_id");
+    expect(minted).toMatch(/^ses_/);
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(minted);
+    expect(customEvent.sessionId).toBe(minted);
+    expect(logLines()).not.toContain(NO_SESSION_WARNING);
+  });
+
+  it("shares the hook-mode session of the enclosing tool call", async () => {
+    // A hook that settles only after the call returned: neither the tool nor
+    // the custom event publish may wait for it on the request path.
+    let releaseHook!: () => void;
+    const hookGate = new Promise<void>((resolve) => {
+      releaseHook = resolve;
+    });
+    const derived = await setupTaskServer((server) => publishFromTool(server), {
+      resolveSessionId: async () => {
+        await hookGate;
+        return "corr-42";
+      },
+    });
+
+    await derived.client.callTool({ name: TOOL, arguments: { task: "t1" } });
+    expect(logLines()).toContain(
+      "Published custom event for the session of the current tool call with type 'agentcat:custom'",
+    );
+    releaseHook();
+
+    const first = await publishedPair();
+    const expected = deriveSessionId("corr-42", PROJECT_ID);
+    expect(first.toolEvent.sessionId).toBe(expected);
+    expect(first.customEvent.sessionId).toBe(expected);
+    expect(first.toolEvent.tags?.[AGENTCAT_TAG_SESSION_SOURCE]).toBe("hook");
+    expect(first.customEvent.tags).toBeUndefined();
+    expect(logLines()).not.toContain(NO_SESSION_WARNING);
+
+    // A null hook mints once per call: both events carry the same minted ID.
+    capture.clear();
+    const minted = await setupTaskServer((server) => publishFromTool(server), {
+      resolveSessionId: () => null,
+    });
+    await minted.client.callTool({ name: TOOL, arguments: { task: "t2" } });
+
+    const second = await publishedPair();
+    expect(second.toolEvent.sessionId).toMatch(/^ses_/);
+    expect(second.toolEvent.sessionId).not.toBe(expected);
+    expect(second.customEvent.sessionId).toBe(second.toolEvent.sessionId);
+    expect(second.toolEvent.tags?.[AGENTCAT_TAG_SESSION_SOURCE]).toBe("minted");
+  });
+
+  it("joins the session from async work that the tool starts and that publishes after the call returns", async () => {
+    let releaseWork!: () => void;
+    const workGate = new Promise<void>((resolve) => {
+      releaseWork = resolve;
+    });
+    const { client } = await setupTaskServer((server) => {
+      void workGate
+        .then(() => new Promise((resolve) => setTimeout(resolve, 5)))
+        .then(() => publishFromTool(server));
+    });
+    const issued = sid("background");
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: issued },
+    });
+    await vi.waitFor(() =>
+      expect(capture.findEventsByResourceName(TOOL)).toHaveLength(1),
+    );
+    expect(capture.findEventsByResourceName(CUSTOM)).toHaveLength(0);
+    releaseWork();
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(issued);
+    expect(customEvent.sessionId).toBe(issued);
+    expect(logLines()).not.toContain(NO_SESSION_WARNING);
+  });
+
+  it("lets eventData.sessionId win over the enclosing tool call", async () => {
+    const explicit = sid("explicit");
+    const { client } = await setupTaskServer((server) =>
+      publishFromTool(server, { sessionId: explicit }),
+    );
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: sid("enclosing") },
+    });
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(sid("enclosing"));
+    expect(customEvent.sessionId).toBe(explicit);
+    expect(logLines()).toContain(
+      `Published custom event for session ${explicit} with type 'agentcat:custom'`,
+    );
+  });
+
+  it("publishes without a session for a different tracked server than the enclosing call's", async () => {
+    const other = new McpServer({ name: "other server", version: "1.0" });
+    track(other, PROJECT_ID);
+    const { client } = await setupTaskServer(() =>
+      publishCustomEvent(other, PROJECT_ID, { resourceName: CUSTOM }),
+    );
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: sid("enclosing") },
+    });
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(sid("enclosing"));
+    expect(customEvent.sessionId).toBe("");
+    expect(logLines()).toContain(NO_SESSION_WARNING);
+    expect(logLines()).toContain(
+      "Published custom event without a session with type 'agentcat:custom'",
+    );
+  });
+
+  it("keeps the session-ID-string form verbatim inside a tool call", async () => {
+    const { client } = await setupTaskServer(() =>
+      publishCustomEvent("my-own-task-7", PROJECT_ID, { resourceName: CUSTOM }),
+    );
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: sid("enclosing") },
+    });
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe(sid("enclosing"));
+    expect(customEvent.sessionId).toBe("my-own-task-7");
+    expect(logLines()).toContain(
+      "Published custom event for session my-own-task-7 with type 'agentcat:custom'",
+    );
+  });
+
+  it("publishes without a session when the enclosing call has an invalid session_id", async () => {
+    const { client } = await setupTaskServer((server) =>
+      publishFromTool(server),
+    );
+
+    await client.callTool({
+      name: TOOL,
+      arguments: { task: "t1", session_id: "not-a-session" },
+    });
+
+    const { toolEvent, customEvent } = await publishedPair();
+    expect(toolEvent.sessionId).toBe("");
+    expect(toolEvent.tags?.[AGENTCAT_TAG_SESSION_SOURCE]).toBe("invalid");
+    expect(customEvent.sessionId).toBe("");
+    expect(logLines()).not.toContain(NO_SESSION_WARNING);
+    expect(logLines()).toContain(
+      "Published custom event without a session with type 'agentcat:custom'",
+    );
   });
 });

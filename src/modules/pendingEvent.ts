@@ -1,4 +1,9 @@
-import { PendingEventFields, UnredactedEvent } from "../types.js";
+import {
+  HookSession,
+  HookSessionFinalizer,
+  PendingEventFields,
+  UnredactedEvent,
+} from "../types.js";
 import { sessionFromHookValue } from "./handles.js";
 import { AGENTCAT_TAG_SESSION_SOURCE } from "./constants.js";
 import { writeToLog } from "./logging.js";
@@ -8,7 +13,9 @@ import { writeToLog } from "./logging.js";
  * background pipeline. Hooks are fired at request start, so by the time an
  * event is processed most have long settled; the budget only matters for a
  * hook that hangs — the event then publishes without that hook's data
- * instead of pinning a queue slot forever.
+ * instead of pinning a queue slot forever. A tool call's hook-mode session
+ * has one budget for the whole call, started by the first of its events to
+ * reach the pipeline.
  */
 export const PENDING_HOOK_TIMEOUT_MS = 30_000;
 
@@ -48,6 +55,30 @@ async function settleWithTimeout<T>(
 }
 
 /**
+ * Creates the hook-mode session finalizer of one tool call. The first caller
+ * settles the hook value within PENDING_HOOK_TIMEOUT_MS and finalizes it with
+ * sessionFromHookValue; every later caller gets that same result. The
+ * tool-call event and every custom event published inside the call share it,
+ * so all of them carry one session ID, minted or derived.
+ *
+ * @param hookValue - The call's non-rejecting resolveSessionId value
+ * @param projectId - The tracked server's project ID, salt for derivation
+ * @returns The memoized finalizer
+ */
+export function createHookSessionFinalizer(
+  hookValue: Promise<string | null>,
+  projectId: string | undefined,
+): HookSessionFinalizer {
+  let finalized: Promise<HookSession> | undefined;
+  return () => {
+    finalized ??= settleWithTimeout(hookValue, "resolveSessionId").then(
+      (value) => sessionFromHookValue(value, projectId),
+    );
+    return finalized;
+  };
+}
+
+/**
  * Applies deferred hook results to an event, in place. Runs as stage 0 of
  * the queue pipeline — before the redactEvent hook, so redaction sees the
  * resolved sessionId/identity/tags/properties, and before sanitization and
@@ -60,10 +91,8 @@ export async function applyPendingEventFields(
   event: UnredactedEvent,
   pending: PendingEventFields,
 ): Promise<void> {
-  const [hookValue, identity, customerTags, properties] = await Promise.all([
-    pending.sessionHookValue
-      ? settleWithTimeout(pending.sessionHookValue, "resolveSessionId")
-      : null,
+  const [session, identity, customerTags, properties] = await Promise.all([
+    pending.hookSession ? pending.hookSession() : null,
     pending.identity ? settleWithTimeout(pending.identity, "identify") : null,
     pending.tags ? settleWithTimeout(pending.tags, "eventTags") : null,
     pending.properties
@@ -71,16 +100,14 @@ export async function applyPendingEventFields(
       : null,
   ]);
 
-  if (pending.sessionHookValue) {
-    const { sessionId, sessionSource } = sessionFromHookValue(
-      hookValue,
-      event.projectId || undefined,
-    );
-    event.sessionId = sessionId;
-    event.tags = {
-      ...(event.tags ?? {}),
-      [AGENTCAT_TAG_SESSION_SOURCE]: sessionSource,
-    };
+  if (session) {
+    event.sessionId = session.sessionId;
+    if (pending.tagSessionSource) {
+      event.tags = {
+        ...(event.tags ?? {}),
+        [AGENTCAT_TAG_SESSION_SOURCE]: session.sessionSource,
+      };
+    }
   }
 
   if (identity) {
