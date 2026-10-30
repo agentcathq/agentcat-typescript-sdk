@@ -140,6 +140,20 @@ export interface Event {
   identifyData?: object; // Legacy name for identifyActorData
 }
 
+/** A hook-mode session, finalized from the resolveSessionId hook value. */
+export interface HookSession {
+  sessionId: string;
+  sessionSource: "hook" | "minted";
+}
+
+/**
+ * Finalizes the hook-mode session of one tool call. Memoized per call: the
+ * tool-call event and every custom event published inside the call get the
+ * same result, so a hook that returns null, fails or times out mints one
+ * session ID for all of them.
+ */
+export type HookSessionFinalizer = () => Promise<HookSession>;
+
 /**
  * Promises for customer-hook results, fired at request start and resolved in
  * the background event pipeline — customer hooks never hold up the tool call.
@@ -148,8 +162,13 @@ export interface Event {
  * pipeline stage or the wire payload can see it.
  */
 export interface PendingEventFields {
-  /** Raw resolveSessionId hook value (pre-derivation). */
-  sessionHookValue?: Promise<string | null>;
+  /** Hook-mode session of the tool call this event belongs to. */
+  hookSession?: HookSessionFinalizer;
+  /**
+   * Also stamps the finalized session source as the session-source tag. Set
+   * on the tool-call event only: a custom event takes the session alone.
+   */
+  tagSessionSource?: boolean;
   identity?: Promise<UserIdentity | null>;
   tags?: Promise<Record<string, string> | null>;
   properties?: Promise<Record<string, any> | null>;
