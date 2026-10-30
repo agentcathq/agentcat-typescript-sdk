@@ -44,7 +44,7 @@ If your integration is a `track(server, projectId, { ...hooks })` call, upgradin
 
 ### Update your code only if…
 
-**You call** `publishCustomEvent`**.** The tracked-server form now publishes without a task unless you set `eventData.sessionId`. A session-id string passed as the first argument is used verbatim as the session ID, with no derivation.
+**You call** `publishCustomEvent`**.** Outside a tool call, the tracked-server form publishes without a task unless you set `eventData.sessionId`. Inside a tool call, the event joins that call's session. A session-id string passed as the first argument is used verbatim as the session ID, with no derivation.
 
 ```diff
   agentcat.publishCustomEvent(server, "proj_abc", {
