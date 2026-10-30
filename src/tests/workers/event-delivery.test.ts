@@ -187,4 +187,59 @@ describe("Cloudflare Workers event delivery", () => {
       await client.close();
     }
   });
+
+  it("joins a custom event published inside a tool to the tool call's session", async () => {
+    const ingested: Array<{ resourceName?: string; sessionId?: string }> = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          input instanceof Request
+            ? new URL(input.url)
+            : new URL(String(input));
+        if (url.origin !== "https://ingest.agentcat.test") {
+          throw new Error(`Unexpected outbound request to ${url.toString()}`);
+        }
+        const body =
+          typeof init?.body === "string"
+            ? init.body
+            : input instanceof Request
+              ? await input.text()
+              : "";
+        ingested.push(JSON.parse(body));
+        return new Response(null, { status: 202 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL("https://worker.test/mcp-custom-event"),
+      {
+        fetch: (input, init) => SELF.fetch(new Request(input, init)),
+      },
+    );
+    const client = new Client(
+      { name: "workers-test-client", version: "1.0.0" },
+      { versionNegotiation: { mode: "auto" } },
+    );
+
+    try {
+      await client.connect(transport);
+      const result: any = await client.callTool({
+        name: "complete_task",
+        arguments: { task: "t1", session_id: "start" },
+      });
+      const minted = /session_id: (ses_\S+)/.exec(result.content[0].text)?.[1];
+      expect(minted).toMatch(/^ses_/);
+
+      await vi.waitFor(() => {
+        expect(ingested.map((event) => event.resourceName).sort()).toEqual([
+          "complete_task",
+          "task_completed",
+        ]);
+      });
+      for (const event of ingested) expect(event.sessionId).toBe(minted);
+    } finally {
+      await client.close();
+    }
+  });
 });

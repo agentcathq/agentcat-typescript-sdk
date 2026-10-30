@@ -29,12 +29,17 @@ import {
 import * as agentcat from "../../index.js";
 import type { AgentCatOptions } from "../../types.js";
 import type { EventCapture } from "../test-utils.js";
-import { buildV1Toolkit, buildV2Toolkit, type ToolSink } from "./toolkit.js";
+import {
+  buildV1Toolkit,
+  buildV2Toolkit,
+  E2E_PROJECT_ID,
+  type ToolSink,
+} from "./toolkit.js";
 
 // Shared mint-back helpers — one source of truth with the v2 suite.
 export { mintBackOf, handleFrom } from "../v2/harness.js";
 
-export const E2E_PROJECT_ID = "proj_test";
+export { E2E_PROJECT_ID };
 
 export type LaneId =
   | "v1-stateful"

@@ -35,7 +35,7 @@ import {
   CUSTOMER_PROP_VALUE,
   type Scenario,
 } from "./scenario-types.js";
-import type { ToolSink } from "./toolkit.js";
+import { TASK_COMPLETED_EVENT, type ToolSink } from "./toolkit.js";
 import {
   AGENTCAT_TAG_SESSION_SOURCE,
   AGENTCAT_TAG_AGENT_ID,
@@ -823,6 +823,37 @@ const scenarios: Scenario[] = [
       expect(events[1].tags).toMatchObject({
         [AGENTCAT_TAG_SESSION_SOURCE]: "supplied",
       });
+    },
+  },
+
+  // ── 23 ── custom event published inside a tool joins the call's session
+  {
+    ...scenarioConfig("custom-event-joins-call-session"),
+    script: async ({ client, capture }) => {
+      await client.listTools();
+      const first = await client.callTool({
+        name: "echo",
+        arguments: { msg: "one", context: "start task", session_id: "start" },
+      });
+      const sessionId = handleFrom(mintBackOf(first)!, "session_id");
+      expect(sessionId).toMatch(/^ses_/);
+
+      // A fresh tracked server serves this request; its tool publishes a
+      // custom event with the server form and no sessionId.
+      await client.callTool({
+        name: "complete_task",
+        arguments: {
+          task: "t1",
+          context: "finish task",
+          session_id: sessionId,
+        },
+      });
+
+      const events = await waitForEvents(capture, 3);
+      expect(events.map((e) => e.resourceName).sort()).toEqual(
+        ["complete_task", "echo", TASK_COMPLETED_EVENT].sort(),
+      );
+      for (const event of events) expect(event.sessionId).toBe(sessionId);
     },
   },
 ];

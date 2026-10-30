@@ -118,6 +118,11 @@ export const SCENARIO_CONFIGS: readonly ScenarioConfig[] = [
     options: {},
     lanes: STATEFUL_LANES,
   },
+  {
+    name: "custom-event-joins-call-session",
+    options: {},
+    lanes: PER_REQUEST_LANES,
+  },
 ];
 
 /** Looks a scenario config up by name; throws on typos. */
