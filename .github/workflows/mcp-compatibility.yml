@@ -11,7 +11,51 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Decides whether this PR changes SDK code. Every compat check is a required
+  # status check, so the workflow is not path-filtered: on a PR without SDK
+  # changes the compat jobs still run and report success, but skip their steps.
+  # Matrix jobs gate their steps, not the job: a skipped matrix job reports one
+  # unexpanded check name, so the required "(20)"/"(22)" checks never appear.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      sdk: ${{ steps.filter.outputs.sdk }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect SDK-code changes
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: run all compat jobs."
+            echo "sdk=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! FILES=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
+            echo "git diff failed: run all compat jobs."
+            echo "sdk=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$FILES"
+          SDK_RE='^(src/|scripts/|package\.json$|pnpm-lock\.yaml$|tsconfig\.json$|tsup\.config\.ts$|vitest\.config\.ts$|\.github/workflows/mcp-compatibility\.yml$)'
+          if echo "$FILES" | grep -Eq "$SDK_RE"; then
+            echo "SDK code changed: run compat jobs."
+            echo "sdk=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No SDK code changed: skip compat steps."
+            echo "sdk=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test-v1-sdk-versions:
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,19 +64,23 @@ jobs:
 
     steps:
       - name: Checkout code
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
       - name: Install pnpm
+        if: needs.changes.outputs.sdk == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
 
       - name: Fetch all available MCP SDK versions (≥1.11)
+        if: needs.changes.outputs.sdk == 'true'
         id: get-versions
         run: |
           # Get all versions >= 1.11, filter to get latest patch for each minor version
@@ -51,9 +99,11 @@ jobs:
           echo "Found versions: $VERSIONS"
 
       - name: Install dependencies
+        if: needs.changes.outputs.sdk == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Run test suite against each MCP SDK version
+        if: needs.changes.outputs.sdk == 'true'
         run: |
           VERSIONS='${{ steps.get-versions.outputs.versions }}'
           echo "Testing MCP versions on Node ${{ matrix.node }}"
@@ -75,6 +125,7 @@ jobs:
           done
 
   test-v2-sdk-versions:
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -83,19 +134,23 @@ jobs:
 
     steps:
       - name: Checkout code
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
       - name: Install pnpm
+        if: needs.changes.outputs.sdk == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
 
       - name: Fetch all available v2 SDK versions (>=2.0.0)
+        if: needs.changes.outputs.sdk == 'true'
         id: get-versions
         run: |
           # v2 packages share one version number; enumerating server covers all.
@@ -110,9 +165,11 @@ jobs:
           echo "Found versions: $VERSIONS"
 
       - name: Install dependencies
+        if: needs.changes.outputs.sdk == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Run both suites against each v2 SDK version
+        if: needs.changes.outputs.sdk == 'true'
         run: |
           VERSIONS='${{ steps.get-versions.outputs.versions }}'
           for version in $(echo "$VERSIONS" | jq -r '.[]'); do
@@ -130,6 +187,7 @@ jobs:
           done
 
   e2e-http:
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -138,25 +196,32 @@ jobs:
 
     steps:
       - name: Checkout code
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        if: needs.changes.outputs.sdk == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
       - name: Install pnpm
+        if: needs.changes.outputs.sdk == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
 
       - name: Install dependencies
+        if: needs.changes.outputs.sdk == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Run real-HTTP e2e matrix
+        if: needs.changes.outputs.sdk == 'true'
         run: pnpm run test:e2e:http
 
   packaging-probes:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
