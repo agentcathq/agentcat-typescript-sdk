@@ -66,9 +66,3 @@ jobs:
 
       - name: Run test suite with code coverage analysis
         run: pnpm run test --coverage
-
-      - name: Upload code coverage reports to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
