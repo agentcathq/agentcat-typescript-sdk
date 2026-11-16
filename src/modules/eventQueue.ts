@@ -36,17 +36,25 @@ class EventQueue {
   private maxQueueSize = 10000; // Prevent unbounded growth
   private concurrency = 5; // Max parallel requests
   private activeRequests = 0;
+  private apiConfiguration: Configuration;
   private apiClient: EventsApi;
   private telemetryManager?: TelemetryManager;
 
   constructor() {
-    const config = new Configuration({ basePath: "https://api.agentcat.com" });
-    this.apiClient = new EventsApi(config);
+    this.apiConfiguration = new Configuration({
+      basePath: "https://api.agentcat.com",
+    });
+    this.apiClient = new EventsApi(this.apiConfiguration);
   }
 
   configure(apiBaseUrl: string): void {
-    const config = new Configuration({ basePath: apiBaseUrl });
-    this.apiClient = new EventsApi(config);
+    this.apiConfiguration = new Configuration({ basePath: apiBaseUrl });
+    this.apiClient = new EventsApi(this.apiConfiguration);
+  }
+
+  /** The API configuration of the event send, shared by the server info send. */
+  getApiConfiguration(): Configuration {
+    return this.apiConfiguration;
   }
 
   setTelemetryManager(telemetryManager: TelemetryManager): void {

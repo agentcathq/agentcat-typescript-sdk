@@ -1,4 +1,8 @@
-import type { PublishServerInfoRequest } from "agentcat-api";
+import {
+  PublishServerInfoRequest,
+  ResponseError,
+  ServerInfoApi,
+} from "agentcat-api";
 import { AgentCatData, MCPServerLike, RedactFunction } from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
@@ -7,6 +11,7 @@ import { getEngineState } from "../engine/registry.js";
 import { buildInjectedList } from "../engine/listWrap.js";
 import { GET_MORE_TOOLS_NAME } from "./tools.js";
 import { redactStrings } from "./redaction.js";
+import { eventQueue } from "./eventQueue.js";
 
 /**
  * The server info heartbeat: about once an hour, a handled request starts a
@@ -47,7 +52,15 @@ const OTHER_LISTS = [
 const attempts = new Map<string, number>();
 let firstCheckAt: number | undefined;
 
-const sendWithApiClient: ServerInfoSender = async () => {};
+/**
+ * The base URL, headers and HTTP client of the event send. The raw call
+ * leaves the body of a 2xx answer unread: the answer needs no parsing.
+ */
+const sendWithApiClient: ServerInfoSender = async (body, signal) => {
+  await new ServerInfoApi(
+    eventQueue.getApiConfiguration(),
+  ).publishServerInfoRaw({ publishServerInfoRequest: body }, { signal });
+};
 
 let sender: ServerInfoSender = sendWithApiClient;
 
@@ -154,11 +167,62 @@ async function runHeartbeat(
   await send(body);
 }
 
+/**
+ * One POST. A 413 gets one more POST without the tool schemas; any other
+ * failure ends the attempt.
+ */
 async function send(body: PublishServerInfoRequest): Promise<void> {
+  if ((await post(body)) !== 413) return;
+  if ((await post(withoutToolSchemas(body))) === 413) {
+    writeToLog("Server info not sent: the body is too large");
+  }
+}
+
+/** Gives the status of a failed POST, or "sent". */
+async function post(
+  body: PublishServerInfoRequest,
+): Promise<number | "sent" | "no answer"> {
   const controller = new AbortController();
-  await withTimeLimit(sender(body, controller.signal), SEND_TIME_LIMIT_MS, () =>
-    controller.abort(),
+  try {
+    await withTimeLimit(
+      sender(body, controller.signal),
+      SEND_TIME_LIMIT_MS,
+      () => controller.abort(),
+    );
+  } catch (error) {
+    if (error instanceof ResponseError) {
+      const status = error.response.status;
+      writeToLog(`Server info not sent: status ${status}`);
+      return status;
+    }
+    writeToLog(`Server info not sent: ${error}`);
+    return "no answer";
+  }
+  const tools = (body.features as { tools?: unknown[] } | undefined)?.tools;
+  writeToLog(
+    `Server info sent | ${tools?.length ?? 0} tools | ${byteLength(body)} bytes`,
   );
+  return "sent";
+}
+
+function withoutToolSchemas(
+  body: PublishServerInfoRequest,
+): PublishServerInfoRequest {
+  const features = body.features as Record<string, unknown[]>;
+  const tools = features.tools.map((tool) => {
+    if (!tool || typeof tool !== "object") return tool;
+    const {
+      inputSchema: _inputSchema,
+      outputSchema: _outputSchema,
+      ...rest
+    } = tool as Record<string, unknown>;
+    return rest;
+  });
+  return { ...body, features: { ...features, tools } };
+}
+
+function byteLength(body: PublishServerInfoRequest): number {
+  return new TextEncoder().encode(JSON.stringify(body)).length;
 }
 
 async function buildBody(

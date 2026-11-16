@@ -937,3 +937,105 @@ describe("V10: a failing heartbeat never reaches the request", () => {
     expect(sent()).toHaveLength(0);
   });
 });
+
+describe("server info send", () => {
+  const BASE_URL = "https://ingest.agentcat.test";
+
+  async function useApiClientSender(): Promise<void> {
+    const { setServerInfoSender } = await import("../modules/serverInfo.js");
+    setServerInfoSender();
+  }
+
+  function stubFetch(statuses: number[]) {
+    const posts: Array<{ url: string; body: any; headers: Headers }> = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (!url.startsWith(BASE_URL)) {
+          throw new Error(`unexpected request to ${url}`);
+        }
+        posts.push({
+          url,
+          body: JSON.parse(String(init?.body)),
+          headers: new Headers(init?.headers),
+        });
+        const status = statuses[posts.length - 1] ?? 202;
+        return new Response(JSON.stringify({ status: "accepted" }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return posts;
+  }
+
+  it("V14: the POST goes to the custom base URL, with the body of the contract", async () => {
+    await useWarmMemory();
+    await useApiClientSender();
+    const posts = stubFetch([202]);
+    const { client } = await connectFixture({
+      options: { apiBaseUrl: BASE_URL },
+    });
+
+    await callAlpha(client);
+    await settle();
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].url).toBe(`${BASE_URL}/v1/public/server-info/`);
+    expect(posts[0].headers.get("content-type")).toBe("application/json");
+    expect(posts[0].headers.has("authorization")).toBe(false);
+    expect(Object.keys(posts[0].body).sort()).toEqual([
+      "features",
+      "instructions",
+      "project_id",
+      "server_name",
+      "server_title",
+      "server_version",
+    ]);
+    expect(posts[0].body.project_id).toBe(PROJECT_ID);
+    expect(posts[0].body.server_name).toBe("demo-server");
+  });
+
+  it("V13: after a 413 it sends once more without input and output schemas", async () => {
+    await useWarmMemory();
+    await useApiClientSender();
+    const posts = stubFetch([413, 202]);
+    const { client } = await connectFixture({
+      options: { apiBaseUrl: BASE_URL },
+    });
+
+    await callAlpha(client);
+    await settle();
+
+    expect(posts).toHaveLength(2);
+    const [full, small] = posts.map((p) => p.body.features.tools as any[]);
+    expect(full.some((t) => t.inputSchema)).toBe(true);
+    expect(full.some((t) => t.outputSchema)).toBe(true);
+    for (const t of small) {
+      expect(t).not.toHaveProperty("inputSchema");
+      expect(t).not.toHaveProperty("outputSchema");
+    }
+    const labels = (tools: any[]) =>
+      tools.map((t) => [t.name, t.title, t.description]);
+    expect(labels(small)).toEqual(labels(full));
+    expect(posts[1].body.instructions).toBe(posts[0].body.instructions);
+    expect(posts[1].body.features.resources).toEqual(
+      posts[0].body.features.resources,
+    );
+  });
+
+  it("V13: after two 413 answers it stops", async () => {
+    await useWarmMemory();
+    await useApiClientSender();
+    const posts = stubFetch([413, 413, 202]);
+    const { client } = await connectFixture({
+      options: { apiBaseUrl: BASE_URL },
+    });
+
+    await callAlpha(client);
+    await settle();
+
+    expect(posts).toHaveLength(2);
+  });
+});
