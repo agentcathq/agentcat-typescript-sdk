@@ -41,6 +41,7 @@ import {
   setOutputInjectionRegistry,
 } from "./registry.js";
 import { buildInjectedList } from "./listWrap.js";
+import { checkServerInfoOnToolCall } from "../modules/serverInfo.js";
 import {
   estimateInputTokens,
   estimateOutputTokens,
@@ -144,7 +145,7 @@ export function installCallWrap(server: MCPServerLike): void {
   const originalHandler = current;
   st.originalCall = originalHandler;
 
-  const wrapper = async (request: any, extra: any) => {
+  const callTool = async (request: any, extra: any) => {
     const data = getServerTrackingData(server);
     // The report-missing intercept answers by NAME, so it must be gated on
     // the feature actually being on — otherwise a customer's own
@@ -352,6 +353,14 @@ export function installCallWrap(server: MCPServerLike): void {
       event.duration = new Date().getTime() - startTime.getTime();
       publishEvent(server, event, { clientInfo });
       throw error;
+    }
+  };
+
+  const wrapper = async (request: any, extra: any) => {
+    try {
+      return await callTool(request, extra);
+    } finally {
+      checkServerInfoOnToolCall(server, request, extra);
     }
   };
 
