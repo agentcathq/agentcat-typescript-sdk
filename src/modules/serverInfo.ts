@@ -143,17 +143,33 @@ function check(
   }
 }
 
+/**
+ * Set when a time limit passes. The work behind the limit checks it before
+ * each call of customer code, so no list handler and no redaction call
+ * starts after its limit.
+ */
+interface Stop {
+  stopped: boolean;
+}
+
+/** Errors of the heartbeat itself; only their messages reach the log. */
+class ServerInfoError extends Error {}
+
 async function runHeartbeat(
   server: MCPServerLike,
   data: AgentCatData,
   extra: unknown,
 ): Promise<void> {
   await giveWay();
+  const build: Stop = { stopped: false };
   let body: PublishServerInfoRequest | undefined;
   try {
     body = await withTimeLimit(
-      buildBody(server, data, extra),
+      buildBody(server, data, extra, build),
       BUILD_TIME_LIMIT_MS,
+      () => {
+        build.stopped = true;
+      },
     );
   } catch (error) {
     log("Server info skipped: the build stopped", error);
@@ -221,33 +237,51 @@ function byteLength(body: PublishServerInfoRequest): number {
   return new TextEncoder().encode(JSON.stringify(body)).length;
 }
 
-/** The SDK's own log, best effort: it never throws. */
+/**
+ * The SDK's own log, best effort: it never throws. The log is copied to the
+ * diagnostics sink, so an error from customer code (a list handler, the
+ * redaction function) or from serializing customer data gives only its class
+ * name: its message can quote text that the redaction function never saw.
+ */
 function log(message: string, error?: unknown): void {
   try {
-    writeToLog(error === undefined ? message : `${message} - ${error}`);
+    writeToLog(
+      error === undefined ? message : `${message} - ${describeError(error)}`,
+    );
   } catch {
     // Nothing of the heartbeat may reach the customer's server.
   }
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof ServerInfoError) return error.message;
+  if (error instanceof Error) {
+    const name = Object.getPrototypeOf(error)?.constructor?.name;
+    return typeof name === "string" && name ? name : "Error";
+  }
+  return "a thrown value that is not an Error";
 }
 
 async function buildBody(
   server: MCPServerLike,
   data: AgentCatData,
   extra: unknown,
+  build: Stop,
 ): Promise<PublishServerInfoRequest | undefined> {
   const features: Record<string, unknown[]> = {};
   try {
-    features.tools = await collectTools(server, data, extra);
+    features.tools = await collectTools(server, data, extra, build);
   } catch (error) {
     log("Server info skipped: the tool list failed", error);
     return undefined;
   }
 
   for (const { key, method } of OTHER_LISTS) {
+    if (build.stopped) return undefined;
     const handler = server._requestHandlers.get(method);
     if (!handler) continue;
     try {
-      features[key] = await collectList(key, (params) =>
+      features[key] = await collectList(key, build, (params) =>
         handler({ method, params }, extra as any),
       );
     } catch (error) {
@@ -269,7 +303,7 @@ async function buildBody(
   const redactFn = data.options.redactSensitiveInformation;
   if (!redactFn) return body;
   try {
-    return await redactBody(body, redactFn);
+    return await redactBody(body, redactFn, build);
   } catch (error) {
     log("Server info skipped: the redaction function failed", error);
     return undefined;
@@ -286,11 +320,13 @@ const ITEM_NAME_KEYS: ReadonlySet<string> = new Set([
 async function redactBody(
   body: PublishServerInfoRequest & { features: Record<string, unknown[]> },
   redactFn: RedactFunction,
+  build: Stop,
 ): Promise<PublishServerInfoRequest> {
   const strict: RedactFunction = async (text) => {
+    if (build.stopped) throw new ServerInfoError("the build stopped");
     const redacted = await redactFn(text);
     if (typeof redacted !== "string") {
-      throw new Error("the redaction function gave no string");
+      throw new ServerInfoError("the redaction function gave no string");
     }
     return redacted;
   };
@@ -317,10 +353,11 @@ async function collectTools(
   server: MCPServerLike,
   data: AgentCatData,
   extra: unknown,
+  build: Stop,
 ): Promise<unknown[]> {
   const originalList = getEngineState(server)?.originalList;
-  if (!originalList) throw new Error("no tools/list handler");
-  const tools = await collectList("tools", (params) =>
+  if (!originalList) throw new ServerInfoError("no tools/list handler");
+  const tools = await collectList("tools", build, (params) =>
     originalList({ method: "tools/list", params }, extra),
   );
   return buildInjectedList(data, tools).tools;
@@ -329,33 +366,41 @@ async function collectTools(
 /**
  * Follows `nextCursor` until no cursor comes back. Fails on a repeated
  * cursor, on more than MAX_LIST_PAGES pages and after LIST_TIME_LIMIT_MS.
+ * Once the list limit or the build limit has passed, it asks for no page.
  */
 function collectList(
   itemsKey: string,
+  build: Stop,
   fetchPage: (params: { cursor?: string }) => Promise<any>,
 ): Promise<any[]> {
+  const list: Stop = { stopped: false };
   const pages = (async () => {
     const items: any[] = [];
     const cursors = new Set<string>();
     let cursor: string | undefined;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      if (list.stopped || build.stopped) {
+        throw new ServerInfoError("the list stopped");
+      }
       const result = await fetchPage(cursor === undefined ? {} : { cursor });
       const pageItems = result?.[itemsKey];
       if (!Array.isArray(pageItems)) {
-        throw new Error(`the result has no ${itemsKey} array`);
+        throw new ServerInfoError(`the result has no ${itemsKey} array`);
       }
       items.push(...pageItems);
       const next = result?.nextCursor;
       if (next === undefined || next === null || next === "") return items;
       if (typeof next !== "string" || cursors.has(next)) {
-        throw new Error("the list repeats a cursor");
+        throw new ServerInfoError("the list repeats a cursor");
       }
       cursors.add(next);
       cursor = next;
     }
-    throw new Error(`the list has more than ${MAX_LIST_PAGES} pages`);
+    throw new ServerInfoError(`the list has more than ${MAX_LIST_PAGES} pages`);
   })();
-  return withTimeLimit(pages, LIST_TIME_LIMIT_MS);
+  return withTimeLimit(pages, LIST_TIME_LIMIT_MS, () => {
+    list.stopped = true;
+  });
 }
 
 /**
@@ -377,7 +422,7 @@ function withTimeLimit<T>(
       } catch {
         // A timer callback must never throw.
       }
-      reject(new Error(`no answer within ${ms} ms`));
+      reject(new ServerInfoError(`no answer within ${ms} ms`));
     }, ms);
     unrefTimer(timer);
   });

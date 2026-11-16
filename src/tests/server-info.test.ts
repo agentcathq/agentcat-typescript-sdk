@@ -1039,3 +1039,115 @@ describe("server info send", () => {
     expect(posts).toHaveLength(2);
   });
 });
+
+describe("server info time limits stop the work behind them", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const fakeTimers = () =>
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  const after = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  it("calls no further page once the 5 second list limit has passed", async () => {
+    await useWarmMemory();
+    let pageCalls = 0;
+    const client = await connectLowLevel(
+      createLowLevelServer({
+        tools: () => ({ tools: [tool("t1")] }),
+        resources: async (cursor) => {
+          pageCalls++;
+          await after(3_000);
+          const page = Number(cursor ?? "0");
+          return {
+            resources: [{ uri: `file:///${page}`, name: `r${page}` }],
+            nextCursor: String(page + 1),
+          };
+        },
+      }),
+    );
+    fakeTimers();
+
+    await client.callTool({ name: "t1", arguments: {} });
+    await vi.advanceTimersByTimeAsync(5_000);
+    const callsAtLimit = pageCalls;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settle();
+
+    expect(callsAtLimit).toBe(2);
+    expect(pageCalls).toBe(callsAtLimit);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].features).not.toHaveProperty("resources");
+  });
+
+  it("starts no further redaction call once the 30 second build limit has passed", async () => {
+    let redactionCalls = 0;
+    const { client } = await connectFixture({
+      options: {
+        redactSensitiveInformation: async (value) => {
+          redactionCalls++;
+          await after(2_000);
+          return value;
+        },
+      },
+    });
+    fakeTimers();
+
+    const listing = client.listTools();
+    await vi.advanceTimersByTimeAsync(0);
+    await listing;
+    await vi.advanceTimersByTimeAsync(30_000);
+    const callsAtLimit = redactionCalls;
+    await vi.advanceTimersByTimeAsync(120_000);
+    await settle();
+
+    expect(callsAtLimit).toBeGreaterThan(0);
+    expect(redactionCalls).toBe(callsAtLimit);
+    expect(sent()).toHaveLength(0);
+  });
+});
+
+describe("server info logs", () => {
+  const lines: string[] = [];
+
+  beforeEach(async () => {
+    lines.length = 0;
+    const { setDiagnosticsSink } = await import("../modules/logging.js");
+    setDiagnosticsSink((entry) => {
+      lines.push(entry);
+    });
+  });
+
+  afterEach(async () => {
+    const { setDiagnosticsSink } = await import("../modules/logging.js");
+    setDiagnosticsSink(null);
+  });
+
+  const heartbeatLines = () => lines.filter((l) => l.includes("Server info"));
+
+  it("never logs the message of an error from customer code", async () => {
+    await useWarmMemory();
+    const { server, client } = await connectFixture({
+      options: {
+        redactSensitiveInformation: async (value) => {
+          if (value === "Use the demo tools.") {
+            throw new Error("cannot redact the secret plan");
+          }
+          return value;
+        },
+      },
+    });
+    (server.server as any)._requestHandlers.set("prompts/list", async () => {
+      throw new TypeError("the secret prompt store is down");
+    });
+
+    await callAlpha(client);
+    await settle();
+
+    expect(sent()).toHaveLength(0);
+    expect(heartbeatLines().length).toBeGreaterThanOrEqual(2);
+    expect(heartbeatLines().some((l) => l.includes("TypeError"))).toBe(true);
+    for (const line of heartbeatLines()) expect(line).not.toContain("secret");
+  });
+});
