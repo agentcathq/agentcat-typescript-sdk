@@ -1,7 +1,10 @@
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod4";
-import * as agentcat from "agentcat";
-import { track as trackFromSource } from "../../index.workerd.js";
+// The source entry point for Workers, not the built package: the tests and
+// setup.ts share its module state (the heartbeat memory, the heartbeat
+// sender and the background registrar), so no test can reach the real
+// heartbeat sender by accident.
+import * as agentcat from "../../index.workerd.js";
 
 const handler = createMcpHandler(() => {
   const server = new McpServer(
@@ -60,9 +63,8 @@ const hookHandler = createMcpHandler(() => {
   });
 });
 
-// Server info route: built from the source entry point, so the tests share
-// its module state (the heartbeat memory and the background registrar). The
-// x-heartbeat-scenario header picks a failure for the heartbeat to meet.
+// Server info route. The x-heartbeat-scenario header picks a failure for the
+// heartbeat to meet.
 const serverInfoHandler = createMcpHandler(({ requestInfo }) => {
   const scenario = requestInfo?.headers.get("x-heartbeat-scenario") ?? "";
   const server = new McpServer(
@@ -108,7 +110,7 @@ const serverInfoHandler = createMcpHandler(({ requestInfo }) => {
     handlers.set("resources/list", () => new Promise(() => {}));
   }
 
-  return trackFromSource(server, "proj_workers_test", {
+  return agentcat.track(server, "proj_workers_test", {
     apiBaseUrl: "https://ingest.agentcat.test",
     disableDiagnostics: true,
     ...(scenario === "redaction-fail" && {

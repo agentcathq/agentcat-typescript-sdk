@@ -6,7 +6,10 @@ import { SELF } from "cloudflare:test";
 import { waitUntil } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBackgroundTaskRegistrar } from "../../modules/backgroundTasks.js";
-import { resetServerInfoStateForTests } from "../../modules/serverInfo.js";
+import {
+  resetServerInfoStateForTests,
+  setServerInfoSender,
+} from "../../modules/serverInfo.js";
 
 const INGEST = "https://ingest.agentcat.test";
 const SERVER_INFO_URL = `${INGEST}/v1/public/server-info/`;
@@ -90,7 +93,10 @@ beforeEach(() => {
       });
     }),
   );
-  resetServerInfoStateForTests();
+  // These tests check the real POST, so they take back the API client sender
+  // from the setup's recorder; the stubbed fetch above allows only the
+  // ingest.agentcat.test origin.
+  setServerInfoSender();
 });
 
 afterEach(async () => {

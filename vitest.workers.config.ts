@@ -16,6 +16,7 @@ export default defineConfig({
   test: {
     name: "workers",
     include: ["src/tests/workers/**/*.test.ts"],
+    setupFiles: ["./src/tests/workers/setup.ts"],
     testTimeout: 15_000,
     teardownTimeout: 30_000,
   },
