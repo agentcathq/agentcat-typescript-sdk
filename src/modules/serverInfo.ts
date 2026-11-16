@@ -24,7 +24,7 @@ import { eventQueue } from "./eventQueue.js";
  * earlier one. When the memory is gone the SDK simply sends again.
  */
 
-export type ServerInfoTrigger = "tools/list" | "feedback" | "tools/call";
+type ServerInfoTrigger = "tools/list" | "feedback" | "tools/call";
 
 export type ServerInfoSender = (
   body: PublishServerInfoRequest,
@@ -135,15 +135,11 @@ function check(
     attempts.set(key, now);
 
     const task = runHeartbeat(server, data, extra).catch((error) => {
-      writeToLog(`Server info heartbeat failed: ${error}`);
+      log("Server info heartbeat failed", error);
     });
     registerBackgroundTask(task);
   } catch (error) {
-    try {
-      writeToLog(`Server info check failed: ${error}`);
-    } catch {
-      // The log is best effort; the request must never see this.
-    }
+    log("Server info check failed", error);
   }
 }
 
@@ -160,7 +156,7 @@ async function runHeartbeat(
       BUILD_TIME_LIMIT_MS,
     );
   } catch (error) {
-    writeToLog(`Server info skipped: the build stopped - ${error}`);
+    log("Server info skipped: the build stopped", error);
     return;
   }
   if (!body) return;
@@ -174,7 +170,7 @@ async function runHeartbeat(
 async function send(body: PublishServerInfoRequest): Promise<void> {
   if ((await post(body)) !== 413) return;
   if ((await post(withoutToolSchemas(body))) === 413) {
-    writeToLog("Server info not sent: the body is too large");
+    log("Server info not sent: status 413 without the tool schemas too");
   }
 }
 
@@ -192,14 +188,14 @@ async function post(
   } catch (error) {
     if (error instanceof ResponseError) {
       const status = error.response.status;
-      writeToLog(`Server info not sent: status ${status}`);
+      if (status !== 413) log(`Server info not sent: status ${status}`);
       return status;
     }
-    writeToLog(`Server info not sent: ${error}`);
+    log("Server info not sent", error);
     return "no answer";
   }
   const tools = (body.features as { tools?: unknown[] } | undefined)?.tools;
-  writeToLog(
+  log(
     `Server info sent | ${tools?.length ?? 0} tools | ${byteLength(body)} bytes`,
   );
   return "sent";
@@ -225,6 +221,15 @@ function byteLength(body: PublishServerInfoRequest): number {
   return new TextEncoder().encode(JSON.stringify(body)).length;
 }
 
+/** The SDK's own log, best effort: it never throws. */
+function log(message: string, error?: unknown): void {
+  try {
+    writeToLog(error === undefined ? message : `${message} - ${error}`);
+  } catch {
+    // Nothing of the heartbeat may reach the customer's server.
+  }
+}
+
 async function buildBody(
   server: MCPServerLike,
   data: AgentCatData,
@@ -234,7 +239,7 @@ async function buildBody(
   try {
     features.tools = await collectTools(server, data, extra);
   } catch (error) {
-    writeToLog(`Server info skipped: the tool list failed - ${error}`);
+    log("Server info skipped: the tool list failed", error);
     return undefined;
   }
 
@@ -246,7 +251,7 @@ async function buildBody(
         handler({ method, params }, extra as any),
       );
     } catch (error) {
-      writeToLog(`Server info leaves out ${key}: ${method} failed - ${error}`);
+      log(`Server info leaves out ${key}: ${method} failed`, error);
     }
   }
 
@@ -266,7 +271,7 @@ async function buildBody(
   try {
     return await redactBody(body, redactFn);
   } catch (error) {
-    writeToLog(`Server info skipped: the redaction function failed - ${error}`);
+    log("Server info skipped: the redaction function failed", error);
     return undefined;
   }
 }
@@ -367,7 +372,11 @@ function withTimeLimit<T>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const limit = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      onTimeout?.();
+      try {
+        onTimeout?.();
+      } catch {
+        // A timer callback must never throw.
+      }
       reject(new Error(`no answer within ${ms} ms`));
     }, ms);
     unrefTimer(timer);
