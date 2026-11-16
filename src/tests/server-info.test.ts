@@ -78,34 +78,30 @@ function createFixtureServer(fixture: FixtureOptions = {}): McpServer {
     text("gamma ok"),
   );
   if (fixture.resourcesAndPrompts !== false) {
-    server.registerResource(
+    server.resource(
       "readme",
       "file:///readme.md",
       { description: "The readme" },
       async (uri) => ({ contents: [{ uri: uri.href, text: "readme" }] }),
     );
-    server.registerResource(
+    server.resource(
       "config",
       "file:///config.json",
       { title: "Config", mimeType: "application/json" },
       async (uri) => ({ contents: [{ uri: uri.href, text: "{}" }] }),
     );
-    server.registerResource(
+    server.resource(
       "item",
       new ResourceTemplate("items://{id}", { list: undefined }),
       { description: "One item" },
       async (uri) => ({ contents: [{ uri: uri.href, text: "item" }] }),
     );
-    server.registerPrompt(
-      "greet",
-      { description: "Greet someone", argsSchema: { who: z.string() } },
-      ({ who }) => ({
-        messages: [
-          { role: "user", content: { type: "text", text: `Hi ${who}` } },
-        ],
-      }),
-    );
-    server.registerPrompt("summary", { description: "Summarize" }, () => ({
+    server.prompt("greet", "Greet someone", { who: z.string() }, ({ who }) => ({
+      messages: [
+        { role: "user", content: { type: "text", text: `Hi ${who}` } },
+      ],
+    }));
+    server.prompt("summary", "Summarize", () => ({
       messages: [{ role: "user", content: { type: "text", text: "Sum" } }],
     }));
   }
@@ -263,8 +259,14 @@ describe("server info body", () => {
     const listed = await client.listTools();
     await settle();
     expect(sent()).toHaveLength(1);
-    expect(JSON.parse(JSON.stringify(features.tools))).toEqual(
-      JSON.parse(JSON.stringify(listed.tools)),
+    // Some SDK clients drop "$schema" when they parse tools/list; the
+    // heartbeat reads the server handler directly and keeps it.
+    const withoutSchemaKey = (tools: unknown) =>
+      JSON.parse(JSON.stringify(tools), (key, value) =>
+        key === "$schema" ? undefined : value,
+      );
+    expect(withoutSchemaKey(features.tools)).toEqual(
+      withoutSchemaKey(listed.tools),
     );
     expect(features.tools.map((t) => t.name)).toEqual([
       "alpha",
@@ -275,7 +277,12 @@ describe("server info body", () => {
     const beta = features.tools.find((t) => t.name === "beta");
     expect(beta.description).toBe(LONG_DESCRIPTION);
     expect(beta.description).toHaveLength(2000);
-    expect(beta.title).toBe("Beta Title");
+    // SDK versions before tool titles drop the title from tools/list.
+    const listedBeta = listed.tools.find((t) => t.name === "beta");
+    expect(beta.title).toBe(listedBeta?.title);
+    if (listedBeta && "title" in listedBeta) {
+      expect(beta.title).toBe("Beta Title");
+    }
     expect(beta.outputSchema).toBeDefined();
     expect(beta.annotations).toEqual({ readOnlyHint: true });
     expect(beta.inputSchema.properties.context).toBeDefined();
@@ -492,7 +499,7 @@ describe("server info redaction", () => {
       },
       async () => text("ok"),
     );
-    server.registerResource(
+    server.resource(
       "secret-file",
       "file:///secret.txt",
       { description: "the secret file" },
