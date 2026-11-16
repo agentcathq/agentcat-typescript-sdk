@@ -477,3 +477,84 @@ describe("server info body", () => {
     expect(sent()[0].serverVersion).toBe(event.serverVersion);
   });
 });
+
+describe("server info redaction", () => {
+  function createSecretServer(redact: (text: string) => Promise<string>) {
+    const server = new McpServer(
+      { name: "secret-server", version: "1.0.0", title: "the secret title" },
+      { instructions: "the secret plan" },
+    );
+    server.registerTool(
+      "secret_tool",
+      {
+        description: "secret tool",
+        inputSchema: { q: z.string().describe("a secret") },
+      },
+      async () => text("ok"),
+    );
+    server.registerResource(
+      "secret-file",
+      "file:///secret.txt",
+      { description: "the secret file" },
+      async (uri) => ({ contents: [{ uri: uri.href, text: "x" }] }),
+    );
+    track(server, PROJECT_ID, { redactSensitiveInformation: redact });
+    return server;
+  }
+
+  it("V11: the redaction function runs on the text and leaves names and URIs alone", async () => {
+    await useWarmMemory();
+    const client = await connect(
+      createSecretServer(async (value) => value.replaceAll("secret", "[x]")),
+    );
+    openClients.push(client);
+
+    await client.callTool({ name: "secret_tool", arguments: { q: "a" } });
+    await settle();
+
+    expect(sent()).toHaveLength(1);
+    const body = sent()[0];
+    const features = body.features as Record<string, any[]>;
+    expect(body.instructions).toBe("the [x] plan");
+    expect(body.serverTitle).toBe("the [x] title");
+    const secretTool = features.tools.find((t) => t.name === "secret_tool");
+    expect(secretTool.description).toBe("[x] tool");
+    expect(secretTool.inputSchema.properties.q.description).toBe("a [x]");
+    expect(features.resources[0].uri).toBe("file:///secret.txt");
+    expect(features.resources[0].name).toBe("secret-file");
+    expect(features.resources[0].description).toBe("the [x] file");
+    expect(body.serverName).toBe("secret-server");
+  });
+
+  it("V12: a failing redaction function stops the heartbeat", async () => {
+    await useWarmMemory();
+    const client = await connect(
+      createSecretServer(async () => {
+        throw new Error("redaction is down");
+      }),
+    );
+    openClients.push(client);
+
+    const result: any = await client.callTool({
+      name: "secret_tool",
+      arguments: { q: "a" },
+    });
+    await settle();
+
+    expect(result.content).toContainEqual({ type: "text", text: "ok" });
+    expect(sent()).toHaveLength(0);
+  });
+
+  it("a redaction function that gives no string stops the heartbeat", async () => {
+    await useWarmMemory();
+    const client = await connect(
+      createSecretServer(async () => undefined as unknown as string),
+    );
+    openClients.push(client);
+
+    await client.callTool({ name: "secret_tool", arguments: { q: "a" } });
+    await settle();
+
+    expect(sent()).toHaveLength(0);
+  });
+});

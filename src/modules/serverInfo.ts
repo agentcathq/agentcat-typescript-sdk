@@ -1,11 +1,12 @@
 import type { PublishServerInfoRequest } from "agentcat-api";
-import { AgentCatData, MCPServerLike } from "../types.js";
+import { AgentCatData, MCPServerLike, RedactFunction } from "../types.js";
 import { writeToLog } from "./logging.js";
 import { getServerTrackingData } from "./internal.js";
 import { registerBackgroundTask } from "./backgroundTasks.js";
 import { getEngineState } from "../engine/registry.js";
 import { buildInjectedList } from "../engine/listWrap.js";
 import { GET_MORE_TOOLS_NAME } from "./tools.js";
+import { redactStrings } from "./redaction.js";
 
 /**
  * The server info heartbeat: about once an hour, a handled request starts a
@@ -158,12 +159,54 @@ async function buildBody(
 
   const info = server._serverInfo as { title?: unknown } | undefined;
   const instructions = (server as { _instructions?: unknown })._instructions;
-  return {
+  const body = {
     projectId: data.projectId,
     serverName: server._serverInfo?.name,
     serverVersion: server._serverInfo?.version,
     serverTitle: typeof info?.title === "string" ? info.title : "",
     instructions: typeof instructions === "string" ? instructions : "",
+    features,
+  };
+
+  const redactFn = data.options.redactSensitiveInformation;
+  if (!redactFn) return body;
+  try {
+    return await redactBody(body, redactFn);
+  } catch (error) {
+    writeToLog(`Server info skipped: the redaction function failed - ${error}`);
+    return undefined;
+  }
+}
+
+/** Item keys that name a list item; the redaction function skips them. */
+const ITEM_NAME_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "uri",
+  "uriTemplate",
+]);
+
+async function redactBody(
+  body: PublishServerInfoRequest & { features: Record<string, unknown[]> },
+  redactFn: RedactFunction,
+): Promise<PublishServerInfoRequest> {
+  const strict: RedactFunction = async (text) => {
+    const redacted = await redactFn(text);
+    if (typeof redacted !== "string") {
+      throw new Error("the redaction function gave no string");
+    }
+    return redacted;
+  };
+  const features: Record<string, unknown[]> = {};
+  for (const [key, items] of Object.entries(body.features)) {
+    features[key] = [];
+    for (const item of items) {
+      features[key].push(await redactStrings(item, strict, ITEM_NAME_KEYS));
+    }
+  }
+  return {
+    ...body,
+    serverTitle: await strict(body.serverTitle ?? ""),
+    instructions: await strict(body.instructions ?? ""),
     features,
   };
 }
