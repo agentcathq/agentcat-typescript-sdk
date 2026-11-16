@@ -558,3 +558,382 @@ describe("server info redaction", () => {
     expect(sent()).toHaveLength(0);
   });
 });
+
+async function emptyMemory(): Promise<void> {
+  const { resetServerInfoStateForTests } =
+    await import("../modules/serverInfo.js");
+  resetServerInfoStateForTests();
+}
+
+const T0 = new Date("2026-11-16T10:00:00Z").getTime();
+
+/** Fakes the clock only; timers stay real. */
+function fakeClock(): void {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T0);
+}
+
+function moveClock(ms: number): void {
+  vi.setSystemTime(Date.now() + ms);
+}
+
+describe("server info guard and start", () => {
+  it("V7: one heartbeat for three requests, none at 3,599 s, a second at 3,600 s", async () => {
+    fakeClock();
+    await useWarmMemory();
+    const { client } = await connectFixture();
+
+    await callAlpha(client);
+    await callAlpha(client);
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+
+    moveClock(3_599_000);
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+
+    moveClock(1_000);
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(2);
+  });
+
+  it("V8: two server objects with the same project and name send once; another name sends again", async () => {
+    await useWarmMemory();
+    const first = await connectFixture();
+    const second = await connectFixture();
+    const other = await connectFixture({ name: "other-server" });
+
+    await callAlpha(first.client);
+    await callAlpha(second.client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+
+    await callAlpha(other.client);
+    await settle();
+    expect(sent()).toHaveLength(2);
+    expect(sent().map((b) => b.serverName)).toEqual([
+      "demo-server",
+      "other-server",
+    ]);
+  });
+
+  it("V9: no heartbeat with an empty project ID", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture({ projectId: null });
+
+    await client.listTools();
+    await callAlpha(client);
+    await settle();
+
+    expect(sent()).toHaveLength(0);
+  });
+
+  it("V9: no heartbeat with tracing off", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture({
+      options: { enableTracing: false },
+    });
+
+    await client.listTools();
+    await callAlpha(client);
+    await client.callTool({ name: "get_more_tools", arguments: {} });
+    await settle();
+
+    expect(sent()).toHaveLength(0);
+  });
+
+  it("V17: a new memory sends for a tool list request and a feedback note, not for a tool call", async () => {
+    const { client } = await connectFixture();
+
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(0);
+
+    await client.listTools();
+    await settle();
+    expect(sent()).toHaveLength(1);
+
+    await emptyMemory();
+    await client.callTool({
+      name: "get_more_tools",
+      arguments: { context: "I need a delete tool" },
+    });
+    await settle();
+    expect(sent()).toHaveLength(2);
+  });
+
+  it("V18: with no memory between requests, only the tool list requests send", async () => {
+    const { client } = await connectFixture();
+
+    for (let round = 0; round < 3; round++) {
+      await emptyMemory();
+      const result: any = await callAlpha(client);
+      expect(result.content).toContainEqual({ type: "text", text: "alpha ok" });
+      await emptyMemory();
+      const listed = await client.listTools();
+      expect(listed.tools.map((t) => t.name)).toContain("alpha");
+    }
+    await settle();
+
+    expect(sent()).toHaveLength(3);
+  });
+
+  it("V19: in a new memory a tool call sends at 60 s, not at 0 s or 59 s", async () => {
+    fakeClock();
+    const { client } = await connectFixture();
+
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(0);
+
+    moveClock(59_000);
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(0);
+
+    moveClock(1_000);
+    await callAlpha(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+  });
+
+  it("empties the guard when it holds 1,000 keys", async () => {
+    await useWarmMemory();
+    const listFor = (server: Server) =>
+      (server as any)._requestHandlers.get("tools/list")(
+        { method: "tools/list", params: {} },
+        {},
+      );
+    const servers: Server[] = [];
+    for (let index = 0; index < 1_000; index++) {
+      const server = new Server(
+        { name: `server-${index}`, version: "1.0.0" },
+        { capabilities: { tools: {} } },
+      );
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: [tool("t1")],
+      }));
+      track(server, PROJECT_ID);
+      servers.push(server);
+    }
+    for (const server of servers) await listFor(server);
+    await settle();
+    expect(sent()).toHaveLength(1_000);
+
+    await listFor(servers[0]);
+    await settle();
+    expect(sent()).toHaveLength(1_000);
+
+    const extra = new Server(
+      { name: "server-1000", version: "1.0.0" },
+      { capabilities: { tools: {} } },
+    );
+    extra.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [tool("t1")],
+    }));
+    track(extra, PROJECT_ID);
+    await listFor(extra);
+    await listFor(servers[0]);
+    await settle();
+    expect(sent()).toHaveLength(1_002);
+  });
+
+  it("enters no list handler before the result of the request is on its way", async () => {
+    const order: string[] = [];
+    const busyMs = 500;
+    let slow = false;
+    const client = await connectLowLevel(
+      createLowLevelServer({
+        tools: () => {
+          order.push("tools/list entered");
+          const until = Date.now() + (slow ? busyMs : 0);
+          while (Date.now() < until) {
+            // a slow synchronous part
+          }
+          return { tools: [tool("t1")] };
+        },
+        prompts: () => {
+          order.push("prompts/list entered");
+          return { prompts: [] };
+        },
+      }),
+    );
+    await client.listTools();
+    await settle();
+    await useWarmMemory();
+    order.length = 0;
+    slow = true;
+
+    const started = Date.now();
+    await client.callTool({ name: "t1", arguments: {} });
+    const elapsed = Date.now() - started;
+    order.push("tool call result");
+    await settle();
+
+    expect(order).toEqual([
+      "tool call result",
+      "tools/list entered",
+      "prompts/list entered",
+    ]);
+    expect(elapsed).toBeLessThan(busyMs);
+    expect(sent()).toHaveLength(2);
+  });
+});
+
+describe("V10: a failing heartbeat never reaches the request", () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => {
+    unhandled.push(reason);
+  };
+  let outputSpies: Array<{ mock: { calls: unknown[] } }> = [];
+
+  beforeEach(() => {
+    unhandled.length = 0;
+    process.on("unhandledRejection", onUnhandled);
+    outputSpies = [
+      vi.spyOn(process.stdout, "write"),
+      vi.spyOn(process.stderr, "write"),
+      vi.spyOn(console, "log"),
+      vi.spyOn(console, "error"),
+      vi.spyOn(console, "warn"),
+    ];
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off("unhandledRejection", onUnhandled);
+    expect(unhandled).toEqual([]);
+    for (const spy of outputSpies) expect(spy.mock.calls).toEqual([]);
+    vi.restoreAllMocks();
+  });
+
+  /** Fakes the timers too, so a test can pass the heartbeat's time limits. */
+  function fakeTimers(): void {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  }
+
+  async function expectNormalResult(client: Client): Promise<void> {
+    const result: any = await callAlpha(client);
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toContainEqual({ type: "text", text: "alpha ok" });
+  }
+
+  it("the API never answers", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture();
+    let aborted = false;
+    serverInfoRecorder.respond = (_body, signal) =>
+      new Promise(() => {
+        signal.addEventListener("abort", () => {
+          aborted = true;
+        });
+      });
+    fakeTimers();
+
+    await expectNormalResult(client);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(aborted).toBe(true);
+  });
+
+  it("a list handler fails", async () => {
+    await useWarmMemory();
+    const { server, client } = await connectFixture();
+    (server.server as any)._requestHandlers.set("prompts/list", async () => {
+      throw new Error("prompts are down");
+    });
+
+    await expectNormalResult(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].features).not.toHaveProperty("prompts");
+  });
+
+  it("a list handler never returns", async () => {
+    await useWarmMemory();
+    const { server, client } = await connectFixture();
+    let entered = false;
+    (server.server as any)._requestHandlers.set("resources/list", () => {
+      entered = true;
+      return new Promise(() => {});
+    });
+    fakeTimers();
+
+    await expectNormalResult(client);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(entered).toBe(true);
+    expect(sent()).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await settle();
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].features).not.toHaveProperty("resources");
+  });
+
+  it("the redaction function fails", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture({
+      options: {
+        redactSensitiveInformation: async () => {
+          throw new Error("redaction is down");
+        },
+      },
+    });
+
+    await expectNormalResult(client);
+    await settle();
+    expect(sent()).toHaveLength(0);
+  });
+
+  it("the API answers 500 and no second POST follows", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture();
+    serverInfoRecorder.respond = async () => {
+      const { ResponseError } = await import("agentcat-api");
+      throw new ResponseError(new Response(null, { status: 500 }), "500");
+    };
+
+    await expectNormalResult(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+  });
+
+  it("a list handler throws synchronously", async () => {
+    await useWarmMemory();
+    const { server, client } = await connectFixture();
+    (server.server as any)._requestHandlers.set("resources/list", () => {
+      throw new Error("sync failure");
+    });
+
+    await expectNormalResult(client);
+    await settle();
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0].features).not.toHaveProperty("resources");
+  });
+
+  it("the whole build stops after 30 seconds and sends nothing", async () => {
+    await useWarmMemory();
+    const { client } = await connectFixture({
+      options: {
+        redactSensitiveInformation: (value) =>
+          value === "Use the demo tools."
+            ? new Promise(() => {})
+            : Promise.resolve(value),
+      },
+    });
+    fakeTimers();
+
+    await expectNormalResult(client);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await settle();
+    expect(sent()).toHaveLength(0);
+  });
+});

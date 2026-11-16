@@ -27,9 +27,16 @@ export type ServerInfoSender = (
 ) => Promise<void>;
 
 const ATTEMPT_INTERVAL_MS = 3_600_000;
+/**
+ * A memory younger than this counts as no memory: a runtime that keeps none
+ * between requests must not send for every tool call.
+ */
+const MEMORY_MIN_AGE_MS = 60_000;
 const MAX_ATTEMPT_KEYS = 1_000;
 const LIST_TIME_LIMIT_MS = 5_000;
 const MAX_LIST_PAGES = 100;
+const BUILD_TIME_LIMIT_MS = 30_000;
+const SEND_TIME_LIMIT_MS = 10_000;
 
 const OTHER_LISTS = [
   { key: "resources", method: "resources/list" },
@@ -98,7 +105,12 @@ function check(
     if (!data || !data.projectId || data.options.enableTracing === false) {
       return;
     }
-    void triggerOf(data);
+    if (
+      triggerOf(data) === "tools/call" &&
+      now - firstCheckAt < MEMORY_MIN_AGE_MS
+    ) {
+      return;
+    }
     const key = `${data.projectId}\u0000${server._serverInfo?.name ?? ""}`;
     const lastAttempt = attempts.get(key);
     if (lastAttempt !== undefined && now - lastAttempt < ATTEMPT_INTERVAL_MS) {
@@ -127,9 +139,26 @@ async function runHeartbeat(
   data: AgentCatData,
   extra: unknown,
 ): Promise<void> {
-  const body = await buildBody(server, data, extra);
+  await giveWay();
+  let body: PublishServerInfoRequest | undefined;
+  try {
+    body = await withTimeLimit(
+      buildBody(server, data, extra),
+      BUILD_TIME_LIMIT_MS,
+    );
+  } catch (error) {
+    writeToLog(`Server info skipped: the build stopped - ${error}`);
+    return;
+  }
   if (!body) return;
-  await sender(body, new AbortController().signal);
+  await send(body);
+}
+
+async function send(body: PublishServerInfoRequest): Promise<void> {
+  const controller = new AbortController();
+  await withTimeLimit(sender(body, controller.signal), SEND_TIME_LIMIT_MS, () =>
+    controller.abort(),
+  );
 }
 
 async function buildBody(
@@ -280,6 +309,20 @@ function withTimeLimit<T>(
     unrefTimer(timer);
   });
   return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Resolves on a zero-delay timer. The heartbeat starts from the `finally` of
+ * a wrapper; waiting for a timer lets every microtask run first, so the MCP
+ * library has taken the result of the request and handed it to the transport
+ * before any list handler is entered. The timer belongs to the heartbeat
+ * task of this request: the task awaits it, so it fires before that task
+ * settles (on Cloudflare Workers, inside the `waitUntil` of this request).
+ */
+function giveWay(): Promise<void> {
+  return new Promise((resolve) => {
+    unrefTimer(setTimeout(resolve, 0));
+  });
 }
 
 /** A heartbeat timer never holds a Node process open. */
