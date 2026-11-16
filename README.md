@@ -63,16 +63,6 @@ AgentCat works as a lightweight middleware inside your MCP server. When you call
 
 Injected parameters are stripped from arguments before your tool handler runs, so your code never sees them. For tools that declare an output schema, issued IDs are also mirrored into `structuredContent` (as `_mcp_instructions`), so clients that only read structured results still receive them.
 
-## Server info
-
-AgentCat also records what an agent sees on your server: its name, version, title and instructions, and the full lists of tools, resources, resource templates and prompts. The tool list is the list that agents get, with the parameters and the `get_more_tools` tool that AgentCat adds.
-
-- **When:** about once an hour for each process and server name. After a request, AgentCat calls your own list handlers in the background, with the context of that request, and sends the result to AgentCat in one request. Your request never waits for this, and a failure in it never reaches your server.
-- **More often without memory:** in a runtime that keeps no memory between requests (for example a Cloudflare Worker whose isolate does not stay), AgentCat sends once for each `tools/list` request and each `get_more_tools` call, and never for other tool calls.
-- **Redaction:** your `redactSensitiveInformation` function runs on every text of the server info, except the names and URIs of the list items. When the function fails, AgentCat sends nothing.
-- **No files:** AgentCat writes no file for this. It keeps only the times of its last sends in memory.
-- AgentCat sends no server info when tracing is off (`enableTracing: false`) or without a project ID.
-
 ## Getting Started
 
 To get started with AgentCat, first create an account and obtain your project ID by signing up at [agentcat.com](https://agentcat.com). For detailed setup instructions visit our [documentation](https://docs.agentcat.com).
