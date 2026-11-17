@@ -119,7 +119,9 @@ jobs:
         id: status
         run: |
           set -euo pipefail
-          read -r version action <<<"$(node scripts/release.mjs status)"
+          # The assignment, unlike a here-string, stops the step when the status step fails.
+          result="$(node scripts/release.mjs status)"
+          read -r version action <<<"$result"
           echo "agentcat $version: $action"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$action" = publish ]; then
