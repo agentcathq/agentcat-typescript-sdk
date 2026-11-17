@@ -38,6 +38,7 @@ const PROTECTED_FIELDS = new Set([
  * @param redactFn - The redaction function to apply to each string
  * @param path - The current path in the object tree (used to check protected fields)
  * @param isProtected - Whether the current object/value is within a protected field
+ * @param protectedFields - Top-level keys whose values are never redacted
  * @param seen - Clones of objects already visited on this walk. Cycles in
  *   customer-supplied data (hook payloads, tool responses) must terminate:
  *   because each level suspends at an await, an unguarded cycle starves the
@@ -50,6 +51,7 @@ async function redactStringsInObject(
   redactFn: RedactFunction,
   path: string = "",
   isProtected: boolean = false,
+  protectedFields: ReadonlySet<string> = PROTECTED_FIELDS,
   seen: WeakMap<object, any> = new WeakMap(),
 ): Promise<any> {
   if (obj === null || obj === undefined) {
@@ -78,6 +80,7 @@ async function redactStringsInObject(
         redactFn,
         `${path}[${index}]`,
         isProtected,
+        protectedFields,
         seen,
       );
     }
@@ -107,12 +110,13 @@ async function redactStringsInObject(
       const fieldPath = path ? `${path}.${key}` : key;
       // Check if this field is protected (only check at top level)
       const isFieldProtected =
-        isProtected || (path === "" && PROTECTED_FIELDS.has(key));
+        isProtected || (path === "" && protectedFields.has(key));
       redactedObj[key] = await redactStringsInObject(
         value,
         redactFn,
         fieldPath,
         isFieldProtected,
+        protectedFields,
         seen,
       );
     }
@@ -138,6 +142,19 @@ export async function redactEvent(
   redactFn: RedactFunction,
 ): Promise<Event> {
   return redactStringsInObject(event, redactFn, "", false) as Promise<Event>;
+}
+
+/**
+ * Applies the customer's redaction function to every string in `value`,
+ * except the values of the top-level keys in `protectedFields`. Keys are
+ * never changed.
+ */
+export async function redactStrings<T>(
+  value: T,
+  redactFn: RedactFunction,
+  protectedFields: ReadonlySet<string>,
+): Promise<T> {
+  return redactStringsInObject(value, redactFn, "", false, protectedFields);
 }
 
 /**

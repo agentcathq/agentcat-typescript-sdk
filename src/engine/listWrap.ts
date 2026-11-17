@@ -18,6 +18,7 @@ import {
   setOutputInjectionRegistry,
 } from "./registry.js";
 import { rewrapAllTools } from "./innerTap.js";
+import { checkServerInfoOnToolList } from "../modules/serverInfo.js";
 
 export interface InjectedList {
   tools: any[];
@@ -98,7 +99,7 @@ export function installListWrap(server: MCPServerLike): void {
   const originalHandler = current;
   st.originalList = originalHandler;
 
-  const wrapper = async (request: any, extra?: any) => {
+  const listTools = async (request: any, extra?: any) => {
     const originalResponse = await originalHandler(request, extra);
     const data = getServerTrackingData(server);
     if (!data) {
@@ -134,6 +135,14 @@ export function installListWrap(server: MCPServerLike): void {
         `Warning: AgentCat tool-list injection failed; serving the original tool list unmodified - ${error}`,
       );
       return originalResponse;
+    }
+  };
+
+  const wrapper = async (request: any, extra?: any) => {
+    try {
+      return await listTools(request, extra);
+    } finally {
+      checkServerInfoOnToolList(server, extra);
     }
   };
 
