@@ -1,0 +1,244 @@
+name: Release
+
+# Two steps, with a pull request between them, as in the Java and Rust SDKs. CONTRIBUTING.md
+# ("Release a version") has the steps and the one-time setup.
+#
+# 1. A manual run (Actions > Release > Run workflow) with `patch` (the default), `minor`, `major` or
+#    an exact version X.Y.Z opens the pull request "Release vX.Y.Z". It sets the version in
+#    package.json and dates the [Unreleased] section of the CHANGELOG (`node scripts/release.mjs
+#    prepare`). A pull request that GITHUB_TOKEN opens starts no workflow, so the run starts ci.yml
+#    and mcp-compatibility.yml on the release branch itself.
+# 2. The merge of that pull request into main publishes the version: when the version of
+#    package.json has no tag and the CHANGELOG has its dated section (`node scripts/release.mjs
+#    status`), the run waits for the ci.yml and mcp-compatibility.yml runs of the merge commit,
+#    publishes the package to npm with trusted publishing, and then creates the tag vX.Y.Z and its
+#    GitHub release. A failed step publishes nothing after it; the tag comes last, so a re-run of
+#    the failed jobs continues the release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: patch, minor, major, or an exact version X.Y.Z
+        required: true
+        default: patch
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - CHANGELOG.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: The run is on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the release workflow on main, not on $GITHUB_REF_NAME"
+          exit 1
+      # The full history holds the tags that the next version counts from.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # scripts/release.mjs needs only Node: no pnpm install.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Set the version and date the CHANGELOG
+        id: prepare
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$(node scripts/release.mjs prepare "$INPUT" "$(date -u +%F)")"
+          # npm never accepts a version twice, not even an unpublished one.
+          code="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/agentcat/$version")"
+          if [ "$code" = 200 ]; then
+            echo "::error::npm already has agentcat $version"
+            exit 1
+          elif [ "$code" != 404 ]; then
+            echo "::error::the npm registry answered $code for agentcat $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Open the release pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="release/v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add package.json CHANGELOG.md
+          git commit -m "Release v$VERSION"
+          git push origin "$branch"
+          node scripts/release.mjs notes "$VERSION" > notes.md
+          {
+            echo "Merging this pull request publishes the \`agentcat\` npm package $VERSION, then tags \`v$VERSION\` and creates its GitHub release with these notes:"
+            echo
+            cat notes.md
+          } > body.md
+          gh pr create --base main --head "$branch" --title "Release v$VERSION" --body-file body.md
+          gh workflow run ci.yml --ref "$branch"
+          gh workflow run mcp-compatibility.yml --ref "$branch"
+
+  status:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.status.outputs.version }}
+      publish: ${{ steps.status.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Is this version released?
+        id: status
+        run: |
+          set -euo pipefail
+          # The assignment, unlike a here-string, stops the step when the status step fails.
+          result="$(node scripts/release.mjs status)"
+          read -r version action <<<"$result"
+          echo "agentcat $version: $action"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$action" = publish ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: status
+    if: needs.status.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # The environment is the one that the trusted publisher of agentcat on npm names.
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/agentcat/v/${{ needs.status.outputs.version }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.status.outputs.version }}
+    steps:
+      # The CI runs of this push to main check the commit on every Node and MCP SDK version; the
+      # package goes out only when both pass.
+      - name: Wait for CI on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          wait_for() {
+            for _ in $(seq 1 85); do
+              read -r status conclusion <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$1/runs?head_sha=$GITHUB_SHA&event=push" \
+                --jq '.workflow_runs | sort_by(.run_attempt) | last | "\(.status // "none") \(.conclusion // "none")"')"
+              if [ "$status" = completed ]; then
+                if [ "$conclusion" = success ]; then
+                  echo "$1 passed on $GITHUB_SHA"
+                  return 0
+                fi
+                echo "::error::$1 on $GITHUB_SHA ended with $conclusion; re-run it, then re-run this job"
+                exit 1
+              fi
+              sleep 60
+            done
+            echo "::error::$1 on $GITHUB_SHA did not finish in time"
+            exit 1
+          }
+          wait_for ci.yml
+          wait_for mcp-compatibility.yml
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm/action-setup takes the pnpm version from `packageManager` in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # Trusted publishing needs Node 22.14.0 or later and npm 11.5.1 or later. No cache in a
+      # release build.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: npm supports trusted publishing
+        run: |
+          set -euo pipefail
+          npm --version
+          if ! node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm --version)"; then
+            npm install -g npm@11
+            npm --version
+          fi
+      # The tarball holds what `files` in package.json lists, as the packaging probes of
+      # mcp-compatibility.yml test it. The build runs here; `npm pack --ignore-scripts` and the
+      # publish of the tarball run no lifecycle script, so prepublishOnly does not run the test
+      # suite again: CI on this commit already passed.
+      - name: Build and pack
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm run build
+          npm pack --ignore-scripts
+          test -f "agentcat-$VERSION.tgz"
+      # Trusted publishing: npm trades this job's OIDC token for a short-lived publish token, and
+      # adds a provenance statement (Sigstore) because the repository is public. GitHub stores no
+      # npm secret. A re-run after a publish that went through skips the publish.
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/agentcat/$VERSION")"
+          if [ "$code" = 200 ]; then
+            echo "npm already has agentcat $VERSION"
+            exit 0
+          elif [ "$code" != 404 ]; then
+            echo "::error::the npm registry answered $code for agentcat $VERSION"
+            exit 1
+          fi
+          npm publish "./agentcat-$VERSION.tgz" --access public --tag latest
+
+  github-release:
+    needs: [status, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.status.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Tag the commit and create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/release.mjs notes "$VERSION" > notes.md
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md

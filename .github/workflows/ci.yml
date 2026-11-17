@@ -41,6 +41,9 @@ jobs:
       - name: Run test suite
         run: pnpm run test
 
+      - name: Run release script tests
+        run: node --test scripts/release.test.mjs
+
       - name: Build TypeScript project
         run: pnpm run build
 
