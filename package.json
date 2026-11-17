@@ -12,6 +12,7 @@
   },
   "files": [
     "dist",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "MIGRATION.md"
   ],
