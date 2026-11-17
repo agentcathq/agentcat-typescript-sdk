@@ -17,11 +17,19 @@ the [GitHub releases](https://github.com/agentcathq/agentcat-typescript-sdk/rele
   drop the two fields in `redactEvent`. The estimate is `ceil(utf8_bytes / 3.5)`, the same in the
   TypeScript, Python and Go SDKs. Expect counts about 10 percent lower than the earlier
   server-side estimates, because the JSON envelope no longer counts (#71).
+- The SDK now sends AgentCat a description of your MCP server: its name, version, title and
+  instructions, and the lists of its tools, resources, resource templates and prompts. About
+  once an hour per process and server name, after your server answers a request, the SDK calls
+  your server's own list handlers and sends the result in the background. In a runtime that
+  keeps no memory between requests, it sends only on a `tools/list` request or a
+  `get_more_tools` call. `redactSensitiveInformation` runs on every text; item names and URIs
+  stay as they are. No option changes: the send is on when tracking is on, and a failed send
+  never reaches your server (#84).
 
 ### Changed
 
-- The SDK now depends on `agentcat-api` 1.0.3, which adds the two token fields to the publish
-  request (#71).
+- The SDK now depends on `agentcat-api` 1.0.5, which adds the two token fields to the publish
+  request (#71) and the server info request (#84).
 
 ## [2.1.0] - 2026-08-31
 
