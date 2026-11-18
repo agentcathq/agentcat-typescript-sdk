@@ -65,8 +65,8 @@ describe("v2 schema edges: input injection", () => {
     expect(schema.properties.session_id.pattern).toBe(SESSION_ID_PARAM_PATTERN);
     expect(schema.properties.agent_id).toBeDefined();
     expect(schema.properties.context).toBeDefined();
-    expect(schema.required).toContain("session_id");
-    expect(schema.required).toContain("agent_id");
+    expect(schema.required ?? []).not.toContain("session_id");
+    expect(schema.required ?? []).not.toContain("agent_id");
   });
 
   it("preserves a customer-declared session_id/agent_id instead of overwriting", async () => {

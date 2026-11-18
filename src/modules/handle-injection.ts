@@ -40,23 +40,6 @@ function recordInjected(
   else registry.set(toolName, new Set([param]));
 }
 
-/**
- * Adds a param to the schema's required array: created if absent, appended
- * without duplicating, customer entries never removed or reordered.
- * Requiredness rides injection exactly — only a param AgentCat injected on
- * this tool is ever added — and enforcement stays soft: callWrap tolerates
- * omission (session minted / event without agent identity), so the flag
- * drives schema-aware clients only.
- */
-function addToRequired(schema: Record<string, any>, param: string): void {
-  const required = schema.required;
-  if (Array.isArray(required)) {
-    if (!required.includes(param)) required.push(param);
-  } else {
-    schema.required = [param];
-  }
-}
-
 export interface HandleInjectionOptions {
   injectSessionId: boolean; // false in hook mode
   injectAgentId: boolean; // false when enableAgentTracking is false
@@ -71,12 +54,15 @@ export interface HandleInjectionOptions {
 }
 
 /**
- * Injects session_id/agent_id into each tool's JSON Schema (post-Zod), both
- * schema-required with soft enforcement (see addToRequired).
+ * Injects optional session_id/agent_id properties into each tool's JSON
+ * Schema (post-Zod). These SDK-owned fields are optional so MCP hosts can make
+ * calls that do not originate from a model (for example MCP App entrypoints);
+ * callWrap already handles their omission by minting a session or omitting
+ * agent attribution.
  * Order: customer params, session_id, agent_id — context is appended afterwards
  * by addContextParameterToTools, so this MUST run first. Unlike the context
  * injector, get_more_tools is NOT exempt: its calls publish events, so it
- * must be able to carry handles.
+ * can carry handles when the caller supplies them.
  */
 export function addHandleParametersToTools(
   tools: RegisteredTool[],
@@ -163,7 +149,6 @@ function addHandleParametersToTool(
         pattern: SESSION_ID_PARAM_PATTERN,
       };
       recordInjected(registry, toolName, SESSION_ID_PARAM);
-      addToRequired(modifiedTool.inputSchema, SESSION_ID_PARAM);
     }
   }
 
@@ -180,10 +165,7 @@ function addHandleParametersToTool(
         description: AGENT_ID_PARAM_DESCRIPTION,
       };
       recordInjected(registry, toolName, AGENT_ID_PARAM);
-      // agent_id is self-chosen by the agent (no pattern to advertise), and
-      // schema-required like session_id above — see addToRequired for the
-      // soft-enforcement contract.
-      addToRequired(modifiedTool.inputSchema, AGENT_ID_PARAM);
+      // agent_id is self-chosen by the agent (no pattern to advertise).
     }
   }
 
