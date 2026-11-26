@@ -8,6 +8,8 @@ the [GitHub releases](https://github.com/agentcathq/agentcat-typescript-sdk/rele
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-26
+
 ### Security
 
 - The SDK now masks sensitive values in every event before the event leaves your server. It
@@ -118,7 +120,8 @@ lists the changes your MCP clients see and the cases that need a code change.
 - Breaking: the session-ID machinery, the identity caches and the identify events. Correlation
   now uses the explicit `session_id` handles.
 
-[Unreleased]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/agentcathq/agentcat-typescript-sdk/compare/v1.0.0...v2.0.0
