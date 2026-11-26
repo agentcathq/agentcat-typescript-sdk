@@ -70,16 +70,15 @@ const scenarios: Scenario[] = [
         DEFAULT_CONTEXT_PARAMETER_DESCRIPTION,
       );
       expect(echo.inputSchema.properties.session_id).toBeDefined();
-      // The injected session_id is schema-required and advertises the
-      // start|ses_ value contract as a pattern.
-      expect(echo.inputSchema.required).toContain("session_id");
+      // The injected session_id is optional and advertises the start|ses_
+      // value contract for clients that can provide it.
+      expect(echo.inputSchema.required ?? []).not.toContain("session_id");
       expect(echo.inputSchema.properties.session_id.pattern).toBe(
         SESSION_ID_PARAM_PATTERN,
       );
 
-      // Omission tolerance: requiredness is enforced by schema-aware clients
-      // only, so a call without session_id still mints and announces the
-      // handle.
+      // A host-initiated call can omit session_id; the server still mints and
+      // announces the handle.
       const result = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "e2e smoke intent" },
@@ -259,7 +258,7 @@ const scenarios: Scenario[] = [
     },
   },
 
-  // ── 8 ── agent tracking: agent_id is self-chosen, required on schema, and
+  // ── 8 ── agent tracking: agent_id is self-chosen and optional on schema;
   // omission yields a task-only mint-back (no server-side agent minting).
   {
     ...scenarioConfig("agent-tracking-mint"),
@@ -268,12 +267,12 @@ const scenarios: Scenario[] = [
       const structured = findTool(tools, "structured")!;
       expect(structured.inputSchema.properties.agent_id).toBeDefined();
       expect(structured.inputSchema.properties.session_id).toBeDefined();
-      expect(structured.inputSchema.required).toContain("agent_id");
-      expect(structured.inputSchema.required).toContain("session_id");
+      expect(structured.inputSchema.required ?? []).not.toContain("agent_id");
+      expect(structured.inputSchema.required ?? []).not.toContain("session_id");
       const gmt = findTool(tools, "get_more_tools")!;
       expect(gmt.inputSchema.properties.agent_id).toBeDefined();
-      expect(gmt.inputSchema.required).toContain("agent_id");
-      expect(gmt.inputSchema.required).toContain("session_id");
+      expect(gmt.inputSchema.required ?? []).not.toContain("agent_id");
+      expect(gmt.inputSchema.required ?? []).not.toContain("session_id");
 
       // structured declares an outputSchema, so the mirror rides
       // structuredContent — and the v1 client ajv-validates it against the
@@ -358,7 +357,7 @@ const scenarios: Scenario[] = [
         const tool = findTool(tools, name)!;
         expect(tool.inputSchema.properties?.session_id).toBeUndefined();
         expect(tool.inputSchema.properties.agent_id).toBeDefined();
-        expect(tool.inputSchema.required).toContain("agent_id");
+        expect(tool.inputSchema.required ?? []).not.toContain("agent_id");
       }
 
       const result = await client.callTool({

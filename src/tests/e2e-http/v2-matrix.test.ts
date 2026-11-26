@@ -68,16 +68,15 @@ const scenarios: Scenario[] = [
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties.context).toBeDefined();
       expect(echo.inputSchema.properties.session_id).toBeDefined();
-      // The injected session_id is schema-required and advertises the
-      // start|ses_ value contract as a pattern.
-      expect(echo.inputSchema.required).toContain("session_id");
+      // The injected session_id is optional and advertises the start|ses_
+      // value contract for clients that can provide it.
+      expect(echo.inputSchema.required ?? []).not.toContain("session_id");
       expect(echo.inputSchema.properties.session_id.pattern).toBe(
         SESSION_ID_PARAM_PATTERN,
       );
 
-      // Omission tolerance: requiredness is enforced by schema-aware clients
-      // only, so a call without session_id still mints and announces the
-      // handle.
+      // A host-initiated call can omit session_id; the server still mints and
+      // announces the handle.
       const result = await client.callTool({
         name: "echo",
         arguments: { msg: "hi", context: "e2e smoke intent" },
@@ -263,10 +262,9 @@ const scenarios: Scenario[] = [
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties).toHaveProperty("agent_id");
       expect(echo.inputSchema.properties).toHaveProperty("session_id");
-      // Both injected handles are schema-required with soft enforcement: a
-      // call that omits them still succeeds (minted task / unattributed).
-      expect(echo.inputSchema.required).toContain("agent_id");
-      expect(echo.inputSchema.required).toContain("session_id");
+      // Injected handles are optional so host-initiated calls can omit them.
+      expect(echo.inputSchema.required ?? []).not.toContain("agent_id");
+      expect(echo.inputSchema.required ?? []).not.toContain("session_id");
 
       // The structured tool carries the declared outputSchema, so the
       // mint-back mirrors into structuredContent (and the v2 client
@@ -350,17 +348,16 @@ const scenarios: Scenario[] = [
   {
     ...scenarioConfig("agent-tracking-x-hook"),
     script: async ({ client, capture }) => {
-      // Hook mode: NO session_id param anywhere; agent_id stays available and
-      // required (self-chosen — there is no server-side agent minting).
+      // Hook mode: NO session_id param anywhere; optional agent_id stays available.
       const { tools } = await client.listTools();
       const echo = tools.find((t: any) => t.name === "echo")!;
       expect(echo.inputSchema.properties).not.toHaveProperty("session_id");
       expect(echo.inputSchema.properties).toHaveProperty("agent_id");
-      expect(echo.inputSchema.required).toContain("agent_id");
+      expect(echo.inputSchema.required ?? []).not.toContain("agent_id");
       const gmt = tools.find((t: any) => t.name === "get_more_tools")!;
       expect(gmt.inputSchema.properties).not.toHaveProperty("session_id");
       expect(gmt.inputSchema.properties).toHaveProperty("agent_id");
-      expect(gmt.inputSchema.required).toContain("agent_id");
+      expect(gmt.inputSchema.required ?? []).not.toContain("agent_id");
 
       const first = await client.callTool({
         name: "echo",

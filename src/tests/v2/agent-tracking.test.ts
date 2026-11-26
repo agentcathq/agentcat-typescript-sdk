@@ -43,20 +43,19 @@ describe("v2 agent tracking: enableAgentTracking true", () => {
     await capture.stop();
   });
 
-  it("advertises both handles as required on every tool including get_more_tools", async () => {
+  it("advertises optional handles on every tool including get_more_tools", async () => {
     const { client } = await setupHighLevel({ enableAgentTracking: true });
     const { tools } = await client.listTools();
     const echo = tools.find((t) => t.name === "echo")!;
     expect((echo.inputSchema as any).properties).toHaveProperty("agent_id");
     expect((echo.inputSchema as any).properties).toHaveProperty("session_id");
-    // Both injected handles are schema-required with soft enforcement: a
-    // call that omits them still succeeds (minted task / unattributed event).
-    expect((echo.inputSchema as any).required).toContain("agent_id");
-    expect((echo.inputSchema as any).required).toContain("session_id");
+    // Injected handles are optional so host-initiated calls can omit them.
+    expect((echo.inputSchema as any).required ?? []).not.toContain("agent_id");
+    expect((echo.inputSchema as any).required ?? []).not.toContain("session_id");
     const gmt = tools.find((t) => t.name === "get_more_tools")!;
     expect((gmt.inputSchema as any).properties).toHaveProperty("agent_id");
-    expect((gmt.inputSchema as any).required).toContain("agent_id");
-    expect((gmt.inputSchema as any).required).toContain("session_id");
+    expect((gmt.inputSchema as any).required ?? []).not.toContain("agent_id");
+    expect((gmt.inputSchema as any).required ?? []).not.toContain("session_id");
     await client.close();
   });
 
