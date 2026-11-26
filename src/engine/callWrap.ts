@@ -235,7 +235,8 @@ export function installCallWrap(server: MCPServerLike): void {
           // extra is projected at capture time: v2's live web Request (and
           // v1's URL instance) become plain JSON the pipeline walkers can
           // traverse — headers would otherwise flatten to {}. Contract: the
-          // redactEvent hook sees this projection, i.e. what ships.
+          // redactEvent hook sees this projection; the queue then masks the
+          // values of sensitive keys (sensitive-keys.ts) before it ships.
           parameters: { request, extra: projectExtraForEvent(extra) },
           // Estimated on the raw arguments here, before the queue's redaction
           // hooks run; the queue never recomputes it.

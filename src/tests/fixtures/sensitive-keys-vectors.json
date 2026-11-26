@@ -1,0 +1,1624 @@
+{
+  "mask": "[redacted]",
+  "keys": [
+    {
+      "key": "Authorization",
+      "sensitive": true
+    },
+    {
+      "key": "authorization",
+      "sensitive": true
+    },
+    {
+      "key": "AUTHORIZATION",
+      "sensitive": true
+    },
+    {
+      "key": "  Authorization  ",
+      "sensitive": true
+    },
+    {
+      "key": "HTTP_AUTHORIZATION",
+      "sensitive": true
+    },
+    {
+      "key": "REDIRECT_HTTP_AUTHORIZATION",
+      "sensitive": true
+    },
+    {
+      "key": "http.request.header.authorization",
+      "sensitive": true
+    },
+    {
+      "key": "headers[authorization][0]",
+      "sensitive": true
+    },
+    {
+      "key": "request.headers.authorization",
+      "sensitive": true
+    },
+    {
+      "key": "Proxy-Authorization",
+      "sensitive": true
+    },
+    {
+      "key": "proxy_authorization",
+      "sensitive": true
+    },
+    {
+      "key": "X-Forwarded-Authorization",
+      "sensitive": true
+    },
+    {
+      "key": "authorization_servers",
+      "sensitive": true
+    },
+    {
+      "key": "Cookie",
+      "sensitive": true
+    },
+    {
+      "key": "cookie",
+      "sensitive": true
+    },
+    {
+      "key": "Set-Cookie",
+      "sensitive": true
+    },
+    {
+      "key": "set-cookie2",
+      "sensitive": true
+    },
+    {
+      "key": "cookies",
+      "sensitive": true
+    },
+    {
+      "key": "HTTP_COOKIE",
+      "sensitive": true
+    },
+    {
+      "key": "X-Api-Key",
+      "sensitive": true
+    },
+    {
+      "key": "x-api-key",
+      "sensitive": true
+    },
+    {
+      "key": "x_api_key",
+      "sensitive": true
+    },
+    {
+      "key": "X-API-KEY",
+      "sensitive": true
+    },
+    {
+      "key": "xApiKey",
+      "sensitive": true
+    },
+    {
+      "key": "XApiKey",
+      "sensitive": true
+    },
+    {
+      "key": "apiKey",
+      "sensitive": true
+    },
+    {
+      "key": "api_key",
+      "sensitive": true
+    },
+    {
+      "key": "APIKey",
+      "sensitive": true
+    },
+    {
+      "key": "apikey",
+      "sensitive": true
+    },
+    {
+      "key": "api-key",
+      "sensitive": true
+    },
+    {
+      "key": "api_key_id",
+      "sensitive": true
+    },
+    {
+      "key": "HTTP_X_API_KEY",
+      "sensitive": true
+    },
+    {
+      "key": "OPENAI_API_KEY",
+      "sensitive": true
+    },
+    {
+      "key": "x-goog-api-key",
+      "sensitive": true
+    },
+    {
+      "key": "xi-api-key",
+      "sensitive": true
+    },
+    {
+      "key": "ocp-apim-subscription-key",
+      "sensitive": true
+    },
+    {
+      "key": "x-functions-key",
+      "sensitive": true
+    },
+    {
+      "key": "dd-api-key",
+      "sensitive": true
+    },
+    {
+      "key": "dd-application-key",
+      "sensitive": true
+    },
+    {
+      "key": "x-app-key",
+      "sensitive": true
+    },
+    {
+      "key": "private_key",
+      "sensitive": true
+    },
+    {
+      "key": "privateKey",
+      "sensitive": true
+    },
+    {
+      "key": "access_key_id",
+      "sensitive": true
+    },
+    {
+      "key": "AWS_SECRET_ACCESS_KEY",
+      "sensitive": true
+    },
+    {
+      "key": "aeg-sas-key",
+      "sensitive": true
+    },
+    {
+      "key": "cb-access-key",
+      "sensitive": true
+    },
+    {
+      "key": "X-Amz-Server-Side-Encryption-Customer-Key",
+      "sensitive": true
+    },
+    {
+      "key": "x-goog-encryption-key",
+      "sensitive": true
+    },
+    {
+      "key": "license_key",
+      "sensitive": true
+    },
+    {
+      "key": "token",
+      "sensitive": true
+    },
+    {
+      "key": "Token",
+      "sensitive": true
+    },
+    {
+      "key": "TOKEN",
+      "sensitive": true
+    },
+    {
+      "key": "access_token",
+      "sensitive": true
+    },
+    {
+      "key": "accessToken",
+      "sensitive": true
+    },
+    {
+      "key": "AccessToken",
+      "sensitive": true
+    },
+    {
+      "key": "accesstoken",
+      "sensitive": true
+    },
+    {
+      "key": "refresh_token",
+      "sensitive": true
+    },
+    {
+      "key": "id_token",
+      "sensitive": true
+    },
+    {
+      "key": "x-auth-token",
+      "sensitive": true
+    },
+    {
+      "key": "authToken",
+      "sensitive": true
+    },
+    {
+      "key": "X-Amz-Security-Token",
+      "sensitive": true
+    },
+    {
+      "key": "x-vault-token",
+      "sensitive": true
+    },
+    {
+      "key": "private-token",
+      "sensitive": true
+    },
+    {
+      "key": "x-ms-token-aad-access-token",
+      "sensitive": true
+    },
+    {
+      "key": "x-amzn-oidc-accesstoken",
+      "sensitive": true
+    },
+    {
+      "key": "pageToken",
+      "sensitive": true
+    },
+    {
+      "key": "nextPageToken",
+      "sensitive": true
+    },
+    {
+      "key": "page_token",
+      "sensitive": true
+    },
+    {
+      "key": "progressToken",
+      "sensitive": true
+    },
+    {
+      "key": "token_count",
+      "sensitive": true
+    },
+    {
+      "key": "token_type",
+      "sensitive": true
+    },
+    {
+      "key": "token_endpoint",
+      "sensitive": true
+    },
+    {
+      "key": "tokenInfo",
+      "sensitive": true
+    },
+    {
+      "key": "token_2",
+      "sensitive": true
+    },
+    {
+      "key": "x-csrf-token",
+      "sensitive": true
+    },
+    {
+      "key": "X-CSRFToken",
+      "sensitive": true
+    },
+    {
+      "key": "x-xsrf-token",
+      "sensitive": true
+    },
+    {
+      "key": "csrfmiddlewaretoken",
+      "sensitive": true
+    },
+    {
+      "key": "csrf",
+      "sensitive": true
+    },
+    {
+      "key": "auth",
+      "sensitive": true
+    },
+    {
+      "key": "Auth",
+      "sensitive": true
+    },
+    {
+      "key": "auth_type",
+      "sensitive": true
+    },
+    {
+      "key": "authType",
+      "sensitive": true
+    },
+    {
+      "key": "authInfo",
+      "sensitive": true
+    },
+    {
+      "key": "x-sentry-auth",
+      "sensitive": true
+    },
+    {
+      "key": "PHP_AUTH_PW",
+      "sensitive": true
+    },
+    {
+      "key": "php-auth-user",
+      "sensitive": true
+    },
+    {
+      "key": "x-auth-request-email",
+      "sensitive": true
+    },
+    {
+      "key": "x-registry-auth",
+      "sensitive": true
+    },
+    {
+      "key": "password",
+      "sensitive": true
+    },
+    {
+      "key": "Password",
+      "sensitive": true
+    },
+    {
+      "key": "db_password",
+      "sensitive": true
+    },
+    {
+      "key": "passwd",
+      "sensitive": true
+    },
+    {
+      "key": "passphrase",
+      "sensitive": true
+    },
+    {
+      "key": "cb-access-passphrase",
+      "sensitive": true
+    },
+    {
+      "key": "secret",
+      "sensitive": true
+    },
+    {
+      "key": "client_secret",
+      "sensitive": true
+    },
+    {
+      "key": "clientSecret",
+      "sensitive": true
+    },
+    {
+      "key": "secret_name",
+      "sensitive": true
+    },
+    {
+      "key": "cf-access-client-secret",
+      "sensitive": true
+    },
+    {
+      "key": "signature",
+      "sensitive": true
+    },
+    {
+      "key": "Signature",
+      "sensitive": true
+    },
+    {
+      "key": "stripe-signature",
+      "sensitive": true
+    },
+    {
+      "key": "X-Hub-Signature",
+      "sensitive": true
+    },
+    {
+      "key": "x-hub-signature-256",
+      "sensitive": true
+    },
+    {
+      "key": "x-slack-signature",
+      "sensitive": true
+    },
+    {
+      "key": "function_signature",
+      "sensitive": true
+    },
+    {
+      "key": "signature-input",
+      "sensitive": true
+    },
+    {
+      "key": "x-shopify-hmac-sha256",
+      "sensitive": true
+    },
+    {
+      "key": "credentials",
+      "sensitive": true
+    },
+    {
+      "key": "aws_credentials",
+      "sensitive": true
+    },
+    {
+      "key": "jwt",
+      "sensitive": true
+    },
+    {
+      "key": "x-goog-iap-jwt-assertion",
+      "sensitive": true
+    },
+    {
+      "key": "client_assertion",
+      "sensitive": true
+    },
+    {
+      "key": "bearer",
+      "sensitive": true
+    },
+    {
+      "key": "SAMLResponse",
+      "sensitive": true
+    },
+    {
+      "key": "otp",
+      "sensitive": true
+    },
+    {
+      "key": "otp_code",
+      "sensitive": true
+    },
+    {
+      "key": "dpop",
+      "sensitive": true
+    },
+    {
+      "key": "DPoP",
+      "sensitive": true
+    },
+    {
+      "key": "x-honeycomb-team",
+      "sensitive": true
+    },
+    {
+      "key": "X-Honeycomb-Team",
+      "sensitive": true
+    },
+    {
+      "key": "request.headers.x-honeycomb-team",
+      "sensitive": true
+    },
+    {
+      "key": "x-vercel-protection-bypass",
+      "sensitive": true
+    },
+    {
+      "key": "x-jfrog-art-api",
+      "sensitive": true
+    },
+    {
+      "key": "fastly-key",
+      "sensitive": true
+    },
+    {
+      "key": "x-nf-sign",
+      "sensitive": true
+    },
+    {
+      "key": "cb-access-sign",
+      "sensitive": true
+    },
+    {
+      "key": "x-registry-config",
+      "sensitive": true
+    },
+    {
+      "key": "sec-websocket-protocol",
+      "sensitive": true
+    },
+    {
+      "key": "cf-access-client-id",
+      "sensitive": true
+    },
+    {
+      "key": "x-amzn-oidc-data",
+      "sensitive": true
+    },
+    {
+      "key": "x-sfdc-session",
+      "sensitive": true
+    },
+    {
+      "key": "x-wp-nonce",
+      "sensitive": true
+    },
+    {
+      "key": "jenkins-crumb",
+      "sensitive": true
+    },
+    {
+      "key": "accesskey",
+      "sensitive": true
+    },
+    {
+      "key": "AccessKey",
+      "sensitive": true
+    },
+    {
+      "key": "x-insert-key",
+      "sensitive": true
+    },
+    {
+      "key": "paypal-transmission-sig",
+      "sensitive": true
+    },
+    {
+      "key": "plaid-verification",
+      "sensitive": true
+    },
+    {
+      "key": "x-trello-webhook",
+      "sensitive": true
+    },
+    {
+      "key": "x-airtable-content-mac",
+      "sensitive": true
+    },
+    {
+      "key": "x-vault-mfa",
+      "sensitive": true
+    },
+    {
+      "key": "x-forge-oauth-system",
+      "sensitive": true
+    },
+    {
+      "key": "x-requestdigest",
+      "sensitive": true
+    },
+    {
+      "key": "x-firebase-appcheck",
+      "sensitive": true
+    },
+    {
+      "key": "x-amzn-ava-user-context",
+      "sensitive": true
+    },
+    {
+      "key": "user-agent",
+      "sensitive": false
+    },
+    {
+      "key": "User-Agent",
+      "sensitive": false
+    },
+    {
+      "key": "x-anthropic-client",
+      "sensitive": false
+    },
+    {
+      "key": "mcp-session-id",
+      "sensitive": false
+    },
+    {
+      "key": "Mcp-Session-Id",
+      "sensitive": false
+    },
+    {
+      "key": "mcp-protocol-version",
+      "sensitive": false
+    },
+    {
+      "key": "last-event-id",
+      "sensitive": false
+    },
+    {
+      "key": "content-type",
+      "sensitive": false
+    },
+    {
+      "key": "content-length",
+      "sensitive": false
+    },
+    {
+      "key": "accept",
+      "sensitive": false
+    },
+    {
+      "key": "host",
+      "sensitive": false
+    },
+    {
+      "key": "origin",
+      "sensitive": false
+    },
+    {
+      "key": "referer",
+      "sensitive": false
+    },
+    {
+      "key": "traceparent",
+      "sensitive": false
+    },
+    {
+      "key": "tracestate",
+      "sensitive": false
+    },
+    {
+      "key": "etag",
+      "sensitive": false
+    },
+    {
+      "key": "if-none-match",
+      "sensitive": false
+    },
+    {
+      "key": "cache-control",
+      "sensitive": false
+    },
+    {
+      "key": "x-request-id",
+      "sensitive": false
+    },
+    {
+      "key": "www-authenticate",
+      "sensitive": false
+    },
+    {
+      "key": "proxy-authenticate",
+      "sensitive": false
+    },
+    {
+      "key": "authentication-info",
+      "sensitive": false
+    },
+    {
+      "key": "x-author",
+      "sensitive": false
+    },
+    {
+      "key": "author",
+      "sensitive": false
+    },
+    {
+      "key": "authority",
+      "sensitive": false
+    },
+    {
+      "key": ":authority",
+      "sensitive": false
+    },
+    {
+      "key": "authenticated",
+      "sensitive": false
+    },
+    {
+      "key": "oauth",
+      "sensitive": false
+    },
+    {
+      "key": "x-oauth-scopes",
+      "sensitive": false
+    },
+    {
+      "key": "otpauth",
+      "sensitive": false
+    },
+    {
+      "key": "max_tokens",
+      "sensitive": false
+    },
+    {
+      "key": "maxTokens",
+      "sensitive": false
+    },
+    {
+      "key": "inputTokens",
+      "sensitive": false
+    },
+    {
+      "key": "output_tokens",
+      "sensitive": false
+    },
+    {
+      "key": "tokens",
+      "sensitive": false
+    },
+    {
+      "key": "tokenizer",
+      "sensitive": false
+    },
+    {
+      "key": "token2",
+      "sensitive": false
+    },
+    {
+      "key": "x-ratelimit-remaining-tokens",
+      "sensitive": false
+    },
+    {
+      "key": "key",
+      "sensitive": false
+    },
+    {
+      "key": "Key",
+      "sensitive": false
+    },
+    {
+      "key": "issue_key",
+      "sensitive": false
+    },
+    {
+      "key": "issueKey",
+      "sensitive": false
+    },
+    {
+      "key": "sort_key",
+      "sensitive": false
+    },
+    {
+      "key": "object_key",
+      "sensitive": false
+    },
+    {
+      "key": "partition_key",
+      "sensitive": false
+    },
+    {
+      "key": "idempotency-key",
+      "sensitive": false
+    },
+    {
+      "key": "sec-websocket-key",
+      "sensitive": false
+    },
+    {
+      "key": "x-cache-key",
+      "sensitive": false
+    },
+    {
+      "key": "public-key-pins",
+      "sensitive": false
+    },
+    {
+      "key": "keyboard",
+      "sensitive": false
+    },
+    {
+      "key": "monkey",
+      "sensitive": false
+    },
+    {
+      "key": "session_id",
+      "sensitive": false
+    },
+    {
+      "key": "sessionId",
+      "sensitive": false
+    },
+    {
+      "key": "x-session-id",
+      "sensitive": false
+    },
+    {
+      "key": "x-forwarded-for",
+      "sensitive": false
+    },
+    {
+      "key": "x-real-ip",
+      "sensitive": false
+    },
+    {
+      "key": "cf-connecting-ip",
+      "sensitive": false
+    },
+    {
+      "key": "x-forwarded-email",
+      "sensitive": false
+    },
+    {
+      "key": "x-forwarded-user",
+      "sensitive": false
+    },
+    {
+      "key": "x-amzn-oidc-identity",
+      "sensitive": false
+    },
+    {
+      "key": "x-ms-client-principal",
+      "sensitive": false
+    },
+    {
+      "key": "remote-user",
+      "sensitive": false
+    },
+    {
+      "key": "name",
+      "sensitive": false
+    },
+    {
+      "key": "value",
+      "sensitive": false
+    },
+    {
+      "key": "values",
+      "sensitive": false
+    },
+    {
+      "key": "header",
+      "sensitive": false
+    },
+    {
+      "key": "headers",
+      "sensitive": false
+    },
+    {
+      "key": "properties",
+      "sensitive": false
+    },
+    {
+      "key": "arguments",
+      "sensitive": false
+    },
+    {
+      "key": "context",
+      "sensitive": false
+    },
+    {
+      "key": "description",
+      "sensitive": false
+    },
+    {
+      "key": "cursor",
+      "sensitive": false
+    },
+    {
+      "key": "nextCursor",
+      "sensitive": false
+    },
+    {
+      "key": "sign",
+      "sensitive": false
+    },
+    {
+      "key": "design",
+      "sensitive": false
+    },
+    {
+      "key": "assignee",
+      "sensitive": false
+    },
+    {
+      "key": "requestId",
+      "sensitive": false
+    },
+    {
+      "key": "clientId",
+      "sensitive": false
+    },
+    {
+      "key": "scopes",
+      "sensitive": false
+    },
+    {
+      "key": "url",
+      "sensitive": false
+    },
+    {
+      "key": "",
+      "sensitive": false
+    },
+    {
+      "key": " ",
+      "sensitive": false
+    },
+    {
+      "key": "-",
+      "sensitive": false
+    },
+    {
+      "key": "123",
+      "sensitive": false
+    },
+    {
+      "key": "Autorizaci\u00f3n",
+      "sensitive": false
+    },
+    {
+      "key": "\u043f\u0430\u0440\u043e\u043b\u044c",
+      "sensitive": false
+    }
+  ],
+  "trees": [
+    {
+      "name": "headers under requestInfo, the TypeScript v1, Python, PHP, Ruby, Rust and C# shape",
+      "input": {
+        "request": {
+          "method": "tools/call",
+          "params": {
+            "name": "search",
+            "arguments": {
+              "query": "cats",
+              "session_id": "ses_1"
+            }
+          }
+        },
+        "extra": {
+          "sessionId": "abc",
+          "requestId": 7,
+          "requestInfo": {
+            "url": "https://example.com/mcp",
+            "headers": {
+              "authorization": "Bearer abc.def",
+              "cookie": "sid=1; theme=dark",
+              "x-api-key": "k-123",
+              "user-agent": "claude-code/2.1.0",
+              "x-anthropic-client": "claude-code",
+              "mcp-session-id": "0b1c",
+              "mcp-protocol-version": "2025-06-18",
+              "content-type": "application/json",
+              "x-forwarded-for": "203.0.113.9"
+            }
+          },
+          "authInfo": {
+            "token": "abc.def",
+            "clientId": "client-1",
+            "scopes": [
+              "read"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "request": {
+          "method": "tools/call",
+          "params": {
+            "name": "search",
+            "arguments": {
+              "query": "cats",
+              "session_id": "ses_1"
+            }
+          }
+        },
+        "extra": {
+          "sessionId": "abc",
+          "requestId": 7,
+          "requestInfo": {
+            "url": "https://example.com/mcp",
+            "headers": {
+              "authorization": "[redacted]",
+              "cookie": "[redacted]",
+              "x-api-key": "[redacted]",
+              "user-agent": "claude-code/2.1.0",
+              "x-anthropic-client": "claude-code",
+              "mcp-session-id": "0b1c",
+              "mcp-protocol-version": "2025-06-18",
+              "content-type": "application/json",
+              "x-forwarded-for": "203.0.113.9"
+            }
+          },
+          "authInfo": "[redacted]"
+        }
+      }
+    },
+    {
+      "name": "headers under http.req, the TypeScript v2 shape",
+      "input": {
+        "extra": {
+          "http": {
+            "req": {
+              "method": "POST",
+              "url": "https://example.com/mcp",
+              "headers": {
+                "authorization": "Bearer abc",
+                "x-acme-token": "t",
+                "accept": "application/json"
+              }
+            },
+            "authInfo": {
+              "token": "abc"
+            }
+          }
+        }
+      },
+      "expected": {
+        "extra": {
+          "http": {
+            "req": {
+              "method": "POST",
+              "url": "https://example.com/mcp",
+              "headers": {
+                "authorization": "[redacted]",
+                "x-acme-token": "[redacted]",
+                "accept": "application/json"
+              }
+            },
+            "authInfo": "[redacted]"
+          }
+        }
+      }
+    },
+    {
+      "name": "headers under header with list values, the Go shape",
+      "input": {
+        "extra": {
+          "header": {
+            "Authorization": [
+              "Bearer abc"
+            ],
+            "Cookie": [
+              "a=1",
+              "b=2"
+            ],
+            "User-Agent": [
+              "mcp-go/1.0"
+            ],
+            "X-Api-Key": [
+              "k"
+            ],
+            "Accept": [
+              "application/json"
+            ]
+          },
+          "tokenInfo": {
+            "Scopes": [
+              "read"
+            ],
+            "UserID": "u1"
+          }
+        }
+      },
+      "expected": {
+        "extra": {
+          "header": {
+            "Authorization": "[redacted]",
+            "Cookie": "[redacted]",
+            "User-Agent": [
+              "mcp-go/1.0"
+            ],
+            "X-Api-Key": "[redacted]",
+            "Accept": [
+              "application/json"
+            ]
+          },
+          "tokenInfo": "[redacted]"
+        }
+      }
+    },
+    {
+      "name": "key styles: CGI names, dotted paths, index suffixes, camelCase",
+      "input": {
+        "HTTP_AUTHORIZATION": "Basic abc",
+        "REDIRECT_HTTP_AUTHORIZATION": "Basic abc",
+        "http.request.header.authorization": "Bearer abc",
+        "headers[cookie][0]": "a=1",
+        "xApiKey": "k",
+        "XApiKey": "k",
+        "accessToken": "t",
+        "HTTP_USER_AGENT": "curl/8",
+        "http.request.header.user_agent": "curl/8"
+      },
+      "expected": {
+        "HTTP_AUTHORIZATION": "[redacted]",
+        "REDIRECT_HTTP_AUTHORIZATION": "[redacted]",
+        "http.request.header.authorization": "[redacted]",
+        "headers[cookie][0]": "[redacted]",
+        "xApiKey": "[redacted]",
+        "XApiKey": "[redacted]",
+        "accessToken": "[redacted]",
+        "HTTP_USER_AGENT": "curl/8",
+        "http.request.header.user_agent": "curl/8"
+      }
+    },
+    {
+      "name": "tool arguments and results lose values under sensitive names",
+      "input": {
+        "request": {
+          "params": {
+            "name": "list_files",
+            "_meta": {
+              "progressToken": "p1"
+            },
+            "arguments": {
+              "pageToken": "CAE=",
+              "max_tokens": 100,
+              "query": "report",
+              "auth_type": "oauth",
+              "secret_name": "prod/db",
+              "issue_key": "PROJ-42",
+              "key": "Enter",
+              "password": "hunter2"
+            }
+          }
+        }
+      },
+      "expected": {
+        "request": {
+          "params": {
+            "name": "list_files",
+            "_meta": {
+              "progressToken": "[redacted]"
+            },
+            "arguments": {
+              "pageToken": "[redacted]",
+              "max_tokens": 100,
+              "query": "report",
+              "auth_type": "[redacted]",
+              "secret_name": "[redacted]",
+              "issue_key": "PROJ-42",
+              "key": "Enter",
+              "password": "[redacted]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "null and boolean values stay, every other value becomes the mask",
+      "input": {
+        "token": null,
+        "auth": true,
+        "password": false,
+        "secret": 0,
+        "apiKey": "",
+        "cookie": [
+          "a",
+          "b"
+        ],
+        "credentials": {
+          "user": "bob",
+          "pass": "x"
+        },
+        "signature": [],
+        "jwt": 12345
+      },
+      "expected": {
+        "token": null,
+        "auth": true,
+        "password": false,
+        "secret": "[redacted]",
+        "apiKey": "[redacted]",
+        "cookie": "[redacted]",
+        "credentials": "[redacted]",
+        "signature": "[redacted]",
+        "jwt": "[redacted]"
+      }
+    },
+    {
+      "name": "a JSON Schema properties map keeps its property schemas",
+      "input": {
+        "tools": [
+          {
+            "name": "login",
+            "inputSchema": {
+              "type": "object",
+              "required": [
+                "api_key"
+              ],
+              "properties": {
+                "api_key": {
+                  "type": "string",
+                  "description": "The API key"
+                },
+                "token": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "object",
+                  "properties": {
+                    "password": {
+                      "type": "string"
+                    },
+                    "retries": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "tools": [
+          {
+            "name": "login",
+            "inputSchema": {
+              "type": "object",
+              "required": [
+                "api_key"
+              ],
+              "properties": {
+                "api_key": {
+                  "type": "string",
+                  "description": "The API key"
+                },
+                "token": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "object",
+                  "properties": {
+                    "password": {
+                      "type": "string"
+                    },
+                    "retries": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a scalar under properties is still a value",
+      "input": {
+        "event": "pageview",
+        "properties": {
+          "token": "phc_abc",
+          "auth": true,
+          "path": "/home",
+          "cookie": null
+        }
+      },
+      "expected": {
+        "event": "pageview",
+        "properties": {
+          "token": "[redacted]",
+          "auth": true,
+          "path": "/home",
+          "cookie": null
+        }
+      }
+    },
+    {
+      "name": "a map under a sensitive key outside properties becomes the mask",
+      "input": {
+        "authorization": {
+          "scheme": "Bearer",
+          "parameter": "abc"
+        },
+        "cookies": {
+          "sid": "1"
+        },
+        "settings": {
+          "auth": {
+            "user": "bob"
+          },
+          "theme": "dark"
+        }
+      },
+      "expected": {
+        "authorization": "[redacted]",
+        "cookies": "[redacted]",
+        "settings": {
+          "auth": "[redacted]",
+          "theme": "dark"
+        }
+      }
+    },
+    {
+      "name": "the pair rule masks the value entry of a named sensitive key",
+      "input": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer abc"
+          },
+          {
+            "name": "Accept",
+            "value": "application/json"
+          },
+          {
+            "Name": "X-Api-Key",
+            "Value": "k"
+          },
+          {
+            "header": "cookie",
+            "values": [
+              "a=1",
+              "b=2"
+            ]
+          }
+        ],
+        "env": [
+          {
+            "key": "OPENAI_API_KEY",
+            "value": "sk-1"
+          },
+          {
+            "key": "PORT",
+            "value": "8080"
+          }
+        ],
+        "edge": [
+          {
+            "name": "token",
+            "value": null
+          },
+          {
+            "name": "password",
+            "value": {
+              "a": 1
+            }
+          },
+          {
+            "name": "secret",
+            "value": true
+          },
+          {
+            "name": 5,
+            "value": "x"
+          },
+          {
+            "name": "auth"
+          },
+          {
+            "value": "alone"
+          },
+          {
+            "name": "theme",
+            "key": "api_key",
+            "value": "v"
+          }
+        ]
+      },
+      "expected": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "[redacted]"
+          },
+          {
+            "name": "Accept",
+            "value": "application/json"
+          },
+          {
+            "Name": "X-Api-Key",
+            "Value": "[redacted]"
+          },
+          {
+            "header": "cookie",
+            "values": "[redacted]"
+          }
+        ],
+        "env": [
+          {
+            "key": "OPENAI_API_KEY",
+            "value": "[redacted]"
+          },
+          {
+            "key": "PORT",
+            "value": "8080"
+          }
+        ],
+        "edge": [
+          {
+            "name": "token",
+            "value": null
+          },
+          {
+            "name": "password",
+            "value": "[redacted]"
+          },
+          {
+            "name": "secret",
+            "value": true
+          },
+          {
+            "name": 5,
+            "value": "x"
+          },
+          {
+            "name": "auth"
+          },
+          {
+            "value": "alone"
+          },
+          {
+            "name": "theme",
+            "key": "api_key",
+            "value": "[redacted]"
+          }
+        ]
+      }
+    },
+    {
+      "name": "lists, nesting and scalars keep their shape",
+      "input": {
+        "a": [
+          1,
+          "two",
+          null,
+          true,
+          [
+            3,
+            {
+              "token": "t",
+              "n": 4
+            }
+          ],
+          {
+            "b": {
+              "c": {
+                "d": {
+                  "e": {
+                    "secret": "s",
+                    "f": [
+                      {
+                        "password": "p"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "empty_map": {},
+        "empty_list": [],
+        "text": "Authorization: Bearer abc",
+        "number": 42
+      },
+      "expected": {
+        "a": [
+          1,
+          "two",
+          null,
+          true,
+          [
+            3,
+            {
+              "token": "[redacted]",
+              "n": 4
+            }
+          ],
+          {
+            "b": {
+              "c": {
+                "d": {
+                  "e": {
+                    "secret": "[redacted]",
+                    "f": [
+                      {
+                        "password": "[redacted]"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "empty_map": {},
+        "empty_list": [],
+        "text": "Authorization: Bearer abc",
+        "number": 42
+      }
+    },
+    {
+      "name": "a tool response",
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "token=abc is inside text and stays"
+          }
+        ],
+        "structuredContent": {
+          "access_token": "at",
+          "token_type": "Bearer",
+          "expires_in": 3600,
+          "items": [
+            {
+              "id": 1,
+              "api_key": "k"
+            }
+          ]
+        },
+        "isError": false
+      },
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "token=abc is inside text and stays"
+          }
+        ],
+        "structuredContent": {
+          "access_token": "[redacted]",
+          "token_type": "[redacted]",
+          "expires_in": 3600,
+          "items": [
+            {
+              "id": 1,
+              "api_key": "[redacted]"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    {
+      "name": "an error with the headers of a failed HTTP call",
+      "input": {
+        "message": "Request failed with status code 401",
+        "type": "AxiosError",
+        "config": {
+          "url": "https://api.example.com",
+          "headers": {
+            "Authorization": "Bearer abc",
+            "Accept": "application/json"
+          }
+        }
+      },
+      "expected": {
+        "message": "Request failed with status code 401",
+        "type": "AxiosError",
+        "config": {
+          "url": "https://api.example.com",
+          "headers": {
+            "Authorization": "[redacted]",
+            "Accept": "application/json"
+          }
+        }
+      }
+    },
+    {
+      "name": "keys with other alphabets are not matched",
+      "input": {
+        "Autorizaci\u00f3n": "x",
+        "\u043f\u0430\u0440\u043e\u043b\u044c": "x",
+        "x-\u043a\u043b\u044e\u0447": 1,
+        "\u043f\u0430\u0440\u043e\u043b\u044c-token": "t"
+      },
+      "expected": {
+        "Autorizaci\u00f3n": "x",
+        "\u043f\u0430\u0440\u043e\u043b\u044c": "x",
+        "x-\u043a\u043b\u044e\u0447": 1,
+        "\u043f\u0430\u0440\u043e\u043b\u044c-token": "[redacted]"
+      }
+    },
+    {
+      "name": "a list at the root",
+      "input": [
+        {
+          "token": "t"
+        },
+        "plain",
+        3
+      ],
+      "expected": [
+        {
+          "token": "[redacted]"
+        },
+        "plain",
+        3
+      ]
+    },
+    {
+      "name": "a string at the root",
+      "input": "token",
+      "expected": "token"
+    },
+    {
+      "name": "null at the root",
+      "input": null,
+      "expected": null
+    }
+  ]
+}

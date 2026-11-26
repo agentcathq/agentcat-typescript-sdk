@@ -289,7 +289,7 @@ describe("extra projection on captured events", () => {
     params: { name: "echo", arguments: { msg: "hi" } },
   };
 
-  it("publishes v1-shaped extra with headers verbatim and url as a string", async () => {
+  it("publishes v1-shaped extra with plain headers verbatim and url as a string", async () => {
     const wrapped = trackFake(fakeServer(okHandler));
     await wrapped(callEcho, {
       requestInfo: {
@@ -305,7 +305,46 @@ describe("extra projection on captured events", () => {
     // Post-pipeline: values survived redact → sanitize → truncate.
     expect(extra.requestInfo.headers["x-agentcat-health-run"]).toBe("run:v1");
     expect(extra.requestInfo.url).toBe("http://localhost:4105/mcp");
-    expect(extra.authInfo.token).toBe("tok");
+    expect(extra.authInfo).toBe("[redacted]");
+  });
+
+  it("masks sensitive headers in what the sender receives, not in the handler's objects", async () => {
+    const sent: any[] = [];
+    const queue = (await import("../modules/eventQueue.js")).eventQueue as any;
+    queue.sendEvent = async (event: any) => {
+      sent.push(event);
+    };
+    const headers = {
+      authorization: "Bearer abc.def",
+      cookie: "sid=1",
+      "x-api-key": "k-123",
+      "user-agent": "claude-code/2.1.0",
+      "x-anthropic-client": "claude-code",
+      "mcp-session-id": "0b1c",
+    };
+    let seenExtra: any;
+    const wrapped = trackFake(
+      fakeServer(async (_req, extra) => {
+        seenExtra = extra;
+        return { content: [{ type: "text", text: "ok" }] };
+      }),
+    );
+    await wrapped(callEcho, {
+      requestInfo: { headers: { ...headers } },
+      authInfo: { token: "abc.def" },
+    });
+    await settle();
+
+    const extra = sent[0].parameters.extra;
+    expect(extra.requestInfo.headers).toEqual({
+      ...headers,
+      authorization: "[redacted]",
+      cookie: "[redacted]",
+      "x-api-key": "[redacted]",
+    });
+    expect(extra.authInfo).toBe("[redacted]");
+    expect(seenExtra.requestInfo.headers).toEqual(headers);
+    expect(seenExtra.authInfo).toEqual({ token: "abc.def" });
   });
 
   it("publishes v2-shaped extra with the web Request as plain { method, url, headers }", async () => {

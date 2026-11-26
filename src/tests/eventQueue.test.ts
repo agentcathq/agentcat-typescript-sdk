@@ -232,6 +232,35 @@ describe("EventQueue", () => {
       expect(sent.inputTokens).toBeUndefined();
       expect(sent.outputTokens).toBeUndefined();
     });
+
+    it("drops a field that the mask cannot walk and still sends the event", async () => {
+      (eventQueue as any).apiClient = mockApiClient;
+      const unwalkable = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error("boom");
+          },
+        },
+      );
+
+      publishEvent(makeMockServer(), {
+        eventType: "mcp:tools/call",
+        resourceName: "do_thing",
+        timestamp: new Date(),
+        parameters: { authorization: "Bearer abc" },
+        error: unwalkable,
+      } as any);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const sent = mockPublishEvent.mock.calls[0][0].publishEventRequest;
+      expect(sent.error).toBeUndefined();
+      expect(sent.parameters).toEqual({ authorization: "[redacted]" });
+      expect(writeToLog).toHaveBeenCalledWith(
+        "Failed to mask sensitive keys in error: Error: boom",
+      );
+    });
   });
 
   describe("background delivery lifecycle", () => {

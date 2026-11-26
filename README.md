@@ -143,6 +143,8 @@ agentcat.track(mcpServer, "proj_0000000", {
 
 AgentCat redacts all data sent to its servers and encrypts at rest, but for additional security, it offers a hook to do your own redaction on all text data returned back to our servers.
 
+The SDK always masks the values of sensitive keys, such as the `authorization`, `cookie` and `x-api-key` request headers and any key named like a token, secret or password, before an event leaves your server.
+
 ```ts
 agentcat.track(mcpServer, "proj_0000000", {
   redactSensitiveInformation: async (text) => await redact(text),

@@ -7,7 +7,8 @@ import { writeToLog } from "./logging.js";
  * objects whose data lives behind prototype getters flatten to `{}`:
  *
  * - v2 (`@modelcontextprotocol/server`): `http.req` is a WHATWG Request —
- *   replaced with a plain `{ method, url, headers }` (headers verbatim).
+ *   replaced with a plain `{ method, url, headers }` (headers verbatim;
+ *   the queue masks sensitive header values later, in sensitive-keys.ts).
  * - v1 (`@modelcontextprotocol/sdk`): `requestInfo.url` is a URL instance —
  *   replaced with its `.href` string. `requestInfo.headers` is already a
  *   plain object and passes through untouched.
