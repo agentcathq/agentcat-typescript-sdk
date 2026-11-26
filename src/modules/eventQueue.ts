@@ -16,6 +16,7 @@ import { buildSessionInfo } from "./session.js";
 import { applyEventRedaction, redactEvent } from "./redaction.js";
 import { applyPendingEventFields } from "./pendingEvent.js";
 import { sanitizeEvent } from "./sanitization.js";
+import { maskSensitiveKeys } from "./sensitive-keys.js";
 import { truncateEvent } from "./truncation.js";
 import KSUID from "../thirdparty/ksuid/index.js";
 import { getMCPCompatibleErrorMessage } from "./compatibility.js";
@@ -151,6 +152,15 @@ class EventQueue {
       } catch (error) {
         writeToLog(`Failed to sanitize event: ${error}`);
         return;
+      }
+
+      for (const field of ["parameters", "response", "error"] as const) {
+        try {
+          event[field] = maskSensitiveKeys(event[field]);
+        } catch (error) {
+          event[field] = undefined;
+          writeToLog(`Failed to mask sensitive keys in ${field}: ${error}`);
+        }
       }
 
       try {

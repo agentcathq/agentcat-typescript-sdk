@@ -1,1 +1,2 @@
 pnpm-lock.yaml
+src/tests/fixtures/sensitive-keys-vectors.json
